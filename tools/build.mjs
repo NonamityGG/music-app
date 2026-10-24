@@ -1,5 +1,5 @@
 // Builds the web part of the app into www/ (bundled JS, CSS with local fonts).
-import { build } from 'esbuild';
+import { build, transform } from 'esbuild';
 import { mkdirSync, rmSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -43,5 +43,11 @@ for (const [pkg, family, weights] of fonts) {
 }
 
 writeFileSync(join(out, 'style.css'), faces + readFileSync('src/style.css', 'utf8'));
-copyFileSync('src/index.html', join(out, 'index.html'));
+// the launch intro is inlined, so it is drawn with the very first frame
+const introJs = (await transform(readFileSync('src/intro.js', 'utf8'), { minify: true, target: 'chrome100' })).code.trim();
+const introCss = (await transform(readFileSync('src/intro.css', 'utf8'), { loader: 'css', minify: true })).code.trim();
+const html = readFileSync('src/index.html', 'utf8')
+  .replace('/*INTRO_CSS*/', () => introCss)
+  .replace('/*INTRO_JS*/', () => introJs.replace(/<\/script/gi, '<\\/script'));
+writeFileSync(join(out, 'index.html'), html);
 console.log(`built www/ (version ${version})`);

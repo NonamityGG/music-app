@@ -3922,3 +3922,14 @@ body.has-mini .snack {
   padding: 0 14px;
   font-size: 14px;
 }
+
+/* ---------- launch intro setting ---------- */
+
+.intro-box {
+  margin-top: 12px;
+}
+
+.intro-replay {
+  align-self: flex-start;
+  margin: -4px 0 -6px -4px;
+}

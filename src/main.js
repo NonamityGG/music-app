@@ -12,7 +12,7 @@ import { toExt as zvukToExt } from './zvuk-import.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, onLikeChange, searchInApp, openExternal } from './pages.js';
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose } from './components.js';
-import { applyTheme } from './theme.js';
+import { applyTheme, syncBars } from './theme.js';
 import { createLyricsView } from './lyrics-view.js';
 import { moreLike } from './endless.js';
 import { onLocalChange } from './local.js';
@@ -678,6 +678,30 @@ App.addListener('backButton', async () => {
   App.minimizeApp(); // keep the music playing instead of closing
 }).catch(() => {});
 
+// ---------- launch intro ----------
+// The intro (index.html) is drawn over the app while it starts. As it leaves,
+// the interface comes forward into place behind it.
+
+function assemble(e) {
+  const d = (e && e.detail) || {};
+  syncBars(true);
+  if (d.reduce) return;
+  const k = d.fast ? 0.6 : 1;
+  const ease = 'cubic-bezier(.16,1,.3,1)';
+  const wide = window.matchMedia('(min-width: 700px)').matches;
+  const rise = (el, from, duration, delay) =>
+    el.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], { duration: duration * k, delay: delay * k, easing: ease, fill: 'backwards' });
+  rise(content, 'scale(0.94)', 780, 60);
+  rise(tabbar, wide ? 'translateX(-28px)' : 'translateY(30px)', 720, 170);
+  if (!mini.el.hidden) rise(mini.el, 'translateY(22px)', 720, 220);
+  const op = getComputedStyle(bgCanvas).opacity;
+  bgCanvas.animate([{ opacity: 0 }, { opacity: op }], { duration: 1000 * k, delay: 150 * k, easing: 'ease-out', fill: 'backwards' });
+}
+window.addEventListener('rez-intro-out', assemble);
+window.addEventListener('rez-intro-in', () => syncBars()); // replayed from the profile
+const introReady = () => window.rezIntro && window.rezIntro.ready();
+setTimeout(introReady, 3500); // never keep the intro waiting on a slow start
+
 // ---------- start ----------
 
 (async function start() {
@@ -712,6 +736,8 @@ App.addListener('backButton', async () => {
     });
   } catch (e) {
     logError('start', e);
+  } finally {
+    requestAnimationFrame(introReady);
   }
 })();
 

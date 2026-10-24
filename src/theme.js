@@ -27,14 +27,21 @@ function setAttrs(t) {
   if (meta) meta.setAttribute('content', t.bg);
   const scheme = document.querySelector('meta[name="color-scheme"]');
   if (scheme) scheme.setAttribute('content', t.light ? 'light' : 'dark');
-  if (Capacitor.isNativePlatform()) {
-    SystemBars.setStyle({ style: t.light ? SystemBarsStyle.Light : SystemBarsStyle.Dark }).catch(() => {});
-  }
+  bars(t);
   configureWaves({ light: !!t.light });
   // glass themes give the background waves a different area
   requestAnimationFrame(() => resizeWaves('bg'));
   window.dispatchEvent(new Event('rez-theme'));
 }
+
+// Status bar icons: dark on light themes — except while the (always dark)
+// launch intro is on screen.
+function bars(t, introGone = false) {
+  if (!Capacitor.isNativePlatform()) return;
+  const intro = !introGone && window.rezIntro && window.rezIntro.active;
+  SystemBars.setStyle({ style: t.light && !intro ? SystemBarsStyle.Light : SystemBarsStyle.Dark }).catch(() => {});
+}
+export const syncBars = (introGone) => bars(currentTheme(), introGone);
 
 export function applyTheme() {
   setAttrs(currentTheme());

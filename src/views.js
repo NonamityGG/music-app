@@ -532,7 +532,20 @@ export function profileView() {
     add(body, section('Перенос плейлистов', null, transferAccounts(render)));
 
     // --- look ---
-    add(body, section('Оформление', null, themePicker()));
+    const replay = h('button', { class: 'btn-text small intro-replay', onclick: () => window.rezIntro && window.rezIntro.play(false) }, 'Посмотреть заставку');
+    add(body,
+      section(
+        'Оформление',
+        null,
+        themePicker(),
+        h(
+          'div',
+          { class: 'card-box intro-box' },
+          toggleRow('Заставка при запуске', 'Короткая анимация, когда открываешь приложение', settings.intro !== false, (v) => saveSettings({ intro: v })),
+          replay
+        )
+      )
+    );
 
     // --- playback ---
     add(body, 

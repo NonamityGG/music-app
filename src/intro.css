@@ -1,0 +1,106 @@
+/* Launch intro. Inlined into index.html by tools/build.mjs so it is on screen
+   with the very first frame, before the app itself has loaded. Everything that
+   moves is transform or opacity (the GPU animates it even while the app is
+   still starting up underneath). */
+
+#intro {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow: hidden;
+  background: #0f0b16;
+  contain: strict;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* every group is a zero-size point in the middle of the screen */
+#intro .i-sky,
+#intro .i-lock,
+#intro .i-move,
+#intro .i-bar {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+#intro .i-blob,
+#intro .i-glow,
+#intro .i-line,
+#intro .i-line-glow,
+#intro .i-ring,
+#intro .i-tile,
+#intro .i-sheen,
+#intro .i-clip,
+#intro .i-bar i,
+#intro .i-word {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+#intro .i-blob {
+  image-rendering: auto;
+}
+
+#intro .i-line {
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, rgba(124, 77, 255, 0), #7c4dff 16%, #cbb8ff 40%, #ffffff 50%, #ffc2ea 60%, #ff5fbf 84%, rgba(255, 79, 180, 0));
+}
+
+#intro .i-line-glow {
+  background: radial-gradient(closest-side, rgba(186, 150, 255, 0.55), rgba(124, 77, 255, 0.16) 60%, rgba(124, 77, 255, 0));
+}
+
+#intro .i-glow {
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(160, 120, 255, 0.5), rgba(124, 77, 255, 0.18) 55%, rgba(124, 77, 255, 0));
+}
+
+#intro .i-ring {
+  border: 1.5px solid rgba(204, 182, 255, 0.8);
+  box-sizing: border-box;
+}
+
+#intro .i-tile {
+  overflow: hidden;
+  background: linear-gradient(165deg, #a066ff 0%, #7c3aed 46%, #4c1d95 100%);
+  box-shadow:
+    0 22px 56px -12px rgba(124, 58, 237, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(20, 0, 60, 0.3);
+}
+
+#intro .i-sheen {
+  top: -30%;
+  height: 160%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.3) 50%, rgba(255, 255, 255, 0));
+}
+
+#intro .i-bar i {
+  background: #fff;
+}
+
+#intro .i-clip {
+  overflow: hidden;
+}
+
+#intro .i-word {
+  left: 0;
+  white-space: nowrap;
+  font-family: 'Unbounded', 'Onest', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #f6f2ff;
+  transform: translateX(-50%);
+}
+
+#intro .i-word span {
+  display: inline-block;
+}

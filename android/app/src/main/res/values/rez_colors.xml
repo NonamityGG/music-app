@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- background of the launch intro; the system splash and the window use it too,
+         so opening the app goes from this colour straight into the intro -->
+    <color name="rez_ink">#0F0B16</color>
+</resources>
