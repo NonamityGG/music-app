@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Слух</string>
+    <string name="title_activity_main">Слух</string>
+    <string name="package_name">app.slukh.player</string>
+    <string name="custom_url_scheme">app.slukh.player</string>
+</resources>

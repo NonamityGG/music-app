@@ -1,0 +1,405 @@
+// One player for every source. Zvuk tracks are streamed, local MP3s are read from
+// storage. If a track can't be played from its own source, the player looks for
+// the same song in the other one before giving up.
+
+import { MediaSession } from '@capgo/capacitor-media-session';
+import * as zvuk from './zvuk.js';
+import { localBlob, localTracks } from './local.js';
+import { bestMatch } from './match.js';
+import { settings, logError, load, save } from './settings.js';
+import { shuffle as shuffled } from './util.js';
+
+const audio = new Audio();
+audio.preload = 'auto';
+
+export const state = {
+  queue: [],
+  original: null, // queue order before shuffle
+  index: -1,
+  shuffle: false,
+  repeat: 'off', // off | all | one
+  playing: false,
+  loading: false,
+  via: '', // where the current track actually plays from
+  error: '',
+};
+
+const listeners = new Set();
+export function onPlayer(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+function emit(type, data) {
+  for (const fn of listeners) {
+    try {
+      fn(type, data);
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+}
+
+export const current = () => state.queue[state.index] || null;
+export const position = () => audio.currentTime || 0;
+export const duration = () => (isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (current() && current().duration) || 0);
+
+let objectUrl = '';
+let loadSeq = 0;
+let failStreak = 0;
+let retriedStream = false;
+
+function setObjectUrl(url) {
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = url;
+}
+
+// ---------- source resolution ----------
+
+async function localMatch(track) {
+  const all = await localTracks();
+  return bestMatch(track, all);
+}
+
+async function zvukMatch(track) {
+  const q = `${track.artist || ''} ${track.title}`.trim();
+  const res = await zvuk.quickSearch(q, 12);
+  return bestMatch(track, res.tracks);
+}
+
+async function resolve(track) {
+  if (track.src === 'local') {
+    const blob = await localBlob(track.lid);
+    if (blob) return { url: URL.createObjectURL(blob), via: 'local', blobUrl: true };
+    if (settings.autoFallback) {
+      const m = await zvukMatch(track).catch(() => null);
+      if (m) return { url: await zvuk.streamUrl(m.zid), via: 'zvuk-fallback', match: m };
+    }
+    throw new Error('Файла больше нет в медиатеке');
+  }
+
+  // Zvuk track. Offline: try the local copy first.
+  if (!navigator.onLine && settings.autoFallback) {
+    const m = await localMatch(track);
+    if (m) {
+      const blob = await localBlob(m.lid);
+      if (blob) return { url: URL.createObjectURL(blob), via: 'local-fallback', match: m };
+    }
+  }
+  try {
+    return { url: await zvuk.streamUrl(track.zid), via: 'zvuk' };
+  } catch (e) {
+    if (settings.autoFallback) {
+      const m = await localMatch(track);
+      if (m) {
+        const blob = await localBlob(m.lid);
+        if (blob) return { url: URL.createObjectURL(blob), via: 'local-fallback', match: m };
+      }
+    }
+    throw e;
+  }
+}
+
+// ---------- playback ----------
+
+async function load_(index, autoplay = true) {
+  const seq = ++loadSeq;
+  state.index = index;
+  const track = current();
+  if (!track) return;
+  state.loading = true;
+  state.error = '';
+  state.via = '';
+  retriedStream = false;
+  emit('track', track);
+  updateMetadata(track);
+  audio.pause();
+  try {
+    const src = await resolve(track);
+    if (seq !== loadSeq) {
+      if (src.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
+      return;
+    }
+    setObjectUrl(src.url.startsWith('blob:') ? src.url : '');
+    state.via = src.via;
+    track.unavailable = false;
+    audio.src = src.url;
+    if (autoplay) await audio.play().catch((e) => handlePlayError(e, seq));
+    failStreak = 0;
+    if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
+  } catch (e) {
+    if (seq !== loadSeq) return;
+    failStreak++;
+    track.unavailable = true;
+    state.error = e.message || String(e);
+    logError('play', e);
+    emit('unavailable', { track, error: e });
+    if (failStreak < 5 && state.queue.length > 1 && hasNext()) {
+      setTimeout(() => {
+        if (seq === loadSeq) next(true);
+      }, 1200);
+    } else {
+      setPlaying(false);
+    }
+  } finally {
+    if (seq === loadSeq) {
+      state.loading = false;
+      emit('state');
+    }
+  }
+}
+
+function handlePlayError(e, seq) {
+  if (seq !== loadSeq) return;
+  if (e && e.name === 'AbortError') return; // replaced by a newer load
+  logError('audio.play', e);
+}
+
+function hasNext() {
+  return state.index < state.queue.length - 1 || state.repeat === 'all';
+}
+
+export function playQueue(tracks, startIndex = 0, opts = {}) {
+  const list = tracks.filter(Boolean).map((t) => ({ ...t }));
+  if (!list.length) return;
+  state.original = null;
+  state.shuffle = !!opts.shuffle;
+  if (state.shuffle) {
+    state.original = list.slice();
+    const first = opts.randomStart ? null : list[startIndex];
+    const rest = shuffled(first ? list.filter((_, i) => i !== startIndex) : list);
+    state.queue = first ? [first, ...rest] : rest;
+    startIndex = 0;
+  } else {
+    state.queue = list;
+  }
+  failStreak = 0;
+  saveQueue();
+  load_(Math.max(0, Math.min(startIndex, state.queue.length - 1)));
+}
+
+export function playAt(index) {
+  if (index < 0 || index >= state.queue.length) return;
+  failStreak = 0;
+  load_(index);
+  saveQueue();
+}
+
+export function toggle() {
+  if (!current()) return;
+  if (audio.paused) resume();
+  else pause();
+}
+
+export function resume() {
+  if (!current()) return;
+  if (!audio.getAttribute('src')) return load_(state.index);
+  audio.play().catch((e) => {
+    logError('resume', e);
+    load_(state.index); // stream URL may have expired
+  });
+}
+
+export function pause() {
+  audio.pause();
+}
+
+export function next(auto = false) {
+  if (!state.queue.length) return;
+  if (state.index < state.queue.length - 1) return playAt(state.index + 1);
+  if (state.repeat === 'all' || !auto) return playAt(0);
+  pause();
+}
+
+export function prev() {
+  if (!state.queue.length) return;
+  if (audio.currentTime > 4) {
+    audio.currentTime = 0;
+    return;
+  }
+  playAt(state.index > 0 ? state.index - 1 : state.repeat === 'all' ? state.queue.length - 1 : 0);
+}
+
+export function seek(sec) {
+  if (!isFinite(sec)) return;
+  try {
+    audio.currentTime = Math.max(0, Math.min(sec, duration() || sec));
+  } catch {}
+  pushPosition();
+}
+
+export function setShuffle(on) {
+  const cur = current();
+  if (on === state.shuffle || !cur) {
+    state.shuffle = on;
+    emit('state');
+    return;
+  }
+  if (on) {
+    state.original = state.queue.slice();
+    const rest = shuffled(state.queue.filter((_, i) => i !== state.index));
+    state.queue = [cur, ...rest];
+    state.index = 0;
+  } else if (state.original) {
+    const idx = state.original.findIndex((t) => t.key === cur.key);
+    state.queue = state.original;
+    state.index = idx >= 0 ? idx : 0;
+    state.original = null;
+  }
+  state.shuffle = on;
+  saveQueue();
+  emit('queue');
+  emit('state');
+}
+
+export function cycleRepeat() {
+  state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';
+  saveQueue();
+  emit('state');
+}
+
+export function playNext(track) {
+  if (!current()) return playQueue([track]);
+  state.queue.splice(state.index + 1, 0, { ...track });
+  if (state.original) state.original.push({ ...track });
+  saveQueue();
+  emit('queue');
+}
+
+export function addToQueue(track) {
+  if (!current()) return playQueue([track]);
+  state.queue.push({ ...track });
+  if (state.original) state.original.push({ ...track });
+  saveQueue();
+  emit('queue');
+}
+
+export function removeFromQueue(i) {
+  if (i === state.index || i < 0 || i >= state.queue.length) return;
+  state.queue.splice(i, 1);
+  if (i < state.index) state.index--;
+  saveQueue();
+  emit('queue');
+}
+
+// ---------- audio element events ----------
+
+function setPlaying(p) {
+  state.playing = p;
+  emit('state');
+  MediaSession.setPlaybackState({ playbackState: current() ? (p ? 'playing' : 'paused') : 'none' }).catch(() => {});
+}
+
+audio.addEventListener('playing', () => {
+  setPlaying(true);
+  pushPosition();
+});
+audio.addEventListener('pause', () => setPlaying(false));
+audio.addEventListener('ended', () => {
+  if (state.repeat === 'one') {
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+    return;
+  }
+  next(true);
+});
+audio.addEventListener('error', async () => {
+  const track = current();
+  if (!track || !audio.getAttribute('src')) return;
+  const seq = loadSeq;
+  const code = audio.error ? audio.error.code : 0;
+  logError('audio', new Error('Ошибка воспроизведения, код ' + code));
+  // Zvuk stream links expire: fetch a fresh one once, keeping the position.
+  if (state.via === 'zvuk' && !retriedStream) {
+    retriedStream = true;
+    const at = audio.currentTime;
+    try {
+      const url = await zvuk.streamUrl(track.zid);
+      if (seq !== loadSeq) return;
+      audio.src = url;
+      audio.currentTime = at;
+      await audio.play();
+      return;
+    } catch (e) {
+      logError('stream-retry', e);
+    }
+  }
+  if (seq !== loadSeq) return;
+  track.unavailable = true;
+  emit('unavailable', { track, error: new Error('Не удалось воспроизвести') });
+  if (hasNext()) next(true);
+  else setPlaying(false);
+});
+
+let lastPosPush = 0;
+audio.addEventListener('timeupdate', () => {
+  emit('time');
+  const now = Date.now();
+  if (now - lastPosPush > 5000) pushPosition();
+});
+audio.addEventListener('durationchange', () => {
+  emit('time');
+  pushPosition();
+});
+
+function pushPosition() {
+  lastPosPush = Date.now();
+  const d = duration();
+  if (!d) return;
+  MediaSession.setPositionState({ duration: d, position: Math.min(audio.currentTime || 0, d), playbackRate: 1 }).catch(() => {});
+}
+
+// ---------- lock screen / notification ----------
+
+async function updateMetadata(track) {
+  let artwork = [];
+  let cover = track.cover;
+  if (!cover && track.src === 'local') {
+    const all = await localTracks();
+    const m = all.find((t) => t.lid === track.lid);
+    cover = m ? m.cover : '';
+  }
+  if (cover) artwork = [{ src: cover, sizes: '300x300', type: 'image/jpeg' }];
+  MediaSession.setMetadata({ title: track.title, artist: track.artist || '', album: track.album || '', artwork }).catch(() => {});
+}
+
+export function initMediaSession() {
+  const on = (action, fn) => MediaSession.setActionHandler({ action }, fn).catch(() => {});
+  on('play', () => resume());
+  on('pause', () => pause());
+  on('nexttrack', () => next());
+  on('previoustrack', () => prev());
+  on('seekto', (d) => d && d.seekTime != null && seek(d.seekTime));
+}
+
+// ---------- persistence of the queue between launches ----------
+
+let saveTimer;
+function saveQueue() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    const strip = (t) => {
+      const { unavailable, ...rest } = t;
+      if (rest.src === 'local') rest.cover = '';
+      return rest;
+    };
+    save('queue', {
+      queue: state.queue.slice(0, 500).map(strip),
+      index: state.index,
+      shuffle: state.shuffle,
+      repeat: state.repeat,
+    });
+  }, 400);
+}
+
+export function restoreQueue() {
+  const q = load('queue', null);
+  if (!q || !q.queue || !q.queue.length) return;
+  state.queue = q.queue;
+  state.index = Math.min(Math.max(0, q.index || 0), q.queue.length - 1);
+  state.shuffle = !!q.shuffle;
+  state.repeat = q.repeat || 'off';
+  emit('track', current());
+  emit('state');
+}
+
+window.addEventListener('online', () => emit('state'));
