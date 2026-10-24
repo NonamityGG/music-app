@@ -4,7 +4,7 @@
 
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { settings, saveSettings } from './settings.js';
-import { configure as configureWaves } from './waves.js';
+import { configure as configureWaves, resize as resizeWaves } from './waves.js';
 
 export const THEMES = [
   { id: 'dark', name: 'Тёмная', sub: 'фирменная', bg: '#140f1f' },
@@ -31,6 +31,8 @@ function setAttrs(t) {
     SystemBars.setStyle({ style: t.light ? SystemBarsStyle.Light : SystemBarsStyle.Dark }).catch(() => {});
   }
   configureWaves({ light: !!t.light });
+  // glass themes give the background waves a different area
+  requestAnimationFrame(() => resizeWaves('bg'));
 }
 
 export function applyTheme() {

@@ -65,19 +65,13 @@ waves.addSurface('full', full.canvas, {
   center: () => {
     if (settings.wavesFocus) {
       const r = full.art.getBoundingClientRect();
-      const wide = window.innerWidth >= 700 && window.innerWidth > window.innerHeight;
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: 0, amp: Math.min(r.width, r.height) * 0.42, box: wide ? { x: r.left - 24, w: r.width + 48 } : null };
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: 0, amp: Math.min(r.width, r.height) * 0.42 };
     }
     const c = full.art.querySelector('.cover-full:not(.cover-out)');
     if (!c) return null;
     const r = c.getBoundingClientRect();
     const area = full.art.getBoundingClientRect();
-    // on a wide screen the waves stay in the cover's column
-    if (window.innerWidth >= 700 && window.innerWidth > window.innerHeight) {
-      const pad = 24;
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, amp: Math.min(area.height / 2, area.width * 0.42), box: { x: area.left - pad, w: area.width + pad * 2 } };
-    }
-    // the waves use the whole art area, the cover floats on top of them
+    // the waves use the whole width, the cover floats on top of them
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, amp: Math.max(r.height / 2, area.height / 2) };
   },
 });
@@ -124,7 +118,10 @@ let miniKey = '';
 function paintMini() {
   const t = player.current();
   mini.el.hidden = !t;
-  document.body.classList.toggle('has-mini', !!t);
+  if (document.body.classList.contains('has-mini') !== !!t) {
+    document.body.classList.toggle('has-mini', !!t);
+    requestAnimationFrame(() => waves.resize('bg')); // the waves area may have changed
+  }
   if (!t) return;
   const key = t.key + '|' + coverOf(t);
   if (key !== miniKey) {
@@ -404,6 +401,7 @@ function paintFull() {
     fullKey = key;
     swapCover(c);
     swapBackground(c);
+    waves.burst(700);
     clear(full.thumb).appendChild(cover(c, 'cover'));
     full.title.textContent = t.title;
     full.artist.textContent = t.artist || '';
@@ -476,6 +474,7 @@ function paintTime() {
 function setLyrics(on) {
   saveSettings({ lyricsOn: on });
   full.el.classList.toggle('lyrics-on', on);
+  waves.burst(900);
   if (on) {
     lyricsView.show(player.current());
     lastSec = -1;

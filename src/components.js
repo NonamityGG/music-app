@@ -85,12 +85,18 @@ export function trackList(tracks, opts = {}) {
   return box;
 }
 
-// Highlight the playing track everywhere on screen.
+// Highlight the playing track everywhere on screen. Only rows of the old and the
+// new track are touched (lists can have thousands of rows); new rows get the
+// mark when they are created (trackRow).
+let markedKey = '';
 export function markPlaying() {
   const cur = player.current();
-  for (const el of document.querySelectorAll('.track[data-key]')) {
-    el.classList.toggle('playing', !!cur && el.getAttribute('data-key') === cur.key);
-  }
+  const key = cur ? cur.key : '';
+  if (key === markedKey) return;
+  const sel = (k) => `.track[data-key="${CSS.escape(k)}"]`;
+  if (markedKey) for (const el of document.querySelectorAll(sel(markedKey))) el.classList.remove('playing');
+  if (key) for (const el of document.querySelectorAll(sel(key))) el.classList.add('playing');
+  markedKey = key;
 }
 
 // ---------- cards ----------

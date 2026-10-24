@@ -2830,8 +2830,19 @@ body.has-mini .snack {
 
 /* real blur: small, fixed, few */
 [data-glass] :is(.tabbar, .mini, .toast, .snack) {
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
+}
+
+/* The moving waves stay out from under the blurred bars (with room for the
+   blur's reach), so the phone doesn't re-blur them 60 times a second. */
+[data-glass] .waves-bg {
+  top: calc(var(--sat) + 110px);
+  height: calc(100% - var(--sat) - 110px - var(--tabbar-h) - var(--sab) - 58px);
+}
+
+[data-glass] body.has-mini .waves-bg {
+  height: calc(100% - var(--sat) - 110px - var(--tabbar-h) - var(--mini-h) - var(--sab) - 126px);
 }
 
 /* floating tab bar and mini player */
@@ -2907,8 +2918,8 @@ body.has-mini .snack {
 [data-glass] .page-head.scrolled {
   background: var(--glass-strong);
   box-shadow: 0 1px 0 var(--glass-edge);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
 }
 
 /* sheets: nearly opaque glass, no live blur over the moving player behind */
@@ -3526,6 +3537,15 @@ body.has-mini .snack {
     padding-bottom: calc(68px + var(--sab) + 48px);
   }
 
+  [data-glass] .waves-bg {
+    top: calc(var(--sat) + 110px);
+    height: calc(100% - var(--sat) - 110px - var(--sab) - 20px);
+  }
+
+  [data-glass] body.has-mini .waves-bg {
+    height: calc(100% - var(--sat) - 110px - 68px - var(--sab) - 80px);
+  }
+
   [data-glass] .toast,
   [data-glass] .snack {
     bottom: calc(var(--sab) + 24px);
@@ -3618,34 +3638,63 @@ body.has-mini .snack {
   }
 }
 
-/* on its side: cover on the left, everything else on the right */
+/* on its side. Without lyrics: one centered column, the cover filling the
+   space it has and the waves running across the whole screen. With lyrics:
+   cover and controls on the left, the words on the right. */
 @media (min-width: 700px) and (orientation: landscape) {
   .full-inner {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 560px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
     grid-template-areas:
-      'top top'
-      'art .'
-      'art meta'
-      'art seek'
-      'art controls'
-      'art bottom'
-      'art .';
-    column-gap: clamp(28px, 5vw, 72px);
-    padding: calc(var(--sat) + 8px) clamp(28px, 5vw, 64px) calc(var(--sab) + 18px);
+      'top top top'
+      '. art .'
+      '. meta .'
+      '. seek .'
+      '. controls .'
+      '. bottom .';
+    padding: calc(var(--sat) + 8px) clamp(24px, 4vw, 56px) calc(var(--sab) + 14px);
   }
 
   .full-art {
-    padding: 8px 0;
+    padding: 6px 0 10px;
+    container-type: size;
   }
 
+  /* as big as the space allows, square */
   .cover-full {
-    width: min(100%, 64vh);
-    border-radius: 22px;
+    width: min(100cqw, 100cqh);
+    max-width: 100%;
+    border-radius: 20px;
+  }
+
+  .full-meta {
+    text-align: center;
+  }
+
+  .full-meta-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .full-artist {
+    text-align: center;
   }
 
   .full-title {
-    font-size: 28px;
+    font-size: 24px;
+    -webkit-line-clamp: 1;
+  }
+
+  .full-meta .icon-btn {
+    position: absolute;
+    right: 0;
+  }
+
+  .full-meta {
+    position: relative;
+    justify-content: center;
+    padding: 0 48px;
   }
 
   .lyrics {
@@ -3663,6 +3712,21 @@ body.has-mini .snack {
       'seek lyrics'
       'controls lyrics'
       'bottom lyrics';
+    column-gap: clamp(28px, 5vw, 72px);
+  }
+
+  .full.lyrics-on .full-meta {
+    justify-content: flex-start;
+    padding: 0 48px 0 0;
+    text-align: left;
+  }
+
+  .full.lyrics-on .full-meta-text {
+    align-items: flex-start;
+  }
+
+  .full.lyrics-on .full-artist {
+    text-align: left;
   }
 
   .full.lyrics-on .lyrics {
@@ -3677,7 +3741,7 @@ body.has-mini .snack {
   }
 
   .full.lyrics-on .cover-full {
-    width: min(100%, 36vh);
+    width: min(100cqw, 100cqh, 40vh);
   }
 
   .full.lyrics-on .meta-thumb {
@@ -3692,7 +3756,7 @@ body.has-mini .snack {
   }
 
   .full.lyrics-on .waves-full {
-    opacity: 0.6;
+    opacity: 0.35;
   }
 
   .ly-pad.top {
@@ -3769,7 +3833,6 @@ body.has-mini .snack {
   }
 
   .cover-full {
-    width: min(100%, 66vh);
     border-radius: 16px;
   }
 
@@ -3814,7 +3877,7 @@ body.has-mini .snack {
   }
 
   .full.lyrics-on .cover-full {
-    width: min(100%, 30vh);
+    width: min(100cqw, 100cqh, 30vh);
   }
 
   .mini {

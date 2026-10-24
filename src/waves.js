@@ -48,6 +48,14 @@ let lastFrame = 0;
 let lastDraw = 0;
 let centerCache = null;
 let centerAt = 0;
+let burstUntil = 0; // measure the cover often only while it is moving
+
+// Something on screen is moving (player opening, cover hiding, rotation): follow
+// it closely for a moment, then go back to an occasional check.
+export function burst(ms = 1200) {
+  burstUntil = performance.now() + ms;
+  centerCache = null;
+}
 
 export function configure(next) {
   cfg = { ...cfg, ...next };
@@ -71,17 +79,19 @@ export function setActive(name) {
     if (prev) prev.ctx.clearRect(0, 0, prev.w, prev.h);
   }
   active = name;
-  centerCache = null;
   resize(name);
   kick();
 }
 
 export function resize(name = active) {
-  centerCache = null;
+  burst();
   const s = surfaces[name];
   if (!s) return;
-  const dpr = Math.min(s.opts.dpr || window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  let dpr = Math.min(s.opts.dpr || window.devicePixelRatio || 1, window.devicePixelRatio || 1);
   const r = s.canvas.getBoundingClientRect();
+  // a tablet-sized canvas at full sharpness costs more than it shows: cap the pixels
+  const MAX_PX = 1.8e6;
+  if (r.width * r.height * dpr * dpr > MAX_PX) dpr = Math.max(1, Math.sqrt(MAX_PX / Math.max(1, r.width * r.height)));
   const w = Math.max(1, Math.round(r.width * dpr));
   const h = Math.max(1, Math.round(r.height * dpr));
   if (w !== s.w || h !== s.h) {
@@ -251,7 +261,8 @@ function gradients(s, colors) {
 function frameFor(s, t) {
   const pal = PALETTES.find((p) => p.id === cfg.palette) || PALETTES[0];
   // measuring the layout every frame can stutter; refresh the position a few times a second
-  if (s.opts.center && (t * 1000 - centerAt > 120 || !centerCache)) {
+  const every = t * 1000 < burstUntil ? 90 : 1000;
+  if (s.opts.center && (t * 1000 - centerAt > every || !centerCache)) {
     centerCache = s.opts.center();
     centerAt = t * 1000;
   }
@@ -366,27 +377,25 @@ const DRAW = {
 
   capsules(f, b) {
     bands_ = b;
-    const { ctx, w, cy, amp } = f;
-    const n = 11;
-    const total = w * 0.9;
-    const bw = Math.min(total / (n * 1.75), amp * 0.32);
-    const gap = bw * 0.75;
-    const x0 = (w - (n * bw + (n - 1) * gap)) / 2;
+    const { ctx, w, cy, amp, dpr } = f;
+    // many slim pills, short and neat: a row of little level meters
+    const total = w * 0.92;
+    const n = Math.max(15, Math.min(41, Math.round(total / (14 * dpr)) | 1));
+    const step = total / n;
+    const bw = Math.max(2.5 * dpr, Math.min(step * 0.5, 9 * dpr));
+    const x0 = (w - total) / 2 + (step - bw) / 2;
+    const maxH = amp * 0.95;
     ctx.save();
     ctx.fillStyle = f.g.v;
+    ctx.globalAlpha = 0.92;
+    ctx.beginPath();
     for (let k = 0; k < n; k++) {
       const d = Math.abs(k - (n - 1) / 2) / ((n - 1) / 2);
-      // average a few bands per capsule
-      let v = 0;
-      for (let q = 0; q < 3; q++) v += bandAt(Math.min(1, d + q * 0.03));
-      v /= 3;
-      const hh = Math.max(bw, (0.12 + v * 1.05) * amp * 1.25 * (1 - d * 0.28));
-      const x = x0 + k * (bw + gap);
-      ctx.globalAlpha = 0.92;
-      ctx.beginPath();
-      roundRect(ctx, x, cy - hh / 2, bw, hh, bw / 2);
-      ctx.fill();
+      const v = (bandAt(d) + bandAt(Math.min(1, d + 0.02))) / 2;
+      const hh = Math.max(bw, (0.1 + v * 0.9) * maxH * (1 - d * 0.35));
+      roundRect(ctx, x0 + k * step, cy - hh / 2, bw, hh, bw / 2);
     }
+    ctx.fill();
     ctx.restore();
   },
 
