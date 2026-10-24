@@ -9,6 +9,7 @@ import { localTracks, searchLocal, onLocalChange } from './local.js';
 import { buildFeed, cachedFeed, feedIsStale, favArtists, setFav } from './feed.js';
 import { settings, saveSettings, getJournal, clearJournal, load, save, logError } from './settings.js';
 import { storageEstimate } from './db.js';
+import { wavesPicker } from './wave-settings.js';
 import {
   trackList,
   section,
@@ -463,6 +464,25 @@ export function profileView() {
           { class: 'card-box' },
           toggleRow('Высокое качество', 'Если выключить, треки грузятся быстрее и тратят меньше трафика', settings.quality !== 'mid', (v) => saveSettings({ quality: v ? 'high' : 'mid' })),
           toggleRow('Замена из другого источника', 'Нет трека в Звуке — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v }))
+        )
+      )
+    );
+
+    // --- waves ---
+    body.append(
+      section(
+        'Волны',
+        null,
+        h(
+          'div',
+          { class: 'card-box' },
+          wavesPicker(),
+          toggleRow(
+            'Двигаются под музыку',
+            'Волны слышат трек и прыгают в такт. Если при выключенном экране обрывается звук, выключи — волны станут спокойнее, а звук пойдёт напрямую',
+            settings.wavesReactive,
+            (v) => saveSettings({ wavesReactive: v })
+          )
         )
       )
     );

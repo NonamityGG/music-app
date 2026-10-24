@@ -10,7 +10,9 @@ import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync,
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack } from './components.js';
 import { onLocalChange } from './local.js';
 import { requestPersistence } from './db.js';
-import { logError } from './settings.js';
+import { logError, settings, saveSettings } from './settings.js';
+import * as waves from './waves.js';
+import { wavesPicker, applyWaveSettings } from './wave-settings.js';
 
 const TABS = [
   { name: 'feed', label: 'Лента', icon: 'feed', view: feedView },
@@ -23,7 +25,38 @@ const content = h('main', { class: 'content' });
 const tabbar = h('nav', { class: 'tabbar' });
 const mini = buildMini();
 const full = buildFull();
+const bgCanvas = h('canvas', { class: 'waves-bg', 'aria-hidden': 'true' });
+document.body.insertBefore(bgCanvas, document.getElementById('app'));
 document.getElementById('app').append(content, mini.el, tabbar, full.el);
+
+// ---------- waves ----------
+
+waves.setSource({
+  playing: () => player.state.playing,
+  analysing: player.analysing,
+  onSilence: () => player.bypassAnalyser('Анализатор не слышит звук, волны переключены в простой режим'),
+});
+applyWaveSettings();
+waves.addSurface('bg', bgCanvas, { dpr: 1.25, place: 'low', ampScale: 0.17 });
+waves.addSurface('full', full.canvas, {
+  dpr: 1.75,
+  full: true,
+  center: () => {
+    if (settings.wavesFocus) {
+      const r = full.art.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: 0, amp: Math.min(r.width, r.height) * 0.42 };
+    }
+    const c = full.art.querySelector('.cover-full');
+    if (!c) return null;
+    const r = c.getBoundingClientRect();
+    const area = full.art.getBoundingClientRect();
+    // the waves use the whole art area, the cover floats on top of them
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, amp: Math.max(r.height / 2, area.height / 2) };
+  },
+});
+player.onPlayer((type) => {
+  if (type === 'state') waves.kick();
+});
 
 // ---------- tabs ----------
 
@@ -158,10 +191,12 @@ function buildFull() {
   const shuffleBtn = h('button', { class: 'icon-btn', 'aria-label': 'Перемешать', onclick: () => player.setShuffle(!player.state.shuffle) }, icon('shuffle', 24));
   const repeatBtn = h('button', { class: 'icon-btn', 'aria-label': 'Повтор', onclick: () => player.cycleRepeat() });
   const playBtn = h('button', { class: 'play-big', 'aria-label': 'Пауза/играть', onclick: () => player.toggle() });
+  const canvas = h('canvas', { class: 'waves-full', 'aria-hidden': 'true' });
   const el = h(
     'div',
-    { class: 'full', hidden: true },
+    { class: 'full' + (settings.wavesFocus ? ' focus' : ''), hidden: true },
     bg,
+    canvas,
     h(
       'div',
       { class: 'full-inner' },
@@ -188,7 +223,8 @@ function buildFull() {
         'div',
         { class: 'full-bottom' },
         h('button', { class: 'btn btn-text', onclick: () => showQueue() }, icon('queue', 22), 'Очередь'),
-        h('button', { class: 'btn btn-text', onclick: () => player.current() && otherPlatformsSheet(player.current()) }, icon('link', 22), 'Другие площадки')
+        h('button', { class: 'btn btn-text', onclick: () => showWaves() }, icon('wave', 22), 'Волны'),
+        h('button', { class: 'btn btn-text', onclick: () => player.current() && otherPlatformsSheet(player.current()) }, icon('link', 22), 'Площадки')
       )
     )
   );
@@ -208,7 +244,14 @@ function buildFull() {
     if (a) nav.push(artistPage(a.id, a.name));
     else if (t.artist) searchInApp(t.artist);
   };
-  return { el, bg, art, title, artist, via, likeBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
+  // tap the cover: waves take the whole stage, tap again to bring the cover back
+  art.addEventListener('click', () => {
+    saveSettings({ wavesFocus: !settings.wavesFocus });
+    el.classList.toggle('focus', settings.wavesFocus);
+    waves.resize('full');
+    waves.kick();
+  });
+  return { el, bg, canvas, art, title, artist, via, likeBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
 }
 
 const VIA_LABEL = {
@@ -256,14 +299,22 @@ function openFull() {
   if (!player.current()) return;
   full.el.hidden = false;
   paintFull();
-  requestAnimationFrame(() => full.el.classList.add('open'));
+  requestAnimationFrame(() => {
+    full.el.classList.add('open');
+    waves.setActive('full');
+  });
 }
 
 function closeFull() {
   if (full.el.hidden) return false;
   full.el.classList.remove('open');
+  waves.setActive('bg');
   setTimeout(() => (full.el.hidden = true), 250);
   return true;
+}
+
+function showWaves() {
+  sheet('Волны', wavesPicker());
 }
 
 function showQueue() {

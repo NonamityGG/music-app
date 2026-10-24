@@ -3,14 +3,25 @@
 // the same song in the other one before giving up.
 
 import { MediaSession } from '@capgo/capacitor-media-session';
+import { Capacitor } from '@capacitor/core';
 import * as zvuk from './zvuk.js';
+import * as graph from './audio-graph.js';
 import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
 
-const audio = new Audio();
-audio.preload = 'auto';
+// Two elements: `fx` is connected to the analyser that drives the waves and only
+// ever gets same-origin sources; `plain` plays everything else directly.
+const plain = new Audio();
+const fx = new Audio();
+plain.preload = 'auto';
+fx.preload = 'auto';
+let audio = plain;
+let fxBroken = false; // once the analyser path fails, this session plays everything directly
+let directUrl = ''; // the real source of the current track
+let curZid = ''; // Zvuk id whose stream is playing (the track itself or its replacement)
+let streamAttempts = 0;
 
 export const state = {
   queue: [],
@@ -46,7 +57,6 @@ export const duration = () => (isFinite(audio.duration) && audio.duration > 0 ? 
 let objectUrl = '';
 let loadSeq = 0;
 let failStreak = 0;
-let retriedStream = false;
 
 function setObjectUrl(url) {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -72,7 +82,7 @@ async function resolve(track) {
     if (blob) return { url: URL.createObjectURL(blob), via: 'local', blobUrl: true };
     if (settings.autoFallback) {
       const m = await zvukMatch(track).catch(() => null);
-      if (m) return { url: await zvuk.streamUrl(m.zid), via: 'zvuk-fallback', match: m };
+      if (m) return { url: await zvuk.streamUrl(m.zid), via: 'zvuk-fallback', match: m, zid: m.zid };
     }
     throw new Error('Файла больше нет в медиатеке');
   }
@@ -86,7 +96,7 @@ async function resolve(track) {
     }
   }
   try {
-    return { url: await zvuk.streamUrl(track.zid), via: 'zvuk' };
+    return { url: await zvuk.streamUrl(track.zid), via: 'zvuk', zid: track.zid };
   } catch (e) {
     if (settings.autoFallback) {
       const m = await localMatch(track);
@@ -99,6 +109,75 @@ async function resolve(track) {
   }
 }
 
+// ---------- which element plays the source ----------
+
+function wantFx() {
+  return settings.wavesReactive !== false && settings.wavesStyle !== 'off' && !fxBroken && graph.available();
+}
+
+// Routes a remote stream through the app's own origin (Capacitor's native proxy),
+// so the analyser is allowed to read it.
+function proxied(url) {
+  const base = new URL(Capacitor.getServerUrl ? Capacitor.getServerUrl() : location.origin);
+  base.pathname = '/_capacitor_http_interceptor_';
+  base.search = '';
+  base.searchParams.append('u', url);
+  return base.toString();
+}
+
+function setSource(url) {
+  directUrl = url;
+  let el = plain;
+  let src = url;
+  if (wantFx()) {
+    if (url.startsWith('blob:')) el = fx;
+    else if (Capacitor.isNativePlatform() && /^https?:/.test(url)) {
+      el = fx;
+      src = proxied(url);
+    }
+  }
+  if (el === fx && !graph.attach(fx)) {
+    fxBroken = true;
+    el = plain;
+    src = url;
+  }
+  if (el !== audio) {
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    audio = el;
+  }
+  audio.src = src;
+  if (audio === fx) graph.resume();
+}
+
+function seekWhenReady(at) {
+  if (!(at > 0)) return;
+  const el = audio;
+  const go = () => {
+    try {
+      el.currentTime = at;
+    } catch {}
+  };
+  if (el.readyState >= 1) go();
+  else el.addEventListener('loadedmetadata', go, { once: true });
+}
+
+// True when the waves can use the real sound of the current track.
+export const analysing = () => audio === fx && !fxBroken && graph.state() === 'running';
+
+// Moves the current track to the direct element, e.g. when the analyser path goes silent.
+export function bypassAnalyser(reason) {
+  if (audio !== fx || fxBroken) return;
+  fxBroken = true;
+  logError('waves', new Error(reason));
+  const at = audio.currentTime;
+  const wasPlaying = !audio.paused;
+  setSource(directUrl);
+  seekWhenReady(at);
+  if (wasPlaying) audio.play().catch((e) => logError('bypass', e));
+}
+
 // ---------- playback ----------
 
 async function load_(index, autoplay = true) {
@@ -109,7 +188,8 @@ async function load_(index, autoplay = true) {
   state.loading = true;
   state.error = '';
   state.via = '';
-  retriedStream = false;
+  streamAttempts = 0;
+  curZid = '';
   emit('track', track);
   updateMetadata(track);
   audio.pause();
@@ -121,8 +201,9 @@ async function load_(index, autoplay = true) {
     }
     setObjectUrl(src.url.startsWith('blob:') ? src.url : '');
     state.via = src.via;
+    curZid = src.zid || '';
     track.unavailable = false;
-    audio.src = src.url;
+    setSource(src.url);
     if (autoplay) await audio.play().catch((e) => handlePlayError(e, seq));
     failStreak = 0;
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
@@ -193,6 +274,7 @@ export function toggle() {
 export function resume() {
   if (!current()) return;
   if (!audio.getAttribute('src')) return load_(state.index);
+  if (audio === fx) graph.resume();
   audio.play().catch((e) => {
     logError('resume', e);
     load_(state.index); // stream URL may have expired
@@ -289,56 +371,103 @@ function setPlaying(p) {
   MediaSession.setPlaybackState({ playbackState: current() ? (p ? 'playing' : 'paused') : 'none' }).catch(() => {});
 }
 
-audio.addEventListener('playing', () => {
-  setPlaying(true);
-  pushPosition();
-});
-audio.addEventListener('pause', () => setPlaying(false));
-audio.addEventListener('ended', () => {
-  if (state.repeat === 'one') {
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-    return;
-  }
-  next(true);
-});
-audio.addEventListener('error', async () => {
+const mine = (fn) => (e) => {
+  if (e.target === audio) fn(e);
+};
+let lastPosPush = 0;
+
+for (const el of [plain, fx]) {
+  el.addEventListener(
+    'playing',
+    mine(() => {
+      setPlaying(true);
+      pushPosition();
+    })
+  );
+  el.addEventListener('pause', mine(() => setPlaying(false)));
+  el.addEventListener(
+    'ended',
+    mine(() => {
+      if (state.repeat === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+        return;
+      }
+      next(true);
+    })
+  );
+  el.addEventListener('error', mine(onError));
+  el.addEventListener(
+    'timeupdate',
+    mine(() => {
+      emit('time');
+      if (Date.now() - lastPosPush > 5000) pushPosition();
+    })
+  );
+  el.addEventListener(
+    'durationchange',
+    mine(() => {
+      emit('time');
+      pushPosition();
+    })
+  );
+}
+
+async function onError() {
   const track = current();
   if (!track || !audio.getAttribute('src')) return;
   const seq = loadSeq;
   const code = audio.error ? audio.error.code : 0;
-  logError('audio', new Error('Ошибка воспроизведения, код ' + code));
-  // Zvuk stream links expire: fetch a fresh one once, keeping the position.
-  if (state.via === 'zvuk' && !retriedStream) {
-    retriedStream = true;
+  const viaProxy = audio === fx && !directUrl.startsWith('blob:');
+  logError('audio', new Error('Ошибка воспроизведения, код ' + code + (viaProxy ? ' (через прокси)' : '')));
+  // Zvuk stream links expire: fetch a fresh one, keeping the position. The second
+  // try skips the proxy in case the proxy itself is the problem.
+  if (curZid && streamAttempts < 2) {
+    streamAttempts++;
+    if (streamAttempts === 2 && viaProxy) fxBroken = true;
     const at = audio.currentTime;
     try {
-      const url = await zvuk.streamUrl(track.zid);
+      const url = await zvuk.streamUrl(curZid);
       if (seq !== loadSeq) return;
-      audio.src = url;
-      audio.currentTime = at;
+      setSource(url);
+      seekWhenReady(at);
       await audio.play();
       return;
     } catch (e) {
       logError('stream-retry', e);
     }
+  } else if (viaProxy === false && audio === fx && !fxBroken) {
+    // a local file failing on the analysed element: try it directly once
+    const at = audio.currentTime;
+    fxBroken = true;
+    setSource(directUrl);
+    seekWhenReady(at);
+    if (await audio.play().then(() => true).catch(() => false)) return;
   }
   if (seq !== loadSeq) return;
   track.unavailable = true;
   emit('unavailable', { track, error: new Error('Не удалось воспроизвести') });
   if (hasNext()) next(true);
   else setPlaying(false);
-});
+}
 
-let lastPosPush = 0;
-audio.addEventListener('timeupdate', () => {
-  emit('time');
-  const now = Date.now();
-  if (now - lastPosPush > 5000) pushPosition();
-});
-audio.addEventListener('durationchange', () => {
-  emit('time');
-  pushPosition();
+// If the system pauses the audio graph (it shouldn't, but some phones do), wake it
+// up; if it refuses, continue the track without the analyser so music never stops.
+let ctxStalls = 0;
+setInterval(() => {
+  if (audio !== fx || audio.paused || fxBroken) {
+    ctxStalls = 0;
+    return;
+  }
+  if (graph.state() === 'running') {
+    ctxStalls = 0;
+    return;
+  }
+  graph.resume();
+  if (++ctxStalls >= 2) bypassAnalyser('Звуковой движок остановился, волны переключены в простой режим');
+}, 2500);
+document.addEventListener('visibilitychange', () => {
+  if (audio === fx) graph.resume();
 });
 
 function pushPosition() {

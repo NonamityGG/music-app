@@ -127,7 +127,10 @@ export async function importFiles(files, onProgress) {
       mime: f.type || 'audio/mpeg',
       addedAt: Date.now() + i,
     };
-    await db.put('files', f, lid);
+    // copy the bytes now: a File picked on Android may point at a content:// URI that
+    // can't be read again later, so the stored Blob must own its data
+    const data = new Blob([await f.arrayBuffer()], { type: meta.mime });
+    await db.put('files', data, lid);
     await db.put('tracks', meta);
     seen.add(f.name + '|' + f.size);
     added++;

@@ -30,6 +30,10 @@ const DEFAULTS = {
   anonToken: '',    // anonymous Zvuk token (search and preview without login)
   quality: 'high',  // 'high' | 'mid'
   autoFallback: true,
+  wavesStyle: 'neon', // see waves.js STYLES, or 'off'
+  wavesPalette: 'violet',
+  wavesReactive: true, // waves follow the real sound
+  wavesFocus: false, // full player shows waves instead of the cover
 };
 
 export const settings = Object.assign({}, DEFAULTS, load('settings', {}));

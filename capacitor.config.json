@@ -9,7 +9,7 @@
   },
   "plugins": {
     "CapacitorHttp": {
-      "enabled": false
+      "enabled": true
     },
     "SystemBars": {
       "style": "DARK"
