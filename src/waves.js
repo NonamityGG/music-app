@@ -26,6 +26,9 @@ const target = new Float32Array(BANDS);
 const wave = new Float32Array(WAVE);
 const waveTarget = new Float32Array(WAVE);
 const ripples = [];
+// spring state per band: smooth, slightly elastic motion instead of raw jumps
+const vel = new Float32Array(BANDS);
+const filtered = new Float32Array(BANDS);
 let energy = 0;
 let bass = 0;
 let mid = 0;
@@ -37,6 +40,10 @@ let cfg = { style: 'neon', palette: 'violet' };
 const surfaces = {}; // name -> { canvas, ctx, dpr, w, h, opts }
 let active = 'bg';
 let raf = 0;
+let lastFrame = 0;
+let lastDraw = 0;
+let centerCache = null;
+let centerAt = 0;
 
 export function configure(next) {
   cfg = { ...cfg, ...next };
@@ -60,11 +67,13 @@ export function setActive(name) {
     if (prev) prev.ctx.clearRect(0, 0, prev.w, prev.h);
   }
   active = name;
+  centerCache = null;
   resize(name);
   kick();
 }
 
 export function resize(name = active) {
+  centerCache = null;
   const s = surfaces[name];
   if (!s) return;
   const dpr = Math.min(s.opts.dpr || window.devicePixelRatio || 1, window.devicePixelRatio || 1);
@@ -103,10 +112,21 @@ function clearActive() {
 
 function loop(now) {
   raf = 0;
-  update(now / 1000);
-  draw(now / 1000);
+  // 60 fps is plenty; on 90/120 Hz screens drawing every refresh only costs battery
+  // and makes the frame pacing uneven when the phone can't keep up
+  if (now - lastDraw >= 15.5 || !lastDraw) {
+    const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 1 / 60;
+    lastFrame = now;
+    lastDraw = now;
+    update(now / 1000, dt);
+    draw(now / 1000, dt);
+  }
   if (running()) raf = requestAnimationFrame(loop);
-  else clearActive();
+  else {
+    lastFrame = 0;
+    lastDraw = 0;
+    clearActive();
+  }
 }
 
 // ---------- data ----------
@@ -114,8 +134,9 @@ function loop(now) {
 function simulate(t) {
   // ~122 BPM kick with a softer offbeat, slow drifting spectrum
   const beatPhase = (t * 2.03) % 1;
-  const kickEnv = Math.exp(-beatPhase * 7);
-  const off = Math.exp(-((beatPhase + 0.5) % 1) * 9) * 0.5;
+  // rounded pulses instead of sharp spikes
+  const kickEnv = Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * beatPhase), 3);
+  const off = Math.pow(0.5 + 0.5 * Math.cos(2 * Math.PI * ((beatPhase + 0.5) % 1)), 4) * 0.5;
   for (let i = 0; i < BANDS; i++) {
     const f = i / BANDS;
     const shape = 0.62 * Math.exp(-f * 2.2) + 0.18;
@@ -131,7 +152,7 @@ function simulate(t) {
   }
 }
 
-function update(t) {
+function update(t, dt) {
   const playing = source.playing();
   let real = false;
   if (playing && source.analysing()) {
@@ -149,20 +170,35 @@ function update(t) {
   let e = 0;
   let b = 0;
   let m = 0;
+  // 1) low-pass the raw data (fast up, slower down), 2) a damped spring follows it
+  const up = 1 - Math.exp(-dt / 0.045);
+  const down = 1 - Math.exp(-dt / 0.2);
+  const stiffness = 140;
+  const damping = 19;
   for (let i = 0; i < BANDS; i++) {
-    const k = target[i] > bands[i] ? 0.55 : 0.13;
-    bands[i] += (target[i] - bands[i]) * k;
+    filtered[i] += (target[i] - filtered[i]) * (target[i] > filtered[i] ? up : down);
+    const acc = (filtered[i] - bands[i]) * stiffness - vel[i] * damping;
+    vel[i] += acc * dt;
+    bands[i] += vel[i] * dt;
+    if (bands[i] < 0) {
+      bands[i] = 0;
+      vel[i] = 0;
+    } else if (bands[i] > 1.05) {
+      bands[i] = 1.05;
+      vel[i] = 0;
+    }
     e += bands[i];
     if (i < 8) b += bands[i];
     else if (i < 32) m += bands[i];
   }
-  for (let j = 0; j < WAVE; j++) wave[j] += (waveTarget[j] - wave[j]) * 0.5;
+  const kw = 1 - Math.exp(-dt / 0.035);
+  for (let j = 0; j < WAVE; j++) wave[j] += (waveTarget[j] - wave[j]) * kw;
   energy = e / BANDS;
   bass = b / 8;
   mid = m / 24;
-  bassAvg += (bass - bassAvg) * 0.04;
+  bassAvg += (bass - bassAvg) * (1 - Math.exp(-dt / 0.9));
   const nowMs = t * 1000;
-  if (bass > 0.28 && bass > bassAvg * 1.32 && nowMs - lastBeat > 260) {
+  if (bass > 0.28 && bass > bassAvg * 1.25 && nowMs - lastBeat > 300) {
     lastBeat = nowMs;
     ripples.push({ r: 0, a: 0.75 });
     if (ripples.length > 7) ripples.shift();
@@ -193,17 +229,23 @@ function gradients(s, colors) {
 
 function frameFor(s, t) {
   const pal = PALETTES.find((p) => p.id === cfg.palette) || PALETTES[0];
-  const c = s.opts.center ? s.opts.center() : null;
+  // measuring the layout every frame can stutter; refresh the position a few times a second
+  if (s.opts.center && (t * 1000 - centerAt > 250 || !centerCache)) {
+    centerCache = s.opts.center();
+    centerAt = t * 1000;
+  }
+  const c = s.opts.center ? centerCache : null;
   const cx = c ? c.x * s.dpr : s.w / 2;
   const cy = c ? c.y * s.dpr : s.opts.place === 'low' ? s.h * 0.79 : s.h / 2;
   const amp = c && c.amp ? c.amp * s.dpr : Math.min(s.w, s.h) * (s.opts.ampScale || 0.3);
   return { ctx: s.ctx, w: s.w, h: s.h, cx, cy, amp, dpr: s.dpr, t, colors: pal.colors, g: gradients(s, pal.colors), full: !!s.opts.full, rx: c ? c.r * s.dpr : 0 };
 }
 
-function draw(t) {
+function draw(t, dt) {
   const s = surfaces[active];
   if (!s || !s.w) return;
   const f = frameFor(s, t);
+  f.dt = dt;
   f.ctx.clearRect(0, 0, f.w, f.h);
   if (cfg.style === 'off') return;
   (DRAW[cfg.style] || DRAW.neon)(f, bands, wave);
@@ -358,8 +400,9 @@ const DRAW = {
     // ripples on the beat
     for (let i = ripples.length - 1; i >= 0; i--) {
       const rp = ripples[i];
-      rp.r += (3 + bass * 7) * dpr;
-      rp.a *= 0.962;
+      const dt = f.dt || 1 / 60;
+      rp.r += (170 + bass * 380) * dt * dpr;
+      rp.a *= Math.exp(-dt * 2.3);
       if (rp.a < 0.02) {
         ripples.splice(i, 1);
         continue;

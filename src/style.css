@@ -121,6 +121,68 @@ svg {
   pointer-events: none;
 }
 
+/* ---------- navigation motion ---------- */
+
+:root {
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+.page-enter {
+  animation: page-in 0.28s var(--ease-out) both;
+}
+
+.page-under {
+  animation: page-under 0.28s var(--ease-out) both;
+  pointer-events: none;
+}
+
+.page-leave {
+  animation: page-out 0.24s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.page-reveal {
+  animation: page-reveal 0.28s var(--ease-out) both;
+}
+
+.pane-enter {
+  animation: pane-in 0.22s var(--ease-out) both;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateX(36%);
+  }
+}
+
+@keyframes page-under {
+  to {
+    opacity: 0;
+    transform: translateX(-14%);
+  }
+}
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: translateX(36%);
+  }
+}
+
+@keyframes page-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-14%);
+  }
+}
+
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 body.has-mini .page {
   padding-bottom: calc(var(--mini-h) + 24px);
 }
@@ -507,6 +569,16 @@ body.has-mini .page {
   background: var(--surface);
   border: 1px solid var(--line);
   font-size: 14px;
+}
+
+.chips.choice {
+  margin-top: 10px;
+}
+
+.chip-on {
+  background: rgba(183, 156, 255, 0.16);
+  border-color: var(--lilac);
+  color: var(--lilac);
 }
 
 .chip-x svg {
@@ -950,6 +1022,24 @@ body.has-mini .page {
   color: var(--lilac);
 }
 
+.tab svg {
+  transition: transform 0.18s var(--ease-out);
+}
+
+.tab:active svg {
+  transform: scale(0.86);
+}
+
+.tab.active svg {
+  animation: tab-pop 0.32s var(--ease-out);
+}
+
+@keyframes tab-pop {
+  40% {
+    transform: scale(1.18);
+  }
+}
+
 /* ---------- mini player ---------- */
 
 .mini {
@@ -966,6 +1056,17 @@ body.has-mini .page {
   background: var(--raised);
   border-top: 1px solid var(--line);
   overflow: hidden;
+}
+
+.mini:not([hidden]) {
+  animation: mini-in 0.3s var(--ease-out);
+}
+
+@keyframes mini-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
 }
 
 .mini-progress {
@@ -1012,7 +1113,7 @@ body.has-mini .page {
   z-index: 40;
   background: var(--ink);
   transform: translateY(100%);
-  transition: transform 0.25s ease;
+  transition: transform 0.32s var(--ease-out);
   overflow: hidden;
 }
 

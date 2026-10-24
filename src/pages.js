@@ -9,6 +9,7 @@ import { localTracks, importFiles, removeLocal, onLocalChange } from './local.js
 import { setFav, isFav } from './feed.js';
 import { logError } from './settings.js';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { PLATFORMS, platformUrl } from './platforms.js';
 import {
   trackList,
   section,
@@ -67,7 +68,6 @@ export function openExternal(url) {
 }
 
 export function otherPlatformsSheet(t) {
-  const q = encodeURIComponent(`${t.artist || ''} ${t.title}`.trim());
   sheet(`Найти «${t.title}»`, [
     t.src === 'local'
       ? {
@@ -76,10 +76,7 @@ export function otherPlatformsSheet(t) {
           onClick: () => searchInApp(`${t.artist || ''} ${t.title}`.trim()),
         }
       : null,
-    { icon: 'link', label: 'VK Музыка', onClick: () => openExternal(`https://vk.com/audio?q=${q}`) },
-    { icon: 'link', label: 'Яндекс Музыка', onClick: () => openExternal(`https://music.yandex.ru/search?text=${q}`) },
-    { icon: 'link', label: 'YouTube Music', onClick: () => openExternal(`https://music.youtube.com/search?q=${q}`) },
-    { icon: 'link', label: 'SoundCloud', onClick: () => openExternal(`https://soundcloud.com/search?q=${q}`) },
+    ...PLATFORMS.map((p) => ({ icon: 'link', label: p.name, onClick: () => openExternal(platformUrl(p.id, t)) })),
   ]);
 }
 

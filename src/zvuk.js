@@ -31,7 +31,60 @@ export function setTransport(fn) {
   transport = fn;
 }
 
-async function http({ method, url, params, data, token }) {
+// ---------- pacing and anti-bot protection ----------
+// Zvuk's protection reacts to bursts of requests, so requests are spaced out and
+// only two run at a time. When it does block, the app backs off for a while
+// instead of hammering it (which only extends the block).
+
+const pacing = { gap: 220, parallel: 2, botRetryMs: 2500, cooldownMs: 90000 };
+export function setPacing(p) {
+  Object.assign(pacing, p);
+}
+let inFlight = 0;
+let lastStart = 0;
+let botUntil = 0;
+
+export const botBlocked = () => Date.now() < botUntil;
+export function resetBotState() {
+  botUntil = 0;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function slot() {
+  for (;;) {
+    const wait = pacing.gap - (Date.now() - lastStart);
+    if (inFlight < pacing.parallel && wait <= 0) break;
+    await sleep(Math.max(25, wait));
+  }
+  inFlight++;
+  lastStart = Date.now();
+}
+
+async function http(req) {
+  if (botBlocked()) throw botError(418);
+  await slot();
+  try {
+    return await httpOnce(req);
+  } catch (e) {
+    if (e.kind !== 'bot') throw e;
+  } finally {
+    inFlight--;
+  }
+  // blocked: one calm retry, then back off
+  await sleep(pacing.botRetryMs);
+  await slot();
+  try {
+    return await httpOnce(req);
+  } catch (e) {
+    if (e.kind === 'bot') botUntil = Date.now() + pacing.cooldownMs;
+    throw e;
+  } finally {
+    inFlight--;
+  }
+}
+
+async function httpOnce({ method, url, params, data, token }) {
   const headers = { ...HEADERS };
   if (token) headers['X-Auth-Token'] = token;
   if (data) headers['Content-Type'] = 'application/json';
@@ -94,7 +147,7 @@ async function http({ method, url, params, data, token }) {
 }
 
 function botError(status) {
-  return new ZvukError('bot', 'Звук принял приложение за бота. Подожди пару минут или переключись между Wi‑Fi и мобильным интернетом.', status);
+  return new ZvukError('bot', 'Звук временно закрыл доступ (защита от ботов). Через пару минут попробую снова.', status);
 }
 
 // ---------- tokens ----------

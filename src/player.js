@@ -10,6 +10,7 @@ import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
+import { platformUrl, platformById } from './platforms.js';
 
 // Two elements: `fx` is connected to the analyser that drives the waves and only
 // ever gets same-origin sources; `plain` plays everything else directly.
@@ -57,6 +58,7 @@ export const duration = () => (isFinite(audio.duration) && audio.duration > 0 ? 
 let objectUrl = '';
 let loadSeq = 0;
 let failStreak = 0;
+let lastHandoff = 0;
 
 function setObjectUrl(url) {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -180,7 +182,7 @@ export function bypassAnalyser(reason) {
 
 // ---------- playback ----------
 
-async function load_(index, autoplay = true) {
+async function load_(index, autoplay = true, auto = false) {
   const seq = ++loadSeq;
   state.index = index;
   const track = current();
@@ -209,6 +211,7 @@ async function load_(index, autoplay = true) {
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
   } catch (e) {
     if (seq !== loadSeq) return;
+    if ((e.kind === 'bot' || e.kind === 'rate') && handOff(track, auto, index)) return;
     failStreak++;
     track.unavailable = true;
     state.error = e.message || String(e);
@@ -227,6 +230,33 @@ async function load_(index, autoplay = true) {
       emit('state');
     }
   }
+}
+
+// Zvuk has blocked the app for now and there's no MP3 copy: continue the track
+// on the platform chosen in the profile. Automatic track changes hand over at most
+// once every two minutes, so a blocked playlist doesn't keep throwing you into
+// another app; meanwhile local MP3s further down the queue still play here.
+function handOff(track, auto, index) {
+  const id = settings.fallbackPlatform;
+  if (!id || id === 'off' || !platformById(id)) return false;
+  const recent = Date.now() - lastHandoff < 120000;
+  if (auto && recent) {
+    const nextLocal = state.queue.findIndex((t, i) => i > index && t.src === 'local');
+    if (nextLocal > 0) {
+      load_(nextLocal, true, true);
+      return true;
+    }
+    setPlaying(false);
+    state.via = 'handoff';
+    emit('state');
+    return true;
+  }
+  lastHandoff = Date.now();
+  state.via = 'handoff';
+  track.unavailable = false;
+  setPlaying(false);
+  emit('handoff', { track, platform: platformById(id), url: platformUrl(id, track) });
+  return true;
 }
 
 function handlePlayError(e, seq) {
@@ -258,10 +288,10 @@ export function playQueue(tracks, startIndex = 0, opts = {}) {
   load_(Math.max(0, Math.min(startIndex, state.queue.length - 1)));
 }
 
-export function playAt(index) {
+export function playAt(index, auto = false) {
   if (index < 0 || index >= state.queue.length) return;
-  failStreak = 0;
-  load_(index);
+  if (!auto) failStreak = 0;
+  load_(index, true, auto);
   saveQueue();
 }
 
@@ -287,8 +317,8 @@ export function pause() {
 
 export function next(auto = false) {
   if (!state.queue.length) return;
-  if (state.index < state.queue.length - 1) return playAt(state.index + 1);
-  if (state.repeat === 'all' || !auto) return playAt(0);
+  if (state.index < state.queue.length - 1) return playAt(state.index + 1, auto);
+  if (state.repeat === 'all' || !auto) return playAt(0, auto);
   pause();
 }
 

@@ -22,6 +22,7 @@ const fx = (name) => {
 const { readTags, tagsFromFileName } = await import('../src/id3.js');
 const { matchScore, bestMatch, norm } = await import('../src/match.js');
 const zvuk = await import('../src/zvuk.js');
+zvuk.setPacing({ gap: 0, botRetryMs: 0 });
 const { saveSettings } = await import('../src/settings.js');
 
 // ---------- tags ----------
@@ -128,12 +129,47 @@ test('guest token is fetched once and sent as X-Auth-Token with GraphQL', async 
   assert.equal(r.releases[0].cover, '');
 });
 
-test('anti-bot page is reported clearly', async () => {
+test('anti-bot page: one calm retry, then the app backs off', async () => {
   saveSettings({ token: 'USER' });
-  mockZvuk(() => ({ status: 418, data: '<html><body>checking your browser</body></html>' }));
+  zvuk.resetBotState();
+  let calls = mockZvuk(() => ({ status: 418, data: '<html><body>checking your browser</body></html>' }));
   await assert.rejects(zvuk.quickSearch('x'), (e) => e.kind === 'bot');
+  assert.equal(calls.length, 2, 'retried once');
+  assert.equal(zvuk.botBlocked(), true);
+  calls = mockZvuk(() => ({ status: 200, data: { data: { quickSearch: { content: [] } } } }));
+  await assert.rejects(zvuk.quickSearch('x'), (e) => e.kind === 'bot');
+  assert.equal(calls.length, 0, 'no requests while backing off');
+
+  zvuk.resetBotState();
   mockZvuk(() => ({ status: 200, data: '<!doctype html><html>bot activity detected</html>' }));
   await assert.rejects(zvuk.quickSearch('x'), (e) => e.kind === 'bot');
+  zvuk.resetBotState();
+
+  // a block that clears on the retry is invisible to the user
+  calls = mockZvuk((req, n) => (n === 1 ? { status: 418, data: '<html></html>' } : { status: 200, data: { data: { quickSearch: { content: [] } } } }));
+  const r = await zvuk.quickSearch('x');
+  assert.equal(r.tracks.length, 0);
+  assert.equal(zvuk.botBlocked(), false);
+});
+
+test('requests are spaced out and limited to two at a time', async () => {
+  saveSettings({ token: 'USER' });
+  zvuk.setPacing({ gap: 60 });
+  let live = 0;
+  let maxLive = 0;
+  const starts = [];
+  mockZvuk(async () => {
+    starts.push(Date.now());
+    live++;
+    maxLive = Math.max(maxLive, live);
+    await new Promise((r) => setTimeout(r, 100));
+    live--;
+    return { status: 200, data: { data: { quickSearch: { content: [] } } } };
+  });
+  await Promise.all([1, 2, 3, 4, 5].map((i) => zvuk.quickSearch('q' + i)));
+  zvuk.setPacing({ gap: 0 });
+  assert.ok(maxLive <= 2, 'at most two in flight, got ' + maxLive);
+  for (let i = 1; i < starts.length; i++) assert.ok(starts[i] - starts[i - 1] >= 55, 'gap between starts');
 });
 
 test('stream: high quality first, then normal quality', async () => {

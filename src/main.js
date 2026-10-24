@@ -6,7 +6,7 @@ import * as nav from './nav.js';
 import * as player from './player.js';
 import * as zvuk from './zvuk.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
-import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, searchInApp } from './pages.js';
+import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, searchInApp, openExternal } from './pages.js';
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack } from './components.js';
 import { onLocalChange } from './local.js';
 import { requestPersistence } from './db.js';
@@ -37,9 +37,9 @@ waves.setSource({
   onSilence: () => player.bypassAnalyser('Анализатор не слышит звук, волны переключены в простой режим'),
 });
 applyWaveSettings();
-waves.addSurface('bg', bgCanvas, { dpr: 1.25, place: 'low', ampScale: 0.17 });
+waves.addSurface('bg', bgCanvas, { dpr: 1, place: 'low', ampScale: 0.17 });
 waves.addSurface('full', full.canvas, {
-  dpr: 1.75,
+  dpr: 1.5,
   full: true,
   center: () => {
     if (settings.wavesFocus) {
@@ -259,6 +259,7 @@ const VIA_LABEL = {
   local: 'Мой MP3',
   'local-fallback': 'Мой MP3 — в Звуке не нашлось',
   'zvuk-fallback': 'Звук — файла MP3 нет',
+  handoff: 'Звук закрыл доступ — трек открыт в другом приложении',
 };
 
 function paintFull() {
@@ -302,6 +303,7 @@ function openFull() {
   requestAnimationFrame(() => {
     full.el.classList.add('open');
     waves.setActive('full');
+    setTimeout(() => waves.resize('full'), 340); // measure the cover once it has slid in
   });
 }
 
@@ -370,6 +372,10 @@ player.onPlayer((type, data) => {
   if (type === 'unavailable') {
     const t = data.track;
     snack(`«${t.title}»: ${data.error && data.error.message ? data.error.message : 'не играет'}`, 'Найти', () => otherPlatformsSheet(t));
+  }
+  if (type === 'handoff') {
+    openExternal(data.url);
+    snack(`Звук временно закрыл доступ — открываю «${data.track.title}» ${data.platform.where}`, 'Другие', () => otherPlatformsSheet(data.track), 7000);
   }
   if (type === 'fallback') {
     snack(data.via === 'local-fallback' ? `«${data.track.title}» нет в Звуке — играет твой MP3` : `«${data.track.title}»: MP3 нет — играет из Звука`, null, null, 3500);

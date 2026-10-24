@@ -26,7 +26,7 @@ export function attach(el) {
     const src = ctx.createMediaElementSource(el);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.72;
+    analyser.smoothingTimeConstant = 0.82;
     analyser.minDecibels = -90;
     analyser.maxDecibels = -18;
     src.connect(ctx.destination);
@@ -84,7 +84,7 @@ export function read(bands, wave) {
     const tilt = 1 + (i / BANDS) * 0.55; // highs are naturally quieter
     let v = (peak / 255) * tilt;
     v = Math.max(0, Math.min(1, (v - 0.06) * 1.12));
-    bands[i] = v * v * (3 - 2 * v); // smoothstep: keeps small noise down, peaks punchy
+    bands[i] = Math.pow(v, 1.15);
   }
 
   analyser.getFloatTimeDomainData(time);
