@@ -1,8 +1,8 @@
 // Recommendation feed. Built from the artists you listen to: liked tracks and
-// artists in Zvuk, your own playlists, your MP3s and artists you pick by hand.
+// artists in the main service (Zvuk or Yandex Music), your own playlists, your MP3s and artists you pick by hand.
 // For them it gathers new releases, similar artists and a mix of their songs.
 
-import * as zvuk from './zvuk.js';
+import * as online from './online.js';
 import { load, save, logError } from './settings.js';
 import { localArtists } from './local.js';
 import { allPlaylists } from './playlists.js';
@@ -37,7 +37,7 @@ export function cachedFeed() {
 }
 
 export function feedIsStale(f) {
-  return !f || Date.now() - (f.at || 0) > TTL;
+  return !f || Date.now() - (f.at || 0) > TTL || (f.svc && f.svc !== online.primaryId());
 }
 
 function releaseTime(r) {
@@ -69,6 +69,7 @@ function spreadByArtist(tracks) {
 }
 
 export async function buildFeed(onStep = () => {}) {
+  const svc = online.primaryId();
   const seeds = new Map(); // id -> { id, name, image, w }
   const add = (a, w) => {
     if (!a || !a.id) return;
@@ -86,22 +87,22 @@ export async function buildFeed(onStep = () => {}) {
   for (const p of allPlaylists()) {
     for (const t of p.tracks) {
       knownKeys.add(t.key);
-      if (t.src === 'zvuk') for (const a of t.artists || []) add(a, 1);
+      if (t.src === svc) for (const a of t.artists || []) add(a, 1);
     }
   }
 
-  if (zvuk.isLoggedIn()) {
+  if (online.isLoggedIn()) {
     try {
-      const ids = await zvuk.collectionArtistIds();
+      const ids = await online.collectionArtistIds();
       for (const id of ids.slice(0, 40)) add({ id }, 5);
     } catch (e) {
       logError('feed:artists', e);
     }
     try {
-      onStep('Смотрю, что тебе нравится в Звуке');
-      const liked = await zvuk.likedTrackIds();
-      for (const id of liked) knownKeys.add('z:' + id);
-      const tracks = await zvuk.getTracks(liked.slice(0, 300));
+      onStep(`Смотрю, что тебе нравится в ${svc === 'yandex' ? 'Яндекс Музыке' : 'Звуке'}`);
+      const liked = await online.likedTrackIds();
+      for (const id of liked) knownKeys.add((svc === 'yandex' ? 'y:' : 'z:') + id);
+      const tracks = await online.getTracks(liked.slice(0, 300));
       for (const t of tracks) for (const a of t.artists) add(a, 1);
     } catch (e) {
       logError('feed:liked', e);
@@ -113,7 +114,7 @@ export async function buildFeed(onStep = () => {}) {
     if (locals.length) onStep('Ищу артистов из твоих MP3');
     for (const la of locals) {
       try {
-        const res = await zvuk.quickSearch(la.name, 6);
+        const res = await online.quickSearch(la.name, 6);
         const hit = res.artists.find((a) => norm(a.name) === norm(la.name));
         if (hit) add(hit, 2 + la.count * 1.5);
       } catch (e) {
@@ -126,13 +127,13 @@ export async function buildFeed(onStep = () => {}) {
 
   const top = [...seeds.values()].sort((a, b) => b.w - a.w).slice(0, 14);
   if (!top.length) {
-    const empty = { at: Date.now(), empty: true, seeds: [], releases: [], related: [], mix: [] };
+    const empty = { at: Date.now(), svc, empty: true, seeds: [], releases: [], related: [], mix: [] };
     save('feed', empty);
     return empty;
   }
 
   onStep('Собираю новинки и похожих артистов');
-  const seedInfo = await zvuk.getArtists(
+  const seedInfo = await online.getArtists(
     top.map((s) => s.id),
     { related: 10, tracks: 6, releases: 6 }
   );
@@ -162,7 +163,7 @@ export async function buildFeed(onStep = () => {}) {
   onStep('Собираю микс');
   let fromRelated = [];
   try {
-    const rel = await zvuk.getArtists(
+    const rel = await online.getArtists(
       related.slice(0, 14).map((r) => r.id),
       { tracks: 4 }
     );
@@ -176,6 +177,7 @@ export async function buildFeed(onStep = () => {}) {
 
   const feed = {
     at: Date.now(),
+    svc,
     seeds: seedInfo.map(({ id, name, image }) => ({ id, name, image })),
     releases,
     related: related.map(({ id, name, image }) => ({ id, name, image })),

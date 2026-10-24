@@ -3,7 +3,7 @@
 // upset Zvuk, and remembers the result in the playlist.
 
 import * as pl from './playlists.js';
-import * as zvuk from './zvuk.js';
+import * as online from './online.js';
 import { localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { logError } from './settings.js';
@@ -27,16 +27,19 @@ export function matchProgress(id) {
   return progress.get(id) || null;
 }
 
-export async function findOnZvuk(t) {
+// Searches the main connected service (Zvuk or Yandex Music) for the same song.
+export async function findOnline(t) {
   const q = `${t.artist || ''} ${t.title}`.trim();
-  const res = await zvuk.quickSearch(q, 10);
+  const res = await online.quickSearch(q, 10);
   return bestMatch(t, res.tracks, t.artist ? 0.7 : 0.55);
 }
 
-export function zvukPatch(t, z) {
+export function onlinePatch(t, z) {
+  const ya = z.src === 'yandex';
   return {
-    match: 'zvuk',
-    zid: z.zid,
+    match: ya ? 'online' : 'zvuk',
+    zid: ya ? undefined : z.zid,
+    yid: ya ? z.yid : undefined,
     cover: t.cover || z.cover,
     duration: t.duration || z.duration,
     album: t.album || z.album,
@@ -111,14 +114,14 @@ async function matchOne(id) {
       let gaveUp = false;
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
-          z = await findOnZvuk(t);
+          z = await findOnline(t);
           break;
         } catch (e) {
           if (e.kind === 'bot' || e.kind === 'rate') {
-            await sleep(zvuk.botRemaining() + 1500);
+            await sleep(online.blockedRemaining() + 1500);
             continue;
           }
-          if (e.kind === 'network') {
+          if (e.kind === 'network' || e.kind === 'check' || e.kind === 'auth') {
             gaveUp = true; // offline: try again next time the app starts
             break;
           }
@@ -127,7 +130,7 @@ async function matchOne(id) {
         }
       }
       if (gaveUp) break;
-      pl.rememberMatch(t.key, z ? zvukPatch(t, z) : { match: 'none' });
+      pl.rememberMatch(t.key, z ? onlinePatch(t, z) : { match: 'none' });
     }
     prog.done++;
     emit(id);

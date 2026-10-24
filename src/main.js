@@ -5,8 +5,11 @@ import { h, icon, clear, fmtTime } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as zvuk from './zvuk.js';
+import * as online from './online.js';
+import * as web from './serviceweb.js';
+import { onAccountsChange } from './accounts.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
-import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, searchInApp, openExternal } from './pages.js';
+import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, searchInApp, openExternal } from './pages.js';
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack } from './components.js';
 import { onLocalChange } from './local.js';
 import { resumeMatching, rematchLocal } from './matcher.js';
@@ -233,7 +236,7 @@ function buildFull() {
   wave.onSeek = (f) => player.seek(f * player.duration());
   likeBtn.onclick = async () => {
     const t = player.current();
-    if (!t || t.src !== 'zvuk') return;
+    if (!t || !canLike(t)) return;
     await toggleLike(t);
     paintFull();
   };
@@ -260,6 +263,7 @@ const VIA_LABEL = {
   local: 'Мой MP3',
   'zvuk-fallback': 'Онлайн — файла MP3 больше нет',
   waiting: 'Звук ненадолго закрыл доступ, жду…',
+  check: 'Звук просит подтвердить, что ты не робот',
 };
 
 function paintFull() {
@@ -281,7 +285,7 @@ function paintFull() {
       : t.unavailable
       ? 'Не удалось включить'
       : VIA_LABEL[player.state.via] || '';
-  full.likeBtn.hidden = !(t.src === 'zvuk' && zvuk.isLoggedIn());
+  full.likeBtn.hidden = !canLike(t);
   clear(full.likeBtn).appendChild(icon(isLikedSync(t) ? 'heart' : 'heartOutline', 26));
   full.likeBtn.classList.toggle('liked', isLikedSync(t));
   full.shuffleBtn.classList.toggle('active', player.state.shuffle);
@@ -384,6 +388,9 @@ player.onPlayer((type, data) => {
   if (type === 'waiting') {
     snack(`Звук ненадолго закрыл доступ. «${data.track.title}» включится сам через ${Math.ceil(data.ms / 1000)} с`, null, null, 5000);
   }
+  if (type === 'needCheck') {
+    snack('Звук просит один раз подтвердить, что ты не робот', 'Пройти', passZvukCheck, 15000);
+  }
   if (type === 'fallback') {
     snack(`«${data.track.title}»: файла MP3 больше нет — играет онлайн`, null, null, 3500);
   }
@@ -392,9 +399,20 @@ player.onPlayer((type, data) => {
   markPlaying();
 });
 
+// Shows zvuk.com so the user passes its check, then plays the track again.
+async function passZvukCheck() {
+  try {
+    await zvuk.passCheck();
+    player.retryCurrent();
+  } catch (e) {
+    logError('check', e);
+  }
+}
+
 // ---------- Android back button ----------
 
-App.addListener('backButton', () => {
+App.addListener('backButton', async () => {
+  if (await web.back()) return; // sign-in page open on top
   if (closeSheet()) return;
   if (closeFull()) return;
   if (nav.back()) return;
@@ -413,7 +431,12 @@ App.addListener('backButton', () => {
     player.initMediaSession();
     player.restoreQueue();
     paintMini();
-    if (zvuk.isLoggedIn()) likedIds().catch(() => {});
+    if (online.isLoggedIn()) likedIds().catch(() => {});
+    onAccountsChange(() => {
+      if (online.isLoggedIn()) likedIds(true).catch(() => {});
+      paintMini();
+      if (!full.el.hidden) paintFull();
+    });
   } catch (e) {
     logError('start', e);
   }

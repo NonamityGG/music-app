@@ -34,6 +34,13 @@ const DEFAULTS = {
   wavesPalette: 'violet',
   wavesReactive: true, // waves follow the real sound
   wavesFocus: false, // full player shows waves instead of the cover
+  zvukWeb: true, // Zvuk requests go through zvuk.com opened inside the app
+  yaToken: '', // Yandex Music sign-in
+  yaUid: '',
+  yaLogin: '',
+  yaName: '',
+  yaPlus: false,
+  primaryService: '', // 'zvuk' | 'yandex' when both are connected
 };
 
 export const settings = Object.assign({}, DEFAULTS, load('settings', {}));

@@ -856,6 +856,90 @@ body.has-mini .page {
   align-items: center;
 }
 
+.service-card + .service-card,
+.service-card + .card-box {
+  margin-top: 10px;
+}
+
+.service-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.service-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--src);
+  box-shadow: 0 0 12px var(--src);
+}
+
+.service-name {
+  font-family: 'Unbounded', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+details.more {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+details.more summary {
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+details.more summary::-webkit-details-marker {
+  display: none;
+}
+
+details.more summary::after {
+  content: ' ›';
+}
+
+details.more[open] summary {
+  margin-bottom: 10px;
+}
+
+.token-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.token-box > .btn {
+  align-self: flex-start;
+}
+
+.seg {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--ink);
+}
+
+.seg-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+}
+
+.seg-btn.active {
+  background: var(--raised);
+  color: var(--text);
+}
+
 .setting-row {
   display: flex;
   align-items: center;

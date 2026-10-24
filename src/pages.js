@@ -3,7 +3,8 @@
 import { h, icon, clear, tracksWord, toast, add } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
-import * as zvuk from './zvuk.js';
+import * as online from './online.js';
+import * as accounts from './accounts.js';
 import * as pl from './playlists.js';
 import { localTracks, importFiles, removeLocal, onLocalChange } from './local.js';
 import { setFav, isFav } from './feed.js';
@@ -32,29 +33,45 @@ import {
 
 // ---------- liked tracks cache (for the heart in menus and the player) ----------
 
-let likedSet = null;
-export async function likedIds(force = false) {
-  if (!zvuk.isLoggedIn()) return new Set();
-  if (!likedSet || force) {
+// Liked tracks of each signed-in service, as keys "z:<id>" / "y:<id>".
+const likedSets = new Map();
+const PREFIX = { zvuk: 'z:', yandex: 'y:' };
+
+async function likedOf(service, force) {
+  if (!online.SERVICES[service].isLoggedIn()) return new Set();
+  if (!likedSets.has(service) || force) {
     try {
-      likedSet = new Set(await zvuk.likedTrackIds());
+      const ids = await online.likedTrackIds(service);
+      likedSets.set(service, new Set(ids.map((id) => PREFIX[service] + id)));
     } catch (e) {
       logError('liked', e);
-      likedSet = likedSet || new Set();
+      if (!likedSets.has(service)) likedSets.set(service, new Set());
     }
   }
-  return likedSet;
+  return likedSets.get(service);
 }
+
+export async function likedIds(force = false) {
+  const all = new Set();
+  for (const s of online.connected()) for (const k of await likedOf(s, force)) all.add(k);
+  return all;
+}
+export const canLike = (t) => !!online.serviceOf(t);
 export function isLikedSync(t) {
-  return !!(likedSet && t && t.zid && likedSet.has(t.zid));
+  const s = online.serviceOf(t);
+  const set = s && likedSets.get(s);
+  return !!(set && set.has(online.likeKey(t)));
 }
 export async function toggleLike(t) {
-  const set = await likedIds();
-  const liked = set.has(t.zid);
+  const s = online.serviceOf(t);
+  if (!s) return false;
+  const set = await likedOf(s);
+  const key = online.likeKey(t);
+  const liked = set.has(key);
   try {
-    await zvuk.setLiked(t.zid, !liked);
-    if (liked) set.delete(t.zid);
-    else set.add(t.zid);
+    await online.setLiked(t, !liked);
+    if (liked) set.delete(key);
+    else set.add(key);
     toast(liked ? 'Убрано из «Мне нравится»' : 'Добавлено в «Мне нравится»');
     return !liked;
   } catch (e) {
@@ -74,7 +91,7 @@ export function otherPlatformsSheet(t) {
     t.src === 'local'
       ? {
           icon: 'search',
-          label: 'В Звуке (внутри приложения)',
+          label: `В ${online.primaryId() === 'yandex' ? 'Яндекс Музыке' : 'Звуке'} (внутри приложения)`,
           onClick: () => searchInApp(`${t.artist || ''} ${t.title}`.trim()),
         }
       : null,
@@ -126,13 +143,13 @@ export function trackMenu(t, ctx = {}) {
     { icon: 'queue', label: 'Добавить в очередь', onClick: () => (player.addToQueue(t), toast('Добавлено в очередь')) },
     { icon: 'add', label: 'Добавить в плейлист', onClick: () => addToPlaylistSheet([t]) },
   ];
-  if (t.src === 'zvuk' && zvuk.isLoggedIn()) {
+  if (canLike(t)) {
     const liked = isLikedSync(t);
     items.push({ icon: liked ? 'heart' : 'heartOutline', label: liked ? 'Убрать из «Мне нравится»' : 'Нравится', onClick: () => toggleLike(t) });
   }
   const artist = t.artists && t.artists.find((a) => a.id);
   if (artist) items.push({ icon: 'user', label: `Артист: ${artist.name}`, onClick: () => nav.push(artistPage(artist.id, artist.name)) });
-  else if (t.src === 'local' && t.artist) items.push({ icon: 'search', label: `Найти артиста в Звуке`, onClick: () => searchInApp(t.artist) });
+  else if (t.src === 'local' && t.artist) items.push({ icon: 'search', label: 'Найти артиста онлайн', onClick: () => searchInApp(t.artist) });
   if (t.releaseId) items.push({ icon: 'library', label: `Альбом: ${t.album || 'открыть'}`, onClick: () => nav.push(releasePage(t.releaseId)) });
   items.push({ icon: 'link', label: 'Найти на других площадках', onClick: () => otherPlatformsSheet(t) });
   if (ctx.playlistId) {
@@ -152,7 +169,7 @@ export function trackMenu(t, ctx = {}) {
       label: 'Удалить файл из приложения',
       danger: true,
       onClick: async () => {
-        if (await confirmSheet('Удалить файл?', 'Файл удалится из приложения. В плейлистах трек останется: приложение попробует найти его в Звуке.')) {
+        if (await confirmSheet('Удалить файл?', 'Файл удалится из приложения. В плейлистах трек останется: приложение попробует найти его онлайн.')) {
           await removeLocal(t.lid);
           toast('Удалено');
         }
@@ -194,7 +211,7 @@ function hero(imgSrc, title, sub, round = false, fallbackIcon = null) {
 export function artistPage(id, name = '') {
   const el = nav.page({ title: name || 'Артист', back: true });
   asyncBody(el, async () => {
-    const [a] = await zvuk.getArtists([id], { tracks: 12, releases: 30, related: 12 });
+    const [a] = await online.getArtists([id], { tracks: 12, releases: 30, related: 12 });
     if (!a) throw new Error('Артист не найден');
     const favBtn = h('button', { class: 'btn btn-ghost' });
     const paintFav = () => {
@@ -234,7 +251,7 @@ export function artistPage(id, name = '') {
 export function releasePage(id) {
   const el = nav.page({ title: 'Альбом', back: true });
   asyncBody(el, async () => {
-    const r = await zvuk.getRelease(id);
+    const r = await online.getRelease(id);
     if (!r) throw new Error('Альбом не найден');
     el.querySelector('.page-title').textContent = r.title;
     const year = r.date ? String(r.date).slice(0, 4) : '';
@@ -260,17 +277,20 @@ export function releasePage(id) {
   return el;
 }
 
-// ---------- Zvuk playlist ----------
+// ---------- a playlist that lives in Zvuk or Yandex Music ----------
 
-export function zvukPlaylistPage(p) {
+const IN = { zvuk: 'в Звуке', yandex: 'в Яндекс Музыке' };
+const serviceOfId = (id) => (String(id).startsWith('y:') ? 'yandex' : 'zvuk');
+
+export function servicePlaylistPage(p) {
   const el = nav.page({ title: p.title, back: true });
   asyncBody(el, async () => {
-    const data = await zvuk.playlistTracks(p.id);
+    const data = await online.playlistTracks(p.id);
     const tracks = data.tracks;
     return h(
       'div',
       null,
-      hero(data.cover || p.cover, data.title || p.title, `${tracksWord(tracks.length)} в Звуке`),
+      hero(data.cover || p.cover, data.title || p.title, `${tracksWord(tracks.length)} ${IN[serviceOfId(p.id)]}`),
       h('div', { class: 'center-row' }, playButtons(async () => tracks)),
       h(
         'div',
@@ -280,7 +300,7 @@ export function zvukPlaylistPage(p) {
           {
             class: 'btn btn-ghost',
             onclick: () => {
-              const copy = pl.createPlaylist(data.title || p.title, tracks);
+              const copy = pl.createPlaylist(data.title || p.title, tracks, serviceOfId(p.id));
               toast(`Копия «${copy.name}» в твоих плейлистах. Туда можно добавлять MP3.`);
             },
           },
@@ -298,16 +318,16 @@ export function zvukPlaylistPage(p) {
 
 // ---------- liked tracks ----------
 
-export function likedPage() {
+export function likedPage(service = online.primaryId()) {
   const el = nav.page({ title: 'Мне нравится', back: true });
   asyncBody(el, async () => {
-    const ids = [...(await likedIds(true))];
-    const tracks = await zvuk.getTracks(ids);
-    if (!tracks.length) return emptyState('heartOutline', 'Пока пусто', 'Ставь лайки трекам в Звуке или здесь — они появятся в этом списке.');
+    const ids = [...(await likedOf(service, true))].map((k) => k.slice(2));
+    const tracks = await online.getTracks(ids, service);
+    if (!tracks.length) return emptyState('heartOutline', 'Пока пусто', `Ставь лайки трекам ${IN[service]} или здесь — они появятся в этом списке.`);
     return h(
       'div',
       null,
-      hero('', 'Мне нравится', `${tracksWord(tracks.length)} в Звуке`, false, 'heart'),
+      hero('', 'Мне нравится', `${tracksWord(tracks.length)} ${IN[service]}`, false, 'heart'),
       h('div', { class: 'center-row' }, playButtons(async () => tracks)),
       trackList(tracks, { onPlay: (i) => player.playQueue(tracks, i), menu: (t) => trackMenu(t) })
     );
@@ -463,8 +483,24 @@ function playlistRow(p, onClick) {
   );
 }
 
+const SIGN_IN = {
+  zvuk: { how: 'через Сбер ID или номер телефона', button: 'Войти в Звук' },
+  yandex: { how: 'через Яндекс ID', button: 'Войти через Яндекс ID' },
+};
+
+function signInCard(service, text) {
+  const busy = accounts.isBusy(service);
+  return emptyState(
+    'library',
+    `Плейлисты ${service === 'yandex' ? 'Яндекс Музыки' : 'Звука'} появятся сами`,
+    text || `Войди ${SIGN_IN[service].how} прямо в приложении — плейлисты и «Мне нравится» подтянутся сюда, а треки будут играть отсюда.`,
+    h('button', { class: 'btn btn-primary', disabled: busy, onclick: () => accounts.connect(service) }, busy ? 'Вход…' : SIGN_IN[service].button)
+  );
+}
+
 export function folderPage(sourceId) {
   const src = sourceById(sourceId);
+  const isService = sourceId in online.SERVICES;
   const addBtn =
     sourceId === 'zvuk'
       ? null
@@ -484,81 +520,90 @@ export function folderPage(sourceId) {
         );
   const el = nav.page({ title: src.name, back: true, actions: addBtn ? [addBtn] : [] });
   const body = nav.pageBody(el);
-  let zvukLists = null;
-  let zvukErr = null;
+  let live = null; // playlists that live in the service
+  let liveErr = null;
+
+  const importedList = (lists) => h('div', { class: 'list' }, lists.map((p) => playlistRow(p, () => nav.push(customPlaylistPage(p.id)))));
 
   const render = () => {
     clear(body);
-    if (sourceId === 'zvuk') {
-      if (!zvuk.isLoggedIn()) {
-        add(body, 
-          emptyState(
-            'library',
-            'Плейлисты Звука появятся сами',
-            'Войди в Звук в профиле — плейлисты подтянутся сюда, и их не нужно переносить.',
-            h('button', { class: 'btn btn-primary', onclick: () => nav.switchTab('profile') }, 'Войти')
-          )
-        );
+    const lists = pl.playlistsFrom(sourceId);
+    if (isService) {
+      if (!accounts.loggedIn(sourceId)) {
+        add(body, signInCard(sourceId));
+        if (lists.length) add(body, section('Перенесённые', null, importedList(lists)));
         return;
       }
-      add(body, 
+      add(
+        body,
         h(
           'div',
-          { class: 'list-row', role: 'button', onclick: () => nav.push(likedPage()) },
+          { class: 'list-row', role: 'button', onclick: () => nav.push(likedPage(sourceId)) },
           h('div', { class: 'cover cover-sm cover-box liked-cover' }, icon('heart', 22)),
-          h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, 'Мне нравится'), h('div', { class: 'track-sub' }, 'лайки из Звука'))
+          h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, 'Мне нравится'), h('div', { class: 'track-sub' }, `лайки ${IN[sourceId]}`))
         )
       );
-      if (zvukErr) add(body, errorBox(zvukErr, () => loadZvuk(true)));
-      else if (!zvukLists) add(body, spinner());
+      if (liveErr) add(body, errorBox(liveErr, () => loadLive(true)));
+      else if (!live) add(body, spinner());
       else
-        add(body, 
+        add(
+          body,
           h(
             'div',
             { class: 'list' },
-            zvukLists.map((p) =>
+            live.map((p) =>
               h(
                 'div',
-                { class: 'list-row', role: 'button', onclick: () => nav.push(zvukPlaylistPage(p)) },
+                { class: 'list-row', role: 'button', onclick: () => nav.push(servicePlaylistPage(p)) },
                 cover(p.cover, 'cover cover-sm', 'queue'),
-                h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, p.title), h('div', { class: 'track-sub' }, tracksWord(p.trackIds.length)))
+                h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, p.title), h('div', { class: 'track-sub' }, tracksWord(p.trackCount ?? p.trackIds.length)))
               )
             )
           )
         );
+      if (lists.length) add(body, section('Перенесённые и копии', null, importedList(lists)));
       return;
     }
-    const lists = pl.playlistsFrom(sourceId);
     if (!lists.length) {
-      add(body, 
+      add(
+        body,
         sourceId === 'mine'
           ? emptyState('queue', 'Своих плейлистов пока нет', 'Собирай в них треки из любых источников и свои MP3.', addBtn && h('button', { class: 'btn btn-primary', onclick: () => addBtn.click() }, icon('add', 20), 'Создать'))
           : emptyState('library', `Из «${src.name}» пока ничего`, 'Перенеси плейлист — треки будут играть из твоих MP3, а чего нет — онлайн.', h('button', { class: 'btn btn-primary', onclick: () => nav.push(importPage(sourceId)) }, icon('add', 20), 'Перенести плейлист'))
       );
       return;
     }
-    add(body, h('div', { class: 'list' }, lists.map((p) => playlistRow(p, () => nav.push(customPlaylistPage(p.id))))));
+    add(body, importedList(lists));
   };
 
-  const loadZvuk = async (force) => {
-    if (sourceId !== 'zvuk' || !zvuk.isLoggedIn()) return;
-    if (zvukLists && !force) return;
-    zvukErr = null;
+  const loadLive = async (force) => {
+    if (!isService || !accounts.loggedIn(sourceId)) return;
+    if (live && !force) return;
+    liveErr = null;
     try {
-      zvukLists = await zvuk.userPlaylists();
+      live = await online.userPlaylists(sourceId);
     } catch (e) {
-      zvukErr = e;
+      liveErr = e;
     }
     render();
   };
 
   render();
-  loadZvuk(false);
+  loadLive(false);
   let t = 0;
   const soon = () => {
     if (!t) t = setTimeout(() => ((t = 0), render()), 700);
   };
-  el._cleanup.push(pl.onPlaylistsChange(soon), onMatchProgress(soon));
+  el._cleanup.push(
+    pl.onPlaylistsChange(soon),
+    onMatchProgress(soon),
+    accounts.onAccountsChange((svc) => {
+      if (svc !== sourceId) return;
+      live = null;
+      render();
+      loadLive(true);
+    })
+  );
   return el;
 }
 

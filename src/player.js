@@ -4,14 +4,14 @@
 
 import { MediaSession } from '@capgo/capacitor-media-session';
 import { Capacitor } from '@capacitor/core';
-import * as zvuk from './zvuk.js';
+import * as online from './online.js';
 import * as graph from './audio-graph.js';
 import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
 import * as pl from './playlists.js';
-import { findOnZvuk, zvukPatch } from './matcher.js';
+import { findOnline, onlinePatch } from './matcher.js';
 
 // Two elements: `fx` is connected to the analyser that drives the waves and only
 // ever gets same-origin sources; `plain` plays everything else directly.
@@ -23,7 +23,7 @@ let audio = plain;
 let fxBroken = false; // once the analyser path fails, this session plays everything directly
 let fxReason = '';
 let directUrl = ''; // the real source of the current track
-let curZid = ''; // Zvuk id whose stream is playing (the track itself or its replacement)
+let curRef = null; // { p, id } of the online stream that is playing (the track itself or its replacement)
 let streamAttempts = 0;
 
 export const state = {
@@ -87,17 +87,21 @@ async function localSource(track) {
   return blob ? { url: URL.createObjectURL(blob), via: 'local', match: m } : null;
 }
 
-// Zvuk id for a song from another service; searches once and remembers the answer.
-async function zidFor(track) {
-  if (track.zid) return track.zid;
-  if (track.src !== 'ext' || track.match === 'none') return '';
-  const z = await findOnZvuk(track);
-  pl.rememberMatch(track.key, z ? zvukPatch(track, z) : { match: 'none' });
-  if (z) {
-    track.zid = z.zid;
+// Online stream for a track: its own service if usable, otherwise a search on
+// the main connected service (remembered in the playlist for next time).
+async function refFor(track) {
+  const own = online.refOf(track);
+  if (own && online.usable(own.p)) return own;
+  if (track.src === 'ext' && track.match === 'none') return null;
+  const z = await findOnline(track);
+  if (track.src === 'ext') pl.rememberMatch(track.key, z ? onlinePatch(track, z) : { match: 'none' });
+  if (!z) return null;
+  if (track.src === 'ext') {
+    if (z.src === 'yandex') track.yid = z.yid;
+    else track.zid = z.zid;
     track.cover = track.cover || z.cover;
   }
-  return z ? z.zid : '';
+  return online.refOf(z);
 }
 
 async function resolve(track) {
@@ -108,8 +112,9 @@ async function resolve(track) {
     const blob = await localBlob(track.lid);
     if (blob) return { url: URL.createObjectURL(blob), via: 'local' };
     if (settings.autoFallback) {
-      const m = await findOnZvuk(track).catch(() => null);
-      if (m) return { url: await zvuk.streamUrl(m.zid), via: 'zvuk-fallback', match: m, zid: m.zid };
+      const m = await findOnline(track).catch(() => null);
+      const ref = m && online.refOf(m);
+      if (ref) return { url: await online.streamFor(ref), via: 'zvuk-fallback', match: m, ref };
     }
     throw new Error('Файла больше нет в медиатеке');
   }
@@ -118,9 +123,9 @@ async function resolve(track) {
     const loc = await localSource(track);
     if (loc) return loc;
   }
-  const zid = await zidFor(track);
-  if (!zid) throw new Error('Этого трека нет ни в твоих MP3, ни онлайн');
-  return { url: await zvuk.streamUrl(zid), via: 'zvuk', zid };
+  const ref = await refFor(track);
+  if (!ref) throw new Error('Этого трека нет ни в твоих MP3, ни онлайн');
+  return { url: await online.streamFor(ref), via: 'zvuk', ref };
 }
 
 // ---------- getting the next tracks ready ----------
@@ -129,7 +134,7 @@ async function resolve(track) {
 // track ends or you press "next", the prepared one starts at once, with no
 // request to Zvuk at all — so a short block by Zvuk's protection goes unnoticed too.
 
-const ahead = new Map(); // track key -> { zid, url, urlAt, blob, loading, local }
+const ahead = new Map(); // track key -> { ref, url, urlAt, blob, loading, local }
 const LINK_TTL = 10 * 60 * 1000;
 let prepTimer = 0;
 
@@ -138,11 +143,11 @@ function takePrepared(track) {
   if (!p) return null;
   if (p.blob) {
     ahead.delete(track.key);
-    return { url: URL.createObjectURL(p.blob), via: 'zvuk', zid: p.zid, preloaded: true };
+    return { url: URL.createObjectURL(p.blob), via: 'zvuk', ref: p.ref, preloaded: true };
   }
   if (p.url && Date.now() - p.urlAt < LINK_TTL) {
     ahead.delete(track.key);
-    return { url: p.url, via: 'zvuk', zid: p.zid };
+    return { url: p.url, via: 'zvuk', ref: p.ref };
   }
   return null;
 }
@@ -172,7 +177,7 @@ function upcoming(n) {
 }
 
 async function prepareAhead() {
-  if (zvuk.botBlocked()) return schedulePreload(zvuk.botRemaining() + 3000);
+  if (online.blocked()) return schedulePreload(online.blockedRemaining() + 3000);
   const seq = loadSeq;
   const next = upcoming(3);
   const keep = new Set(next.map((t) => t.key));
@@ -188,14 +193,14 @@ async function prepareAhead() {
           continue;
         }
       }
-      if (!p.zid) p.zid = await zidFor(t);
-      if (!p.zid) continue;
+      if (!p.ref) p.ref = await refFor(t);
+      if (!p.ref) continue;
       if (!p.url || Date.now() - p.urlAt > LINK_TTL) {
-        p.url = await zvuk.streamUrl(p.zid);
+        p.url = await online.streamFor(p.ref);
         p.urlAt = Date.now();
       }
     } catch (e) {
-      if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate') break;
+      if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate' || e.kind === 'check') break;
       continue;
     }
     if (seq !== loadSeq) return;
@@ -310,7 +315,7 @@ async function load_(index, autoplay = true, auto = false) {
   state.error = '';
   state.via = '';
   streamAttempts = 0;
-  curZid = '';
+  curRef = null;
   emit('track', track);
   updateMetadata(track);
   audio.pause();
@@ -322,7 +327,7 @@ async function load_(index, autoplay = true, auto = false) {
     }
     setObjectUrl(src.url.startsWith('blob:') ? src.url : '');
     state.via = src.via;
-    curZid = src.zid || '';
+    curRef = src.ref || null;
     track.unavailable = false;
     setSource(src.url);
     if (autoplay) await audio.play().catch((e) => handlePlayError(e, seq));
@@ -332,6 +337,14 @@ async function load_(index, autoplay = true, auto = false) {
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
   } catch (e) {
     if (seq !== loadSeq) return;
+    if (e.kind === 'check') {
+      state.via = 'check';
+      track.unavailable = false;
+      setPlaying(false);
+      emit('needCheck', { track });
+      emit('state');
+      return;
+    }
     if ((e.kind === 'bot' || e.kind === 'rate') && waitOut(track, index, auto, seq)) return;
     failStreak++;
     track.unavailable = true;
@@ -371,7 +384,7 @@ function waitOut(track, index, auto, seq) {
     state.waitingUntil = 0;
     return false; // the usual "unavailable" message
   }
-  const ms = Math.max(4000, zvuk.botRemaining() + 1500);
+  const ms = Math.max(4000, online.blockedRemaining() + 1500);
   state.waitingUntil = Date.now() + ms;
   state.via = 'waiting';
   track.unavailable = false;
@@ -580,12 +593,12 @@ async function onError() {
   logError('audio', new Error('Ошибка воспроизведения, код ' + code + (viaProxy ? ' (через прокси)' : '')));
   // Zvuk stream links expire: fetch a fresh one, keeping the position. The second
   // try skips the proxy in case the proxy itself is the problem.
-  if (curZid && streamAttempts < 2) {
+  if (curRef && streamAttempts < 2) {
     streamAttempts++;
     if (streamAttempts === 2 && viaProxy) fxBroken = true;
     const at = audio.currentTime;
     try {
-      const url = await zvuk.streamUrl(curZid);
+      const url = await online.streamFor(curRef);
       if (seq !== loadSeq) return;
       setSource(url);
       seekWhenReady(at);
@@ -690,3 +703,8 @@ export function restoreQueue() {
 }
 
 window.addEventListener('online', () => emit('state'));
+
+// After the user passed a check or signed in: try the current track again.
+export function retryCurrent() {
+  if (current()) load_(state.index, true, false);
+}

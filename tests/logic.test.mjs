@@ -335,3 +335,91 @@ test('Spotify playlist from the public embed page', async () => {
   assert.equal(r.tracks[0].duration, 185);
   imp.setImportTransport(null);
 });
+
+// ---------- Yandex Music ----------
+
+const ya = await import('../src/yandex.js');
+const { md5 } = await import('../src/md5.js');
+const online = await import('../src/online.js');
+const { onlinePatch } = await import('../src/matcher.js');
+
+test('md5 matches the reference values', () => {
+  assert.equal(md5(''), 'd41d8cd98f00b204e9800998ecf8427e');
+  assert.equal(md5('abc'), '900150983cd24fb0d6963f7d28e17f72');
+  assert.equal(md5('Привет'), '8a669e9418750c81ab90ae159a8ec410');
+});
+
+test('Yandex token is taken from the sign-in redirect', () => {
+  assert.equal(ya.tokenFromUrl('https://music.yandex.ru/#access_token=y0_AbC-123&token_type=bearer&expires_in=31536000'), 'y0_AbC-123');
+  assert.equal(ya.tokenFromUrl('https://music.yandex.ru/'), '');
+});
+
+test('Yandex: sign-in, track shapes, stream link signing', async () => {
+  const calls = [];
+  ya.setYandexTransport(async (req) => {
+    calls.push(req);
+    const u = new URL(req.url);
+    if (u.pathname === '/account/status') {
+      assert.equal(req.headers.Authorization, 'OAuth tok1');
+      return { status: 200, data: { result: { account: { uid: 42, login: 'masha', displayName: 'Маша' }, plus: { hasPlus: true } } } };
+    }
+    if (u.pathname === '/tracks' && req.method === 'POST') {
+      assert.match(req.data, /track-ids=10%2C11/);
+      return {
+        status: 200,
+        data: {
+          result: [
+            { id: 11, title: 'Би-2', version: 'Live', durationMs: 200500, artists: [{ id: 7, name: 'Би-2' }], albums: [{ id: 3, title: 'Альбом', coverUri: 'avatars.yandex.net/x/%%' }] },
+            { id: 10, title: 'Полковник', durationMs: 245000, artists: [{ id: 7, name: 'Би-2' }], albums: [{ id: 3, title: 'Альбом' }], coverUri: 'avatars.yandex.net/y/%%' },
+          ],
+        },
+      };
+    }
+    if (u.pathname === '/tracks/10/download-info') {
+      return {
+        status: 200,
+        data: { result: [ { codec: 'mp3', bitrateInKbps: 192, downloadInfoUrl: 'https://dl/192' }, { codec: 'mp3', bitrateInKbps: 320, downloadInfoUrl: 'https://dl/320' }, { codec: 'aac', bitrateInKbps: 64, downloadInfoUrl: 'https://dl/aac' } ] },
+      };
+    }
+    if (req.url === 'https://dl/320') {
+      return { status: 200, data: '<?xml version="1.0"?><download-info><host>s1.storage.yandex.net</host><path>/rmusic/abc/track.mp3</path><ts>0005f</ts><region>-1</region><s>salt9</s></download-info>' };
+    }
+    return { status: 404, data: {} };
+  });
+
+  const a = await ya.loginWithToken('tok1');
+  assert.deepEqual(a, { uid: '42', login: 'masha', name: 'Маша', plus: true });
+  assert.ok(ya.isLoggedIn());
+
+  const tracks = await ya.getTracks(['y:10', '11']);
+  assert.deepEqual(tracks.map((t) => t.key), ['y:10', 'y:11'], 'order of the request is kept');
+  assert.equal(tracks[1].title, 'Би-2 (Live)');
+  assert.equal(tracks[1].duration, 201);
+  assert.equal(tracks[1].cover, 'https://avatars.yandex.net/x/300x300');
+  assert.equal(tracks[0].releaseId, 'y:3');
+  assert.equal(tracks[0].artists[0].id, 'y:7');
+
+  saveSettings({ quality: 'high' });
+  const url = await ya.streamUrl('y:10');
+  const sign = md5('XGRlBW9FXlekgbPrRHuSiA' + 'rmusic/abc/track.mp3' + 'salt9');
+  assert.equal(url, `https://s1.storage.yandex.net/get-mp3/${sign}/0005f/rmusic/abc/track.mp3`);
+  assert.ok(calls.every((c) => !c.url.includes('api.music.yandex.net') || c.headers['X-Yandex-Music-Client']));
+
+  // the app-wide layer: Yandex ids route to Yandex, and Yandex becomes the main service
+  saveSettings({ token: '' });
+  assert.equal(online.primaryId(), 'yandex');
+  assert.deepEqual(online.refOf(tracks[0]), { p: 'yandex', id: '10' });
+  assert.deepEqual(online.refOf({ src: 'zvuk', zid: '5' }), { p: 'zvuk', id: '5' });
+  assert.deepEqual(online.refOf({ src: 'ext', match: 'online', yid: '10' }), { p: 'yandex', id: '10' });
+  assert.equal(online.likeKey(tracks[0]), 'y:10');
+
+  const patch = onlinePatch({ title: 'Полковник', artist: 'Би-2' }, tracks[0]);
+  assert.equal(patch.match, 'online');
+  assert.equal(patch.yid, '10');
+  assert.equal(patch.zid, undefined);
+
+  await ya.logout();
+  assert.ok(!ya.isLoggedIn());
+  assert.equal(online.primaryId(), 'zvuk');
+  ya.setYandexTransport(null);
+});

@@ -1,10 +1,12 @@
 // Client for Zvuk (zvuk.com). The API is unofficial: it is the same GraphQL and
-// "tiny" API the zvuk.com web player uses. Requests go through the native HTTP
-// stack on the phone, which avoids browser CORS limits.
+// "tiny" API the zvuk.com web player uses. On the phone every request is made
+// from inside zvuk.com, opened in a hidden in-app browser where the user signed
+// in: to Zvuk's bot protection that is an ordinary browser tab.
 
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { settings, saveSettings, logError } from './settings.js';
 import { chunk } from './util.js';
+import * as web from './serviceweb.js';
 
 const GQL_URL = 'https://zvuk.com/api/v1/graphql';
 const TINY = 'https://zvuk.com/api/tiny';
@@ -20,7 +22,7 @@ const HEADERS = {
 export class ZvukError extends Error {
   constructor(kind, message, status) {
     super(message);
-    this.kind = kind; // network | bot | auth | rate | http | gql | bad | unavailable
+    this.kind = kind; // network | bot | check | auth | rate | http | gql | bad | unavailable
     this.status = status;
   }
 }
@@ -66,7 +68,68 @@ async function slot() {
   lastStart = Date.now();
 }
 
+// ---------- the in-app browser route ----------
+
+const HOME = 'https://zvuk.com/';
+const viaWeb = () => !transport && web.available() && settings.zvukWeb !== false;
+let pageReady = null;
+let needCheck = false;
+
+function ensurePage() {
+  if (!pageReady) {
+    pageReady = web
+      .open('zvuk', HOME)
+      .then(() => web.nextPage('zvuk', 15000))
+      .catch(() => null);
+  }
+  return pageReady;
+}
+
+function checkError() {
+  return new ZvukError('check', 'Звук просит подтвердить, что ты не робот. Это нужно сделать один раз.', 418);
+}
+
+export const checkNeeded = () => needCheck;
+
+// Shows zvuk.com so the user can pass Zvuk's "not a robot" check.
+export async function passCheck() {
+  await web.askUser('zvuk', HOME, 'Пройди проверку и нажми «Готово»');
+  needCheck = false;
+  pageReady = null;
+  resetBotState();
+}
+
+async function httpWeb(req) {
+  if (needCheck) throw checkError();
+  await ensurePage();
+  await slot();
+  try {
+    return await httpOnce(req);
+  } catch (e) {
+    if (e.kind !== 'bot') throw e;
+  } finally {
+    inFlight--;
+  }
+  // the site wants to look at the browser again: reload it so its own check runs, then retry
+  pageReady = null;
+  await ensurePage();
+  await sleep(1500);
+  await slot();
+  try {
+    return await httpOnce(req);
+  } catch (e) {
+    if (e.kind === 'bot') {
+      needCheck = true;
+      throw checkError();
+    }
+    throw e;
+  } finally {
+    inFlight--;
+  }
+}
+
 async function http(req) {
+  if (viaWeb()) return httpWeb(req);
   if (botBlocked()) throw botError(418);
   await slot();
   try {
@@ -105,6 +168,19 @@ async function httpOnce({ method, url, params, data, token }) {
   try {
     if (transport) {
       res = await transport({ method, url, params: strParams, data, headers });
+    } else if (viaWeb()) {
+      const u = new URL(url);
+      if (strParams) for (const [k, v] of Object.entries(strParams)) u.searchParams.set(k, v);
+      const h = { Accept: HEADERS.Accept };
+      if (token) h['X-Auth-Token'] = token;
+      if (data) h['Content-Type'] = 'application/json';
+      const r = await web.request('zvuk', u.toString(), { method, headers: h, body: data ? JSON.stringify(data) : undefined });
+      if (!r || !r.status) throw new Error((r && r.error) || 'no response');
+      let parsed = r.body;
+      try {
+        parsed = JSON.parse(r.body);
+      } catch {}
+      res = { status: r.status, data: parsed };
     } else if (Capacitor.isNativePlatform()) {
       res = await CapacitorHttp.request({
         method,
@@ -165,6 +241,26 @@ function botError(status) {
 // ---------- tokens ----------
 
 export const isLoggedIn = () => !!settings.token;
+
+// Sign in on zvuk.com inside the app (Sber ID or phone), then take the session's token.
+export async function loginViaWeb() {
+  await web.askUser('zvuk', HOME, 'Войди в Звук и нажми «Готово»');
+  pageReady = null;
+  needCheck = false;
+  resetBotState();
+  const body = await http({ method: 'GET', url: TINY + '/profile' });
+  const r = (body && body.result) || {};
+  const anon = r.is_anonymous ?? r.isAnonymous;
+  if (!r.token || anon) throw new ZvukError('auth', 'Вход не завершён: в окне Звука нужно войти в аккаунт');
+  saveSettings({ token: r.token, anonToken: '' });
+  return r;
+}
+
+export async function logout() {
+  saveSettings({ token: '', anonToken: '' });
+  pageReady = null;
+  if (web.available()) await web.forget(['zvuk.com', 'id.sber.ru']).catch(() => {});
+}
 
 async function anonToken() {
   if (settings.anonToken) return settings.anonToken;
@@ -337,7 +433,7 @@ export async function streamUrl(trackId) {
       if (url) return url;
     } catch (e) {
       lastErr = e;
-      if (e.kind === 'network' || e.kind === 'bot' || e.kind === 'rate') throw e;
+      if (e.kind === 'network' || e.kind === 'bot' || e.kind === 'rate' || e.kind === 'check') throw e;
     }
   }
   if (lastErr && lastErr.kind === 'auth') {

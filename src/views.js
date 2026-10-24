@@ -4,6 +4,9 @@ import { h, icon, clear, debounce, tracksWord, toast, plural, add } from './util
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as zvuk from './zvuk.js';
+import * as ya from './yandex.js';
+import * as online from './online.js';
+import * as accounts from './accounts.js';
 import * as pl from './playlists.js';
 import { localTracks, searchLocal, onLocalChange } from './local.js';
 import { buildFeed, cachedFeed, feedIsStale, favArtists, setFav } from './feed.js';
@@ -29,8 +32,6 @@ import {
   trackMenu,
   artistPage,
   releasePage,
-  zvukPlaylistPage,
-  likedPage,
   customPlaylistPage,
   localPage,
   mixPage,
@@ -57,9 +58,9 @@ export function feedView() {
         emptyState(
           'feed',
           'Лента строится по твоим артистам',
-          'Войди в Звук, добавь свои MP3 или выбери любимых артистов — и здесь появятся новинки, похожие артисты и микс.',
+          'Подключи Звук или Яндекс Музыку, добавь свои MP3 или выбери любимых артистов — и здесь появятся новинки, похожие артисты и микс.',
           h('button', { class: 'btn btn-primary', onclick: () => nav.switchTab('search') }, icon('star', 20), 'Выбрать артистов'),
-          zvuk.isLoggedIn() ? null : h('button', { class: 'btn btn-ghost', onclick: () => nav.switchTab('profile') }, 'Войти в Звук')
+          online.isLoggedIn() ? null : h('button', { class: 'btn btn-ghost', onclick: () => nav.switchTab('profile') }, 'Подключить сервис')
         )
       );
       return;
@@ -123,7 +124,7 @@ export function feedView() {
     } catch (e) {
       logError('feed', e);
       status.remove();
-      if (e.kind === 'bot' || e.kind === 'rate') setTimeout(rebuild, zvuk.botRemaining() + 2500);
+      if (e.kind === 'bot' || e.kind === 'rate') setTimeout(rebuild, online.blockedRemaining() + 2500);
       if (!old || old.empty) {
         clear(body).appendChild(errorBox(e, rebuild));
       } else {
@@ -192,7 +193,7 @@ export function searchView() {
     const my = ++seq;
     if (!q) return showIdle();
     clear(results).appendChild(spinner());
-    const [localRes, zRes] = await Promise.allSettled([searchLocal(q), zvuk.quickSearch(q, 30)]);
+    const [localRes, zRes] = await Promise.allSettled([searchLocal(q), online.quickSearch(q, 30)]);
     if (my !== seq) return;
     clear(results);
     const local = localRes.status === 'fulfilled' ? localRes.value : [];
@@ -206,7 +207,7 @@ export function searchView() {
         const again = q;
         setTimeout(() => {
           if (my === seq && input.value.trim() === again) run(again);
-        }, zvuk.botRemaining() + 1500);
+        }, online.blockedRemaining() + 1500);
       }
       return;
     }
@@ -269,14 +270,16 @@ export function searchView() {
 export function libraryView() {
   const el = nav.page({ title: 'Медиатека', actions: [h('button', { class: 'icon-btn', 'aria-label': 'Перенести плейлист', onclick: () => nav.push(importPage()) }, icon('add', 26))] });
   const body = nav.pageBody(el);
-  let zvukCount = null;
+  const liveCount = {}; // service -> number of playlists in the service
 
-  const loadZvukCount = async () => {
-    if (!zvuk.isLoggedIn() || zvukCount !== null) return;
-    try {
-      zvukCount = (await zvuk.userPlaylists()).length;
-      render();
-    } catch {}
+  const loadCounts = async () => {
+    for (const svc of online.connected()) {
+      if (liveCount[svc] !== undefined) continue;
+      try {
+        liveCount[svc] = (await online.userPlaylists(svc)).length;
+        render();
+      } catch {}
+    }
   };
 
   const tile = (iconName, title, sub, onClick, cls = '') =>
@@ -284,7 +287,10 @@ export function libraryView() {
 
   const folder = (src) => {
     let sub;
-    if (src.id === 'zvuk') sub = !zvuk.isLoggedIn() ? 'войди в профиле' : zvukCount === null ? 'загружаю…' : plWord(zvukCount);
+    if (src.id in online.SERVICES && accounts.loggedIn(src.id)) {
+      const n = (liveCount[src.id] ?? 0) + pl.playlistsFrom(src.id).length;
+      sub = liveCount[src.id] === undefined ? 'загружаю…' : plWord(n);
+    } else if (src.id === 'zvuk') sub = 'войти';
     else {
       const n = pl.playlistsFrom(src.id).length;
       sub = n ? plWord(n) : src.id === 'mine' ? 'создать' : 'перенести';
@@ -308,9 +314,13 @@ export function libraryView() {
 
   pl.onPlaylistsChange(render);
   onLocalChange(render);
+  accounts.onAccountsChange((svc) => {
+    delete liveCount[svc];
+    render();
+  });
   el._onShow = () => {
     render();
-    loadZvukCount();
+    loadCounts();
   };
   return el;
 }
@@ -320,6 +330,151 @@ function plWord(n) {
 }
 
 // ===================== Профиль =====================
+
+// A paste-the-key fallback, in case signing in on the page doesn't work.
+function tokenForm(placeholder, check) {
+  const input = h('input', { class: 'input', type: 'password', placeholder, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const showBtn = h('button', { class: 'btn btn-text small' }, 'Показать');
+  showBtn.onclick = () => {
+    const hidden = input.type === 'password';
+    input.type = hidden ? 'text' : 'password';
+    showBtn.textContent = hidden ? 'Скрыть' : 'Показать';
+  };
+  const go = h('button', { class: 'btn btn-ghost' }, 'Войти по токену');
+  go.onclick = async () => {
+    const t = input.value.trim().replace(/^"+|"+$/g, '');
+    if (!t) return toast('Сначала вставь токен');
+    go.disabled = true;
+    go.textContent = 'Проверяю…';
+    try {
+      await check(t);
+    } catch (e) {
+      toast(e.kind === 'auth' ? 'Токен не подошёл. ' + e.message : e.message, 5000);
+    } finally {
+      go.disabled = false;
+      go.textContent = 'Войти по токену';
+    }
+  };
+  return h('div', { class: 'token-box' }, h('div', { class: 'token-row' }, input, showBtn), go);
+}
+
+const SERVICE_INFO = {
+  zvuk: {
+    title: 'Звук',
+    color: '#8a5cff',
+    login: 'Войти через Сбер ID или телефон',
+    about: 'Откроется сайт Звука прямо в приложении — войди как обычно (Сбер ID, СберБум или номер телефона) и нажми «Готово».',
+    guest: 'Без входа работают поиск и прослушивание, но без твоих плейлистов и лайков.',
+    tokenHelp: 'Токен — строка "token" со страницы zvuk.com/api/tiny/profile в браузере, где ты вошёл в Звук.',
+  },
+  yandex: {
+    title: 'Яндекс Музыка',
+    color: '#ffcc33',
+    login: 'Войти через Яндекс ID',
+    about: 'Откроется вход Яндекса прямо в приложении — войди и подтверди, окно закроется само.',
+    guest: 'Нужен аккаунт Яндекса. С Плюсом треки играют целиком, без него — только отрывки.',
+    tokenHelp: 'Токен Яндекс Музыки (OAuth), если вход на странице не сработал.',
+  },
+};
+
+function serviceCard(svc, rerender) {
+  const info = SERVICE_INFO[svc];
+  const logged = accounts.loggedIn(svc);
+  const busy = accounts.isBusy(svc);
+  const head = h('div', { class: 'service-head', style: { '--src': info.color } }, h('div', { class: 'service-dot' }), h('div', { class: 'service-name' }, info.title));
+  if (logged) {
+    const who =
+      svc === 'yandex'
+        ? [settings.yaName || settings.yaLogin, settings.yaPlus ? 'Плюс есть' : 'без Плюса — только отрывки'].filter(Boolean).join(' · ')
+        : 'плейлисты, лайки и подписка';
+    return h(
+      'div',
+      { class: 'card-box service-card' },
+      head,
+      h('div', { class: 'status ok' }, icon('check', 20), 'Подключено'),
+      h('div', { class: 'muted small' }, who),
+      h(
+        'button',
+        {
+          class: 'btn btn-ghost',
+          onclick: async () => {
+            if (await confirmSheet(`Выйти из «${info.title}»?`, 'Вход удалится с телефона. MP3 и твои плейлисты останутся.', 'Выйти')) {
+              await accounts.disconnect(svc);
+              rerender();
+            }
+          },
+        },
+        'Выйти'
+      )
+    );
+  }
+  const loginBtn = h(
+    'button',
+    {
+      class: 'btn btn-primary',
+      disabled: busy,
+      onclick: async () => {
+        if (await accounts.connect(svc)) rerender();
+      },
+    },
+    busy ? 'Вход…' : info.login
+  );
+  const check =
+    svc === 'zvuk'
+      ? async (t) => {
+          await zvuk.checkToken(t);
+          saveSettings({ token: t });
+          toast('Готово, Звук подключён');
+          accounts.notify(svc);
+          rerender();
+        }
+      : async (t) => {
+          await ya.loginWithToken(t);
+          toast('Готово, Яндекс Музыка подключена');
+          accounts.notify(svc);
+          rerender();
+        };
+  return h(
+    'div',
+    { class: 'card-box service-card' },
+    head,
+    h('div', { class: 'muted small' }, info.guest),
+    loginBtn,
+    h('div', { class: 'muted small' }, info.about),
+    h('details', { class: 'more' }, h('summary', null, 'Не получается войти?'), h('div', { class: 'muted small' }, info.tokenHelp), tokenForm('Вставь токен сюда', check))
+  );
+}
+
+// With both services connected: which one search, the feed and matching use.
+function mainServiceCard(rerender) {
+  const c = online.connected();
+  if (c.length < 2) return null;
+  const cur = online.primaryId();
+  return h(
+    'div',
+    { class: 'card-box' },
+    h('div', null, 'Главный сервис'),
+    h('div', { class: 'muted small' }, 'Через него идут поиск, лента и поиск треков из перенесённых плейлистов. Плейлисты обоих сервисов доступны всегда.'),
+    h(
+      'div',
+      { class: 'seg' },
+      c.map((svc) =>
+        h(
+          'button',
+          {
+            class: 'seg-btn' + (svc === cur ? ' active' : ''),
+            onclick: () => {
+              saveSettings({ primaryService: svc });
+              accounts.notify(svc);
+              rerender();
+            },
+          },
+          SERVICE_INFO[svc].title
+        )
+      )
+    )
+  );
+}
 
 export function profileView() {
   const el = nav.page({ title: 'Профиль' });
@@ -335,82 +490,8 @@ export function profileView() {
   const render = async () => {
     clear(body);
 
-    // --- Zvuk account ---
-    const logged = zvuk.isLoggedIn();
-    const tokenInput = h('input', { class: 'input', type: 'password', placeholder: 'Вставь токен сюда', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-    const showBtn = h('button', { class: 'btn btn-text small' }, 'Показать');
-    showBtn.onclick = () => {
-      const hidden = tokenInput.type === 'password';
-      tokenInput.type = hidden ? 'text' : 'password';
-      showBtn.textContent = hidden ? 'Скрыть' : 'Показать';
-    };
-    const saveBtn = h('button', { class: 'btn btn-primary' }, 'Войти');
-    saveBtn.onclick = async () => {
-      const t = tokenInput.value.trim().replace(/^"+|"+$/g, '');
-      if (!t) return toast('Сначала вставь токен');
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Проверяю…';
-      try {
-        await zvuk.checkToken(t);
-        saveSettings({ token: t });
-        save('feed', null);
-        await likedIds(true);
-        toast('Готово, Звук подключён');
-        render();
-      } catch (e) {
-        toast(e.kind === 'auth' ? 'Токен не подошёл. ' + e.message : e.message, 5000);
-      } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Войти';
-      }
-    };
-
-    const howTo = h(
-      'ol',
-      { class: 'howto' },
-      h('li', null, 'Открой zvuk.com в браузере на телефоне и войди в свой аккаунт.'),
-      h('li', null, 'Нажми кнопку «Открыть страницу токена» ниже — откроется страница с текстом.'),
-      h('li', null, 'Найди в тексте "token":"…" и скопируй то, что внутри кавычек после двоеточия.'),
-      h('li', null, 'Вернись сюда, вставь в поле и нажми «Войти».')
-    );
-
-    add(body, 
-      section(
-        'Звук',
-        null,
-        h(
-          'div',
-          { class: 'card-box' },
-          logged
-            ? [
-                h('div', { class: 'status ok' }, icon('check', 20), 'Аккаунт подключён'),
-                h('div', { class: 'muted small' }, 'Твои плейлисты, лайки и высокое качество (если есть подписка).'),
-                h(
-                  'button',
-                  {
-                    class: 'btn btn-ghost',
-                    onclick: async () => {
-                      if (await confirmSheet('Выйти из Звука?', 'Токен удалится с телефона. MP3 и твои плейлисты останутся.', 'Выйти')) {
-                        saveSettings({ token: '' });
-                        save('feed', null);
-                        render();
-                      }
-                    },
-                  },
-                  'Выйти'
-                ),
-              ]
-            : [
-                h('div', { class: 'status' }, 'Сейчас гостевой режим'),
-                h('div', { class: 'muted small' }, 'Поиск и прослушивание работают, но без твоих плейлистов и лайков. Для входа нужен токен — это ключ от твоего аккаунта, им ни с кем не делись.'),
-                howTo,
-                h('button', { class: 'btn btn-ghost', onclick: () => openExternal('https://zvuk.com/api/tiny/profile') }, icon('link', 20), 'Открыть страницу токена'),
-                h('div', { class: 'token-row' }, tokenInput, showBtn),
-                saveBtn,
-              ]
-        )
-      )
-    );
+    // --- music services ---
+    add(body, section('Сервисы', null, serviceCard('zvuk', render), serviceCard('yandex', render), mainServiceCard(render)));
 
     // --- playback ---
     add(body, 
@@ -421,7 +502,7 @@ export function profileView() {
           'div',
           { class: 'card-box' },
           toggleRow('Высокое качество', 'Если выключить, треки грузятся быстрее и тратят меньше трафика', settings.quality !== 'mid', (v) => saveSettings({ quality: v ? 'high' : 'mid' })),
-          toggleRow('Замена из другого источника', 'Нет трека в Звуке — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v }))
+          toggleRow('Замена из другого источника', 'Нет трека онлайн — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v }))
         )
       )
     );
@@ -511,6 +592,7 @@ export function profileView() {
     add(body, h('div', { class: 'list-meta center' }, `Резонанс ${VERSION}`));
   };
 
+  accounts.onAccountsChange(() => render());
   el._onShow = render;
   return el;
 }
