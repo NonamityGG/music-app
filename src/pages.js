@@ -6,11 +6,12 @@ import * as player from './player.js';
 import * as online from './online.js';
 import * as accounts from './accounts.js';
 import * as zvuk from './zvuk.js';
+import * as sp from './spotify.js';
 import { detectZvukLink, importZvukLink, importAllMine } from './zvuk-import.js';
 import * as pl from './playlists.js';
 import { localTracks, importFiles, removeLocal, onLocalChange } from './local.js';
 import { setFav, isFav } from './feed.js';
-import { logError } from './settings.js';
+import { logError, settings } from './settings.js';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { PLATFORMS, platformUrl } from './platforms.js';
 import { SOURCES, sourceById, importFromLink, parseTextList, parseExportFile, detectLink, ImportError } from './importers.js';
@@ -635,7 +636,10 @@ const HOWTO = {
     'Открой плейлист в Яндекс Музыке → «Поделиться» → «Скопировать ссылку».',
     'Плейлист должен быть открытым. «Мне нравится» обычно закрыт — его проще перенести списком или файлом.',
   ],
-  spotify: ['Открой плейлист → «Поделиться» → «Скопировать ссылку на плейлист».', 'Если Spotify не откроется, выгрузи плейлист в файл через любой сервис переноса и загрузи файл ниже.'],
+  spotify: [
+    'Открытый плейлист: «Поделиться» → «Скопировать ссылку на плейлист» и вставь сюда.',
+    'Или войди в Spotify ниже и перенеси все плейлисты разом, вместе с «Любимыми треками».',
+  ],
   vk: [
     'VK не отдаёт плейлисты по ссылке, поэтому переносим списком.',
     'На компьютере открой плейлист на vk.com, выдели все треки мышкой, скопируй и вставь сюда. Подойдёт и файл CSV/TXT из сервиса переноса.',
@@ -736,56 +740,82 @@ export function importPage(preselect = 'zvuk') {
       textArea,
       h('div', { class: 'row-start' }, go, h('button', { class: 'btn btn-ghost', onclick: () => fileInput.click() }, icon('folder', 20), 'Файл CSV/TXT')),
       status,
-      current === 'zvuk' ? zvukAllCard() : null,
+      current === 'zvuk' || current === 'spotify' ? allCard(current) : null,
       fileInput
     );
   };
 
-  // "All my playlists": sign in to Zvuk once, everything comes over in the background
-  let allRunning = false;
-  const zvukAllCard = () => {
-    const logged = zvuk.isLoggedIn();
-    const st = h('div', { class: 'import-status', hidden: !allRunning });
-    const btn = h('button', { class: 'btn btn-primary', disabled: allRunning }, allRunning ? 'Переношу…' : logged ? 'Перенести всё из Звука' : 'Войти в Звук и перенести всё');
+  // "All my playlists": sign in once (Zvuk or Spotify), everything comes over in the background
+  const ALL = {
+    zvuk: {
+      name: 'Звук',
+      logged: () => zvuk.isLoggedIn(),
+      run: importAllMine,
+      liked: '«Мне нравится»',
+      signIn: 'Войди в Звук прямо в приложении (Сбер ID или телефон) — перенесу все твои плейлисты и «Мне нравится».',
+      signedIn: 'Ты вошёл в Звук. Перенесу все твои плейлисты и «Мне нравится» — по одному, чтобы Звук не ругался.',
+      go: 'Перенести всё из Звука',
+      login: 'Войти в Звук и перенести всё',
+      out: 'Выйти из Звука',
+    },
+    spotify: {
+      name: 'Spotify',
+      logged: () => sp.isLoggedIn(),
+      run: sp.importAll,
+      signIn: 'Войди в Spotify прямо в приложении — перенесу все твои плейлисты и «Любимые треки». Сайт Spotify должен открываться (в России — обычно через VPN).',
+      signedIn: () => `Ты вошёл в Spotify${settings.spName && settings.spName !== 'Spotify' ? ' как ' + settings.spName : ''}. Перенесу все плейлисты и «Любимые треки».`,
+      go: 'Перенести всё из Spotify',
+      login: 'Войти в Spotify и перенести всё',
+      out: 'Выйти из Spotify',
+    },
+  };
+  let allRunning = '';
+  const allCard = (service) => {
+    const c = ALL[service];
+    const logged = c.logged();
+    const running = allRunning === service;
+    const st = h('div', { class: 'import-status', hidden: !running });
+    const btn = h('button', { class: 'btn btn-primary', disabled: !!allRunning }, running ? 'Переношу…' : logged ? c.go : c.login);
     btn.onclick = async () => {
       if (allRunning) return;
-      if (!zvuk.isLoggedIn() && !(await accounts.connect('zvuk'))) return;
-      allRunning = true;
+      if (!c.logged() && !(await accounts.connect(service))) return;
+      allRunning = service;
       btn.disabled = true;
       btn.textContent = 'Переношу…';
       st.hidden = false;
       st.classList.remove('error');
-      const skip = new Set(pl.playlistsFrom('zvuk').map((p) => p.origin).filter(Boolean));
+      const skip = new Set(pl.playlistsFrom(service).map((p) => p.origin).filter(Boolean));
       let made = 0;
       let tracks = 0;
       try {
-        await importAllMine({
+        await c.run({
           skip,
           onStep: (text) => (st.textContent = text),
           onList: (g) => {
-            const p = pl.createPlaylist(g.name, g.tracks, 'zvuk', { origin: g.origin });
+            const p = pl.createPlaylist(g.name, g.tracks, service, { origin: g.origin });
             queueMatch(p.id);
             made++;
             tracks += g.tracks.length;
           },
         });
-        st.textContent = made ? `Готово: плейлистов ${made}, треков ${tracks}. Ищу их в MP3 и Яндекс Музыке.` : 'Всё уже перенесено — новых плейлистов в Звуке нет.';
+        st.textContent = made ? `Готово: плейлистов ${made}, треков ${tracks}. Ищу их в MP3 и Яндекс Музыке.` : `Всё уже перенесено — новых плейлистов в ${service === 'zvuk' ? 'Звуке' : 'Spotify'} нет.`;
         toast(made ? `Перенесено плейлистов: ${made}` : 'Новых плейлистов нет');
       } catch (e) {
-        logError('zvuk:all', e);
+        logError(service + ':all', e);
         st.classList.add('error');
         st.textContent = (made ? `Успел перенести ${made}. ` : '') + (e.message || String(e)) + ' Нажми ещё раз позже — уже перенесённое не повторится.';
       } finally {
-        allRunning = false;
+        allRunning = '';
         btn.disabled = false;
-        btn.textContent = zvuk.isLoggedIn() ? 'Перенести всё из Звука' : 'Войти в Звук и перенести всё';
+        btn.textContent = c.logged() ? c.go : c.login;
       }
     };
+    const text = logged ? (typeof c.signedIn === 'function' ? c.signedIn() : c.signedIn) : c.signIn;
     return h(
       'div',
       { class: 'card-box import-all' },
       h('div', { class: 'import-all-title' }, 'Все плейлисты разом'),
-      h('div', { class: 'muted small' }, logged ? 'Ты вошёл в Звук. Перенесу все твои плейлисты и «Мне нравится» — по одному, чтобы Звук не ругался.' : 'Войди в Звук прямо в приложении (Сбер ID или телефон) — перенесу все твои плейлисты и «Мне нравится».'),
+      h('div', { class: 'muted small' }, text),
       btn,
       st,
       logged
@@ -794,11 +824,11 @@ export function importPage(preselect = 'zvuk') {
             {
               class: 'btn btn-text small',
               onclick: async () => {
-                await accounts.disconnect('zvuk');
+                await accounts.disconnect(service);
                 render();
               },
             },
-            'Выйти из Звука'
+            c.out
           )
         : null
     );

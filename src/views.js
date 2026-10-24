@@ -430,6 +430,51 @@ function serviceCard(svc, rerender) {
   );
 }
 
+// Accounts used only to bring playlists over: Zvuk and Spotify.
+function transferAccounts(rerender) {
+  const row = (svc, title, color, how) => {
+    const logged = accounts.loggedIn(svc);
+    const busy = accounts.isBusy(svc);
+    const who = svc === 'spotify' && settings.spName && settings.spName !== 'Spotify' ? settings.spName : '';
+    return h(
+      'div',
+      { class: 'acc-row' },
+      h('div', { class: 'service-dot', style: { '--src': color } }),
+      h('div', { class: 'acc-text' }, h('div', { class: 'acc-name' }, title), h('div', { class: 'muted small' }, logged ? 'вход выполнен' + (who ? ' · ' + who : '') : how)),
+      logged
+        ? h(
+            'button',
+            {
+              class: 'btn btn-ghost small-btn',
+              onclick: async () => {
+                await accounts.disconnect(svc);
+                rerender();
+              },
+            },
+            'Выйти'
+          )
+        : h(
+            'button',
+            {
+              class: 'btn btn-primary small-btn',
+              disabled: busy,
+              onclick: async () => {
+                if (await accounts.connect(svc)) rerender();
+              },
+            },
+            busy ? 'Вход…' : 'Войти'
+          )
+    );
+  };
+  return h(
+    'div',
+    { class: 'card-box' },
+    row('zvuk', 'Звук', '#8a5cff', 'Сбер ID или телефон'),
+    row('spotify', 'Spotify', '#1ed760', 'нужен открывающийся сайт Spotify'),
+    h('div', { class: 'muted small' }, 'Отсюда только переносятся плейлисты: Медиатека → «Перенести плейлист». Играет всё из твоих MP3 и Яндекс Музыки.')
+  );
+}
+
 // Theme cards: each one is a tiny mock of the app drawn with that theme's own colours.
 function themePicker() {
   const grid = h('div', { class: 'theme-grid' });
@@ -484,6 +529,7 @@ export function profileView() {
 
     // --- music services ---
     add(body, section('Музыка онлайн', null, serviceCard('yandex', render)));
+    add(body, section('Перенос плейлистов', null, transferAccounts(render)));
 
     // --- look ---
     add(body, section('Оформление', null, themePicker()));
@@ -497,7 +543,9 @@ export function profileView() {
           'div',
           { class: 'card-box' },
           toggleRow('Высокое качество', 'Если выключить, треки грузятся быстрее и тратят меньше трафика', settings.quality !== 'mid', (v) => saveSettings({ quality: v ? 'high' : 'mid' })),
-          toggleRow('Замена из другого источника', 'Нет трека онлайн — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v }))
+          toggleRow('Замена из другого источника', 'Нет трека онлайн — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v })),
+          toggleRow('Без пауз между треками', 'Следующий трек заранее загружается и начинается ровно в момент, когда закончился текущий', settings.gapless !== false, (v) => saveSettings({ gapless: v })),
+          toggleRow('Бесконечная музыка', 'Когда плейлист закончится, продолжит играть похожая музыка', settings.endless !== false, (v) => saveSettings({ endless: v }))
         )
       )
     );

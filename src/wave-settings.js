@@ -1,6 +1,8 @@
-// Picker for wave style and colours, used in the profile and in the player.
+// Picker for wave style, colours and mode, used in the profile and in the player.
+// Built once; a tap only moves the marks (rebuilding it redrew seven preview
+// canvases at once, which is what made switching stutter).
 
-import { h, icon, clear } from './util.js';
+import { h, icon } from './util.js';
 import { settings, saveSettings } from './settings.js';
 import { STYLES, PALETTES, renderPreview, configure } from './waves.js';
 import { waveStatus, setWaveMode } from './player.js';
@@ -9,124 +11,129 @@ export function applyWaveSettings() {
   configure({ style: settings.wavesStyle, palette: settings.wavesPalette });
 }
 
+const check = (size) => h('span', { class: 'tile-check', 'aria-hidden': 'true' }, icon('check', size));
+
 export function wavesPicker() {
   const root = h('div', { class: 'wave-picker' });
-  let gen = 0;
 
-  const render = () => {
-    const my = ++gen;
-    clear(root);
-    const grid = h('div', { class: 'wave-grid' });
-    const canvases = [];
-    for (const st of STYLES) {
-      const cv = h('canvas', { class: 'wave-thumb' });
-      canvases.push([cv, st.id]);
-      grid.appendChild(
-        h(
-          'button',
-          {
-            class: 'wave-tile' + (settings.wavesStyle === st.id ? ' active' : ''),
-            'aria-pressed': settings.wavesStyle === st.id ? 'true' : 'false',
-            onclick: () => {
-              saveSettings({ wavesStyle: st.id });
-              applyWaveSettings();
-              render();
-            },
-          },
-          cv,
-          h('span', null, st.name),
-          settings.wavesStyle === st.id ? h('span', { class: 'tile-check', 'aria-hidden': 'true' }, icon('check', 14)) : null
-        )
-      );
+  // --- mode ---
+  const modeBtns = [
+    [true, 'Слышат музыку'],
+    [false, 'Простой режим'],
+  ].map(([v, label]) => {
+    const b = h('button', { class: 'seg-btn' }, label);
+    b.onclick = () => {
+      if ((settings.wavesReactive !== false) === v) return;
+      markMode(v);
+      // let the marks move first, then switch the sound over
+      requestAnimationFrame(() => setTimeout(() => setWaveMode(v), 0));
+    };
+    b._v = v;
+    return b;
+  });
+  const mode = h('div', { class: 'seg wave-mode' }, modeBtns);
+  const hint = h('div', { class: 'muted small' });
+  function markMode(v = settings.wavesReactive !== false) {
+    for (const b of modeBtns) {
+      b.classList.toggle('active', b._v === v);
+      b.setAttribute('aria-pressed', b._v === v ? 'true' : 'false');
     }
-    grid.appendChild(
-      h(
-        'button',
-        {
-          class: 'wave-tile wave-off' + (settings.wavesStyle === 'off' ? ' active' : ''),
-          'aria-pressed': settings.wavesStyle === 'off' ? 'true' : 'false',
-          onclick: () => {
-            saveSettings({ wavesStyle: 'off' });
-            applyWaveSettings();
-            render();
-          },
-        },
-        h('div', { class: 'wave-thumb wave-thumb-off' }, icon('close', 26)),
-        h('span', null, 'Выключить'),
-        settings.wavesStyle === 'off' ? h('span', { class: 'tile-check', 'aria-hidden': 'true' }, icon('check', 14)) : null
-      )
-    );
+    hint.textContent = v ? 'Волны берут ритм из самого трека.' : 'Волны двигаются сами, звук идёт напрямую — выбирай, если при выключенном экране обрывается музыка.';
+  }
 
-    const colors = h(
-      'div',
-      { class: 'palette-row' },
-      PALETTES.map((p) =>
-        h(
-          'button',
-          {
-            class: 'palette' + (settings.wavesPalette === p.id ? ' active' : ''),
-            'aria-pressed': settings.wavesPalette === p.id ? 'true' : 'false',
-            onclick: () => {
-              saveSettings({ wavesPalette: p.id });
-              applyWaveSettings();
-              render();
-            },
-          },
-          h('span', { class: 'palette-swatch', style: { background: `linear-gradient(135deg, ${p.colors.join(', ')})` } }, settings.wavesPalette === p.id ? icon('check', 18) : null),
-          h('span', null, p.name)
-        )
-      )
-    );
+  // --- styles ---
+  const tiles = [];
+  const grid = h('div', { class: 'wave-grid' });
+  for (const st of [...STYLES, { id: 'off', name: 'Выключить' }]) {
+    const thumb = st.id === 'off' ? h('div', { class: 'wave-thumb wave-thumb-off' }, icon('close', 26)) : h('canvas', { class: 'wave-thumb' });
+    const tile = h('button', { class: 'wave-tile' + (st.id === 'off' ? ' wave-off' : '') }, thumb, h('span', null, st.name));
+    tile._id = st.id;
+    tile._thumb = thumb;
+    tile.onclick = () => {
+      if (settings.wavesStyle === st.id) return;
+      saveSettings({ wavesStyle: st.id });
+      markStyle();
+      applyWaveSettings();
+    };
+    tiles.push(tile);
+    grid.appendChild(tile);
+  }
+  function markStyle() {
+    for (const t of tiles) {
+      const on = t._id === settings.wavesStyle;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const c = t.querySelector('.tile-check');
+      if (on && !c) t.appendChild(check(14));
+      if (!on && c) c.remove();
+    }
+  }
 
-    // listening to the track vs moving on their own
-    const reactive = settings.wavesReactive !== false;
-    const mode = h(
-      'div',
-      { class: 'seg wave-mode' },
-      [
-        [true, 'Слышат музыку'],
-        [false, 'Простой режим'],
-      ].map(([v, label]) =>
-        h(
-          'button',
-          {
-            class: 'seg-btn' + (reactive === v ? ' active' : ''),
-            'aria-pressed': reactive === v ? 'true' : 'false',
-            onclick: () => {
-              setWaveMode(v);
-              render();
-            },
-          },
-          label
-        )
-      )
-    );
-    const hint = h(
-      'div',
-      { class: 'muted small' },
-      reactive
-        ? 'Волны берут ритм из самого трека.'
-        : 'Волны двигаются сами, звук идёт напрямую — выбирай, если при выключенном экране обрывается музыка.'
-    );
-    const status = h('div', { class: 'wave-status' });
-    const tick = () => {
-      if (my !== gen || (!root.isConnected && tries > 0)) return;
-      status.textContent = waveStatus();
-      status.classList.toggle('ok', status.textContent === 'Волны слышат музыку');
-      setTimeout(tick, 1000);
+  // --- colours ---
+  const pals = PALETTES.map((p) => {
+    const sw = h('span', { class: 'palette-swatch', style: { background: `linear-gradient(135deg, ${p.colors.join(', ')})` } });
+    const b = h('button', { class: 'palette' }, sw, h('span', null, p.name));
+    b._id = p.id;
+    b._sw = sw;
+    b.onclick = () => {
+      if (settings.wavesPalette === p.id) return;
+      saveSettings({ wavesPalette: p.id });
+      markPalette();
+      applyWaveSettings();
+      paintPreviews();
     };
-    root.append(mode, hint, status, grid, colors);
-    // thumbnails need the layout, so draw them once the picker is on screen
-    let tries = 0;
-    const paint = () => {
-      if (!root.isConnected) return ++tries < 120 && requestAnimationFrame(paint);
-      for (const [cv, id] of canvases) renderPreview(cv, id, settings.wavesPalette);
-      tries = 1;
-      tick();
+    return b;
+  });
+  const colors = h('div', { class: 'palette-row' }, pals);
+  function markPalette() {
+    for (const b of pals) {
+      const on = b._id === settings.wavesPalette;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const svg = b._sw.querySelector('svg');
+      if (on && !svg) b._sw.appendChild(icon('check', 18));
+      if (!on && svg) svg.remove();
+    }
+  }
+
+  // previews are drawn one per frame, never all at once
+  let paintGen = 0;
+  function paintPreviews() {
+    const my = ++paintGen;
+    const list = tiles.filter((t) => t._id !== 'off');
+    let i = 0;
+    let waited = 0;
+    const step = () => {
+      if (my !== paintGen || i >= list.length) return;
+      if (!root.isConnected) return ++waited < 120 && requestAnimationFrame(step); // wait until on screen
+      renderPreview(list[i]._thumb, list[i]._id, settings.wavesPalette);
+      i++;
+      requestAnimationFrame(step);
     };
-    requestAnimationFrame(paint);
+    requestAnimationFrame(step);
+  }
+
+  // --- status line ---
+  const status = h('div', { class: 'wave-status' });
+  let ticks = 0;
+  const tick = () => {
+    if (!root.isConnected && ++ticks > 120) return;
+    if (root.isConnected) {
+      ticks = 0;
+      const text = waveStatus();
+      if (status.textContent !== text) {
+        status.textContent = text;
+        status.classList.toggle('ok', text === 'Волны слышат музыку');
+      }
+    }
+    setTimeout(tick, 1000);
   };
 
-  render();
+  root.append(mode, hint, status, grid, colors);
+  markMode();
+  markStyle();
+  markPalette();
+  paintPreviews();
+  tick();
   return root;
 }

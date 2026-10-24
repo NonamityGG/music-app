@@ -1,6 +1,10 @@
-// One player for every source. Zvuk tracks are streamed, local MP3s are read from
-// storage. If a track can't be played from its own source, the player looks for
-// the same song in the other one before giving up.
+// One player for every source: the user's MP3s are read from storage, other
+// songs stream from Yandex Music. If a track can't play from its own source, the
+// player looks for the same song in the other one before giving up.
+//
+// Two "decks", like a DJ's: while one plays, the next track waits fully loaded
+// on the other and starts the instant the first one ends — no gap. Each deck has
+// a plain element and an analysed one (connected to the waves).
 
 import { MediaSession } from '@capgo/capacitor-media-session';
 import { Capacitor } from '@capacitor/core';
@@ -9,19 +13,25 @@ import * as graph from './audio-graph.js';
 import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, saveSettings, logError, load, save } from './settings.js';
-import { shuffle as shuffled } from './util.js';
+import { shuffle as shuffled, fmtTime } from './util.js';
 import * as pl from './playlists.js';
 import { findOnline, onlinePatch } from './matcher.js';
 
-// Two elements: `fx` is connected to the analyser that drives the waves and only
-// ever gets same-origin sources; `plain` plays everything else directly.
-const plain = new Audio();
-const fx = new Audio();
-plain.preload = 'auto';
-fx.preload = 'auto';
-// lets the analyser read streams from hosts that allow it (see checkCors)
-fx.crossOrigin = 'anonymous';
-let audio = plain;
+function makeDeck() {
+  const plain = new Audio();
+  const fx = new Audio();
+  plain.preload = 'auto';
+  fx.preload = 'auto';
+  // lets the analyser read streams from hosts that allow it (see checkCors)
+  fx.crossOrigin = 'anonymous';
+  return { plain, fx };
+}
+const decks = [makeDeck(), makeDeck()];
+const allElements = decks.flatMap((d) => [d.plain, d.fx]);
+const isFx = (el) => decks.some((d) => d.fx === el);
+
+let deck = 0; // the deck that plays now
+let audio = decks[0].plain;
 let fxBroken = false; // once the analyser path fails, this session plays everything directly
 let attachFailed = false; // the phone refused the analyser altogether
 let trackBypass = false; // this track only plays directly (e.g. the analyser heard nothing)
@@ -29,6 +39,7 @@ let fxReason = '';
 let directUrl = ''; // the real source of the current track
 let curRef = null; // { p, id } of the online stream that is playing (the track itself or its replacement)
 let streamAttempts = 0;
+let truncTries = 0;
 
 export const state = {
   queue: [],
@@ -40,7 +51,7 @@ export const state = {
   loading: false,
   via: '', // where the current track actually plays from
   error: '',
-  waitingUntil: 0, // set while waiting for Zvuk to let the app back in
+  waitingUntil: 0, // set while waiting for a service to let the app back in
 };
 
 const listeners = new Set();
@@ -60,7 +71,18 @@ function emit(type, data) {
 
 export const current = () => state.queue[state.index] || null;
 export const position = () => audio.currentTime || 0;
-export const duration = () => (isFinite(audio.duration) && audio.duration > 0 ? audio.duration : (current() && current().duration) || 0);
+
+// The length to show. A stream's own estimate can be far off (some MP3s report
+// twice their length until fully loaded), so for online tracks the catalogue's
+// length wins when the two disagree.
+export const duration = () => {
+  const el = isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+  const t = current();
+  const cat = (t && t.duration) || 0;
+  if (!el) return cat;
+  if (cat && String(state.via).startsWith('online') && Math.abs(el - cat) > 3) return cat;
+  return el;
+};
 
 let objectUrl = '';
 let loadSeq = 0;
@@ -68,12 +90,23 @@ let failStreak = 0;
 let waitCount = 0;
 
 function setObjectUrl(url) {
-  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  if (objectUrl && objectUrl !== url) URL.revokeObjectURL(objectUrl);
   objectUrl = url;
 }
 
+// An element that is no longer needed: silence it now, unload it a moment later
+// (unloading at once blocks the screen for a few frames on some phones).
+function retire(el) {
+  el.pause();
+  setTimeout(() => {
+    if (el === audio || (armed && armed.el === el) || (handing && handing.el === el)) return;
+    el.removeAttribute('src');
+    el.load();
+  }, 600);
+}
+
 // ---------- source resolution ----------
-// Order for every song: the user's MP3, then Zvuk. Zvuk stays in the background.
+// Order for every song: the user's MP3, then Yandex Music.
 
 async function localMatch(track) {
   const all = await localTracks();
@@ -91,8 +124,8 @@ async function localSource(track) {
   return blob ? { url: URL.createObjectURL(blob), via: 'local', match: m } : null;
 }
 
-// Online stream for a track: its own service if usable, otherwise a search on
-// the main connected service (remembered in the playlist for next time).
+// Online stream for a track: its own service if usable, otherwise a search
+// (remembered in the playlist for next time).
 async function refFor(track) {
   const own = online.refOf(track);
   if (own && online.usable(own.p)) return own;
@@ -105,6 +138,7 @@ async function refFor(track) {
     track.yid = z.yid;
     track.cover = track.cover || z.cover;
   }
+  if (!track.duration && z.duration) track.duration = z.duration;
   return online.refOf(z);
 }
 
@@ -134,9 +168,7 @@ async function resolve(track) {
 
 // ---------- getting the next tracks ready ----------
 // Right after a track starts, the app prepares the next one completely (for an
-// online track it downloads the audio) and finds the links for two more. When the
-// track ends or you press "next", the prepared one starts at once, with no
-// request to Zvuk at all — so a short block by Zvuk's protection goes unnoticed too.
+// online track it downloads the audio) and finds the links for two more.
 
 const ahead = new Map(); // track key -> { ref, url, urlAt, blob, loading, local }
 const LINK_TTL = 10 * 60 * 1000;
@@ -181,13 +213,13 @@ function upcoming(n) {
 }
 
 async function prepareAhead() {
-  if (online.blocked()) return schedulePreload(online.blockedRemaining() + 3000);
   const seq = loadSeq;
   const next = upcoming(3);
   const keep = new Set(next.map((t) => t.key));
   for (let k = 0; k < next.length; k++) {
     const t = next[k];
     if (!t || t.src === 'local' || t.unavailable) continue;
+    if (armed && armed.key === t.key) continue; // already waiting on the other deck
     const p = ahead.get(t.key) || {};
     ahead.set(t.key, p);
     try {
@@ -211,7 +243,7 @@ async function prepareAhead() {
     if (k === 0 && !p.blob && !p.loading && Capacitor.isNativePlatform()) {
       p.loading = true;
       try {
-        const r = await fetch(proxied(p.url));
+        const r = await fetch(proxied(p.url)); // streamed by the app's proxy, not through the JS bridge
         if (r.ok) {
           const blob = await r.blob();
           if (blob.size > 50000 && ahead.get(t.key) === p) p.blob = blob;
@@ -282,37 +314,42 @@ function proxied(url) {
   return base.toString();
 }
 
-function setSource(url) {
-  directUrl = url;
-  let el = plain;
+// Which element of deck `d` should play `url`, and with what address.
+function pick(d, url) {
+  const dk = decks[d];
+  let el = dk.plain;
   let src = url;
   if (wantFx()) {
-    if (url.startsWith('blob:')) el = fx;
+    if (url.startsWith('blob:')) el = dk.fx;
     else if (Capacitor.isNativePlatform() && /^https?:/.test(url)) {
-      el = fx;
+      el = dk.fx;
       src = corsKnownOk(url) ? url : proxied(url);
     }
   }
-  if (el === fx && !graph.attach(fx)) {
+  if (el === dk.fx && !graph.attach(dk.fx)) {
     fxBroken = true;
     attachFailed = true;
     fxReason = 'телефон не дал подключиться к звуку';
-    el = plain;
+    el = dk.plain;
     src = url;
   }
+  return { el, src };
+}
+
+// Puts `url` on the current deck (a hard switch: used when loading a track).
+function setSource(url) {
+  directUrl = url;
+  const { el, src } = pick(deck, url);
   if (el !== audio) {
-    audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
+    retire(audio);
     audio = el;
   }
   audio.src = src;
-  if (audio === fx) graph.resume();
+  if (isFx(audio)) graph.resume();
 }
 
-function seekWhenReady(at) {
+function seekWhenReady(at, el = audio) {
   if (!(at > 0)) return;
-  const el = audio;
   const go = () => {
     try {
       el.currentTime = at;
@@ -322,8 +359,80 @@ function seekWhenReady(at) {
   else el.addEventListener('loadedmetadata', go, { once: true });
 }
 
+// Moves the playing track to the other element of the same deck without a gap:
+// the new one loads and starts at the same moment, and only then the old one
+// stops. Used when the waves mode changes or the analyser gives up.
+let handing = null;
+function handOver(url) {
+  const { el, src } = pick(deck, url);
+  if (el === audio) return;
+  const old = audio;
+  if (old.paused) {
+    directUrl = url;
+    const at = old.currentTime;
+    retire(old);
+    audio = el;
+    el.src = src;
+    seekWhenReady(at, el);
+    emit('state');
+    return;
+  }
+  const h = { el, done: false };
+  handing = h;
+  const giveUp = setTimeout(() => finish(false), 7000);
+  const cleanup = () => {
+    el.removeEventListener('loadedmetadata', onMeta);
+    el.removeEventListener('seeked', onSeeked);
+    el.removeEventListener('error', onFail);
+  };
+  function finish(ok) {
+    if (h.done) return;
+    h.done = true;
+    clearTimeout(giveUp);
+    cleanup();
+    if (handing === h) handing = null;
+    if (!ok) {
+      // fall back to a plain switch
+      const at = old.currentTime;
+      directUrl = url;
+      retire(old);
+      audio = el;
+      el.src = src;
+      seekWhenReady(at, el);
+      el.play().catch((e) => logError('handover', e));
+      emit('state');
+      return;
+    }
+    directUrl = url;
+    audio = el;
+    if (isFx(el)) graph.resume();
+    retire(old);
+    emit('state');
+  }
+  function onMeta() {
+    try {
+      el.currentTime = old.currentTime + 0.12; // it takes a moment to start
+    } catch {
+      finish(false);
+    }
+  }
+  function onSeeked() {
+    el.play()
+      .then(() => finish(true))
+      .catch(() => finish(false));
+  }
+  function onFail() {
+    finish(false);
+  }
+  el.addEventListener('loadedmetadata', onMeta, { once: true });
+  el.addEventListener('seeked', onSeeked, { once: true });
+  el.addEventListener('error', onFail, { once: true });
+  el.src = src;
+  el.load();
+}
+
 // True when the waves can use the real sound of the current track.
-export const analysing = () => audio === fx && graph.state() === 'running';
+export const analysing = () => isFx(audio) && graph.state() === 'running';
 
 // One line for the settings screen: do the waves hear the music right now, and if not, why.
 export function waveStatus() {
@@ -332,7 +441,7 @@ export function waveStatus() {
   if (!current() || !state.playing) return 'Включи трек — здесь будет видно, слышат ли волны музыку';
   if (analysing()) return 'Волны слышат музыку';
   if (fxBroken || trackBypass) return 'Простой режим: ' + (fxReason || 'анализатор недоступен');
-  if (audio === plain) return 'Простой режим для этого трека';
+  if (!isFx(audio)) return 'Простой режим для этого трека';
   return 'Подключаю волны к звуку… (' + graph.state() + ')';
 }
 
@@ -340,23 +449,19 @@ export function waveStatus() {
 // silent. scope 'track': only this track; 'session': until the app restarts or the
 // user switches the waves back to listening.
 export function bypassAnalyser(reason, scope = 'track') {
-  if (audio !== fx) return;
+  if (!isFx(audio)) return;
   if (scope === 'session') fxBroken = true;
   else trackBypass = true;
   fxReason = reason;
   logError('waves', new Error(reason));
-  const at = audio.currentTime;
-  const wasPlaying = !audio.paused;
-  setSource(directUrl);
-  seekWhenReady(at);
-  if (wasPlaying) audio.play().catch((e) => logError('bypass', e));
+  handOver(directUrl);
 }
 
 // The waves report that the analyser hears nothing. Only give up on it when the
 // track is really moving forward (not buffering, not a quiet intro after a seek).
 let silentMark = null;
 export function reportSilence() {
-  if (audio !== fx || audio.paused || audio.seeking || audio.readyState < 3) {
+  if (!isFx(audio) || audio.paused || audio.seeking || audio.readyState < 3) {
     silentMark = null;
     return;
   }
@@ -372,7 +477,8 @@ export function reportSilence() {
   }
 }
 
-// The switch "Слышат музыку / Простой режим". Applies to the playing track at once.
+// The switch "Слышат музыку / Простой режим". Applies to the playing track at
+// once, without a gap in the sound.
 export function setWaveMode(reactive) {
   saveSettings({ wavesReactive: reactive });
   if (reactive) {
@@ -380,22 +486,20 @@ export function setWaveMode(reactive) {
     trackBypass = false;
     fxReason = '';
   }
+  disarm(); // the waiting next track was prepared for the old mode
   if (!directUrl || !current()) return;
   const want = wantFx();
-  if (want === (audio === fx)) return;
+  if (want === isFx(audio)) return;
   const routable = directUrl.startsWith('blob:') || (Capacitor.isNativePlatform() && /^https?:/.test(directUrl));
   if (want && !routable) return;
-  const at = audio.currentTime;
-  const wasPlaying = !audio.paused;
-  setSource(directUrl);
-  seekWhenReady(at);
-  if (wasPlaying) audio.play().catch((e) => logError('wave-mode', e));
+  handOver(directUrl);
 }
 
 // ---------- playback ----------
 
 async function load_(index, autoplay = true, auto = false) {
   const seq = ++loadSeq;
+  disarm();
   state.index = index;
   const track = current();
   if (!track) return;
@@ -403,6 +507,7 @@ async function load_(index, autoplay = true, auto = false) {
   state.error = '';
   state.via = '';
   streamAttempts = 0;
+  truncTries = 0;
   curRef = null;
   trackBypass = false;
   silentMark = null;
@@ -430,6 +535,7 @@ async function load_(index, autoplay = true, auto = false) {
     waitCount = 0;
     state.waitingUntil = 0;
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
+    maybeExtend();
   } catch (e) {
     if (seq !== loadSeq) return;
     if ((e.kind === 'bot' || e.kind === 'rate') && waitOut(track, index, auto, seq)) return;
@@ -454,10 +560,9 @@ async function load_(index, autoplay = true, auto = false) {
   }
 }
 
-// Zvuk has blocked the app for a moment and this track has neither a preloaded
-// copy nor an MP3. Everything stays inside the app: on automatic track changes,
-// jump to the next track that can play without Zvuk; otherwise wait quietly and
-// start this track as soon as the block is over.
+// A service has blocked the app for a moment and this track has neither a
+// preloaded copy nor an MP3: on automatic track changes, jump to the next track
+// that can play anyway; otherwise wait quietly and start this one afterwards.
 function waitOut(track, index, auto, seq) {
   if (auto) {
     const n = state.queue.findIndex((t, i) => i > index && (t.src === 'local' || hasPreloadedAudio(t)));
@@ -494,6 +599,13 @@ function hasNext() {
   return state.index < state.queue.length - 1 || state.repeat === 'all';
 }
 
+// The track that plays when this one ends by itself, or -1.
+function autoNextIndex() {
+  if (state.index < state.queue.length - 1) return state.index + 1;
+  if (state.repeat === 'all' && state.queue.length > 1) return 0;
+  return -1;
+}
+
 export function playQueue(tracks, startIndex = 0, opts = {}) {
   const list = tracks.filter(Boolean).map((t) => ({ ...t }));
   if (!list.length) return;
@@ -509,6 +621,7 @@ export function playQueue(tracks, startIndex = 0, opts = {}) {
     state.queue = list;
   }
   failStreak = 0;
+  endlessNoted = false;
   saveQueue();
   load_(Math.max(0, Math.min(startIndex, state.queue.length - 1)));
 }
@@ -516,6 +629,11 @@ export function playQueue(tracks, startIndex = 0, opts = {}) {
 export function playAt(index, auto = false) {
   if (index < 0 || index >= state.queue.length) return;
   if (!auto) failStreak = 0;
+  // the next track already waiting on the other deck starts at once
+  if (armed && armed.index === index && armed.ready) {
+    startArmed();
+    return;
+  }
   load_(index, true, auto);
   saveQueue();
 }
@@ -529,22 +647,35 @@ export function toggle() {
 export function resume() {
   if (!current()) return;
   if (!audio.getAttribute('src')) return load_(state.index);
-  if (audio === fx) graph.resume();
+  if (isFx(audio)) graph.resume();
   audio.play().catch((e) => {
     if (e && e.name === 'AbortError') return; // a quick pause right after play: nothing broke
     logError('resume', e);
-    load_(state.index); // stream URL may have expired
+    load_(state.index); // the stream link may have expired
   });
 }
 
 export function pause() {
+  clearTimeout(earlyTimer);
+  earlyTimer = 0;
   audio.pause();
 }
 
 export function next(auto = false) {
   if (!state.queue.length) return;
   if (state.index < state.queue.length - 1) return playAt(state.index + 1, auto);
-  if (state.repeat === 'all' || !auto) return playAt(0, auto);
+  // the end of the queue
+  if (state.repeat === 'all') return playAt(0, auto);
+  if (settings.endless) {
+    // carry on with similar music
+    extendQueue().then((added) => {
+      if (added) playAt(state.index + 1, true);
+      else if (auto) pause();
+      else playAt(0, false);
+    });
+    return;
+  }
+  if (!auto) return playAt(0, false);
   pause();
 }
 
@@ -557,6 +688,181 @@ export function prev() {
   playAt(state.index > 0 ? state.index - 1 : state.repeat === 'all' ? state.queue.length - 1 : 0);
 }
 
+// ---------- the next track, waiting on the other deck ----------
+
+let armed = null; // { index, key, d, el, url, via, ref, blobUrl, match, ready }
+let arming = false;
+let earlyTimer = 0;
+
+function disarm() {
+  clearTimeout(earlyTimer);
+  earlyTimer = 0;
+  if (!armed) return;
+  const a = armed;
+  armed = null;
+  a.el.pause();
+  a.el.removeAttribute('src');
+  a.el.load();
+  if (a.blobUrl) URL.revokeObjectURL(a.blobUrl);
+}
+
+async function arm() {
+  if (armed || arming || settings.gapless === false || state.repeat === 'one') return;
+  const ni = autoNextIndex();
+  const t = ni >= 0 ? state.queue[ni] : null;
+  if (!t || t.unavailable) return;
+  arming = true;
+  const seq = loadSeq;
+  try {
+    const src = await resolve(t);
+    if (seq !== loadSeq || autoNextIndex() !== ni || state.queue[ni] !== t) {
+      if (src.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
+      return;
+    }
+    if (wantFx() && Capacitor.isNativePlatform() && /^https?:/.test(src.url)) await checkCors(src.url);
+    if (seq !== loadSeq) {
+      if (src.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
+      return;
+    }
+    const d = 1 - deck;
+    const { el, src: s } = pick(d, src.url);
+    const a = { index: ni, key: t.key, d, el, url: src.url, via: src.via, ref: src.ref || null, blobUrl: src.url.startsWith('blob:') ? src.url : '', match: src.match, ready: false };
+    armed = a;
+    el.src = s;
+    el.load();
+    el.addEventListener('canplaythrough', () => (a.ready = true), { once: true });
+    el.addEventListener('canplay', () => (a.ready = true), { once: true });
+    el.addEventListener(
+      'error',
+      () => {
+        if (armed === a) disarm();
+      },
+      { once: true }
+    );
+  } catch {
+    // it will be loaded the usual way when its turn comes
+  } finally {
+    arming = false;
+  }
+}
+
+// The waiting track takes over — instantly, it is already loaded.
+function startArmed() {
+  const a = armed;
+  armed = null;
+  clearTimeout(earlyTimer);
+  earlyTimer = 0;
+  ++loadSeq;
+  const old = audio;
+  const oldBlob = objectUrl;
+  deck = a.d;
+  audio = a.el;
+  directUrl = a.url;
+  objectUrl = a.blobUrl;
+  curRef = a.ref;
+  streamAttempts = 0;
+  truncTries = 0;
+  trackBypass = false;
+  silentMark = null;
+  state.index = a.index;
+  state.via = a.via;
+  state.loading = false;
+  state.error = '';
+  state.waitingUntil = 0;
+  const track = current();
+  if (track) track.unavailable = false;
+  if (isFx(audio)) graph.resume();
+  audio.play().catch((e) => handlePlayError(e, loadSeq));
+  old.pause();
+  setTimeout(() => {
+    if (old !== audio && !(armed && armed.el === old)) {
+      old.removeAttribute('src');
+      old.load();
+    }
+    if (oldBlob && oldBlob !== objectUrl) URL.revokeObjectURL(oldBlob);
+  }, 600);
+  dropFullCopy();
+  failStreak = 0;
+  emit('track', track);
+  updateMetadata(track);
+  emit('state');
+  saveQueue();
+  if (a.via.endsWith('fallback')) emit('fallback', { track, via: a.via, match: a.match });
+  maybeExtend();
+}
+
+// Can the element's own length be trusted to the last fraction of a second?
+function lengthTrusted() {
+  const t = current();
+  const el = audio.duration;
+  return isFinite(el) && el > 0 && t && t.duration > 0 && Math.abs(el - t.duration) < 1.5;
+}
+
+// Called on every timeupdate: get the next track ready in time, and start it a
+// hair before the end so there is no gap at all.
+function gaplessTick() {
+  if (settings.gapless === false || audio.paused) return;
+  const el = audio.duration;
+  if (!isFinite(el) || el <= 0) return;
+  const rem = el - audio.currentTime;
+  if (!armed && !arming && rem < 25) arm();
+  if (armed && armed.ready && !earlyTimer && rem < 0.6 && rem > 0 && lengthTrusted() && armed.index === autoNextIndex()) {
+    earlyTimer = setTimeout(() => {
+      earlyTimer = 0;
+      if (armed && !audio.paused && armed.index === autoNextIndex()) startArmed();
+    }, Math.max(0, (rem - 0.06) * 1000));
+  }
+}
+
+// ---------- the end of the queue: endless music ----------
+
+let continuation = null; // async (recentTracks) => tracks
+let extending = null;
+let endlessNoted = false;
+
+export function setContinuation(fn) {
+  continuation = fn;
+}
+
+async function extendQueue() {
+  if (!continuation) return 0;
+  if (extending) return extending;
+  extending = (async () => {
+    try {
+      const have = new Set(state.queue.map((t) => t.key));
+      const recent = state.queue.slice(Math.max(0, state.index - 8), state.index + 1);
+      const more = ((await continuation(recent)) || []).filter((t) => t && !have.has(t.key)).slice(0, 25);
+      if (!more.length) return 0;
+      for (const t of more) state.queue.push({ ...t, auto: true });
+      if (state.original) state.original.push(...more.map((t) => ({ ...t, auto: true })));
+      saveQueue();
+      emit('queue');
+      schedulePreload(500);
+      return more.length;
+    } catch (e) {
+      logError('endless', e);
+      return 0;
+    } finally {
+      setTimeout(() => (extending = null), 0);
+    }
+  })();
+  return extending;
+}
+
+// Near the end of the queue, fetch what comes next in advance (so it can be
+// prepared and start without a gap too).
+function maybeExtend() {
+  if (!settings.endless || state.repeat !== 'off') return;
+  if (state.queue.length - 1 - state.index > 1) return;
+  extendQueue();
+}
+
+export function endlessStarted(track) {
+  if (!track || !track.auto || endlessNoted) return false;
+  endlessNoted = true;
+  return true;
+}
+
 // ---------- seeking a stream that goes through the proxy ----------
 
 let fullCopy = null; // { key, url, loading } — the whole current track, downloaded in the background
@@ -566,7 +872,7 @@ function dropFullCopy() {
   fullCopy = null;
 }
 
-const viaProxyNow = () => audio === fx && String(audio.src).includes('_capacitor_http_interceptor_');
+const viaProxyNow = () => isFx(audio) && String(audio.src).includes('_capacitor_http_interceptor_');
 
 function isBuffered(t) {
   const b = audio.buffered;
@@ -574,8 +880,8 @@ function isBuffered(t) {
   return false;
 }
 
-// Starts downloading the whole track while it plays, so a jump far ahead can
-// switch to the downloaded copy.
+// Downloads the whole track while it plays, so a jump far ahead (or a stream that
+// breaks off) can switch to the downloaded copy.
 function startFullCopy() {
   const track = current();
   if (!track || !viaProxyNow() || (fullCopy && fullCopy.key === track.key)) return;
@@ -601,6 +907,8 @@ function moveTo(url, at, wasPlaying) {
 
 export function seek(sec) {
   if (!isFinite(sec)) return;
+  clearTimeout(earlyTimer);
+  earlyTimer = 0;
   const t = Math.max(0, Math.min(sec, duration() || sec));
   if (viaProxyNow() && !isBuffered(t)) {
     // the proxy can't jump into the part of the file it hasn't loaded yet
@@ -625,6 +933,42 @@ export function seek(sec) {
   pushPosition();
 }
 
+// The track "ended" long before its real length: the stream broke off. Carry on
+// from the same place instead of skipping the rest of the song.
+function recoverTruncated() {
+  const t = current();
+  const exp = t && t.duration;
+  const pos = audio.currentTime;
+  if (!exp || pos > exp - 6 || truncTries >= 2 || !String(state.via).startsWith('online')) return false;
+  // a file that really is that short (a 30-second preview without Plus) ended normally
+  if (isFinite(audio.duration) && audio.duration > 0 && pos >= audio.duration - 6) return false;
+  truncTries++;
+  logError('stream', new Error(`Поток оборвался на ${fmtTime(pos)} из ${fmtTime(exp)} — продолжаю с того же места`));
+  if (fullCopy && fullCopy.url && fullCopy.key === t.key) {
+    const u = fullCopy.url;
+    fullCopy = null;
+    setObjectUrl(u);
+    moveTo(u, pos, true);
+    return true;
+  }
+  if (curRef) {
+    const seq = loadSeq;
+    online
+      .streamFor(curRef)
+      .then((url) => {
+        if (seq !== loadSeq) return;
+        trackBypass = true; // straight from the host this time
+        fxReason = 'поток прервался';
+        moveTo(url, pos, true);
+      })
+      .catch(() => {
+        if (seq === loadSeq) next(true);
+      });
+    return true;
+  }
+  return false;
+}
+
 export function setShuffle(on) {
   const cur = current();
   if (on === state.shuffle || !cur) {
@@ -632,6 +976,7 @@ export function setShuffle(on) {
     emit('state');
     return;
   }
+  disarm();
   if (on) {
     state.original = state.queue.slice();
     const rest = shuffled(state.queue.filter((_, i) => i !== state.index));
@@ -652,12 +997,15 @@ export function setShuffle(on) {
 
 export function cycleRepeat() {
   state.repeat = state.repeat === 'off' ? 'all' : state.repeat === 'all' ? 'one' : 'off';
+  disarm();
   saveQueue();
   emit('state');
+  maybeExtend();
 }
 
 export function playNext(track) {
   if (!current()) return playQueue([track]);
+  disarm();
   state.queue.splice(state.index + 1, 0, { ...track });
   if (state.original) state.original.push({ ...track });
   saveQueue();
@@ -667,6 +1015,7 @@ export function playNext(track) {
 
 export function addToQueue(track) {
   if (!current()) return playQueue([track]);
+  if (armed && autoNextIndex() === -1) disarm();
   state.queue.push({ ...track });
   if (state.original) state.original.push({ ...track });
   saveQueue();
@@ -675,6 +1024,7 @@ export function addToQueue(track) {
 
 export function removeFromQueue(i) {
   if (i === state.index || i < 0 || i >= state.queue.length) return;
+  disarm();
   state.queue.splice(i, 1);
   if (i < state.index) state.index--;
   saveQueue();
@@ -684,6 +1034,7 @@ export function removeFromQueue(i) {
 // ---------- audio element events ----------
 
 function setPlaying(p) {
+  if (state.playing === p) return;
   state.playing = p;
   emit('state');
   MediaSession.setPlaybackState({ playbackState: current() ? (p ? 'playing' : 'paused') : 'none' }).catch(() => {});
@@ -694,7 +1045,7 @@ const mine = (fn) => (e) => {
 };
 let lastPosPush = 0;
 
-for (const el of [plain, fx]) {
+for (const el of allElements) {
   el.addEventListener(
     'playing',
     mine(() => {
@@ -704,7 +1055,14 @@ for (const el of [plain, fx]) {
       setTimeout(startFullCopy, 1500);
     })
   );
-  el.addEventListener('pause', mine(() => setPlaying(false)));
+  el.addEventListener(
+    'pause',
+    mine(() => {
+      clearTimeout(earlyTimer);
+      earlyTimer = 0;
+      setPlaying(false);
+    })
+  );
   el.addEventListener(
     'ended',
     mine(() => {
@@ -713,6 +1071,8 @@ for (const el of [plain, fx]) {
         audio.play().catch(() => {});
         return;
       }
+      if (recoverTruncated()) return;
+      if (armed && armed.index === autoNextIndex()) return startArmed();
       next(true);
     })
   );
@@ -721,6 +1081,7 @@ for (const el of [plain, fx]) {
     'timeupdate',
     mine(() => {
       emit('time');
+      gaplessTick();
       if (Date.now() - lastPosPush > 5000) pushPosition();
     })
   );
@@ -738,10 +1099,10 @@ async function onError() {
   if (!track || !audio.getAttribute('src')) return;
   const seq = loadSeq;
   const code = audio.error ? audio.error.code : 0;
-  const viaProxy = audio === fx && !directUrl.startsWith('blob:');
+  const viaProxy = isFx(audio) && !directUrl.startsWith('blob:');
   logError('audio', new Error('Ошибка воспроизведения, код ' + code + (viaProxy ? ' (через прокси)' : '')));
-  // Zvuk stream links expire: fetch a fresh one, keeping the position. The second
-  // try skips the proxy in case the proxy itself is the problem.
+  // Stream links expire: fetch a fresh one, keeping the position. The second try
+  // skips the proxy in case the proxy itself is the problem.
   if (curRef && streamAttempts < 2) {
     streamAttempts++;
     if (streamAttempts === 2 && viaProxy) fxBroken = true;
@@ -756,7 +1117,7 @@ async function onError() {
     } catch (e) {
       logError('stream-retry', e);
     }
-  } else if (viaProxy === false && audio === fx && !fxBroken) {
+  } else if (viaProxy === false && isFx(audio) && !fxBroken) {
     // a local file failing on the analysed element: try it directly once
     const at = audio.currentTime;
     fxBroken = true;
@@ -775,7 +1136,7 @@ async function onError() {
 // up; if it refuses, continue the track without the analyser so music never stops.
 let ctxStalls = 0;
 setInterval(() => {
-  if (audio !== fx || audio.paused || fxBroken) {
+  if (!isFx(audio) || audio.paused || fxBroken) {
     ctxStalls = 0;
     return;
   }
@@ -787,7 +1148,7 @@ setInterval(() => {
   if (++ctxStalls >= 2) bypassAnalyser('звуковой движок телефона остановился', 'session');
 }, 2500);
 document.addEventListener('visibilitychange', () => {
-  if (audio === fx) graph.resume();
+  if (isFx(audio)) graph.resume();
 });
 
 function pushPosition() {
@@ -863,7 +1224,7 @@ export function restoreQueue() {
 
 window.addEventListener('online', () => emit('state'));
 
-// After the user passed a check or signed in: try the current track again.
+// After the user signed in: try the current track again.
 export function retryCurrent() {
   if (current()) load_(state.index, true, false);
 }

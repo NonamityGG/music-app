@@ -14,6 +14,7 @@ import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync,
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose } from './components.js';
 import { applyTheme } from './theme.js';
 import { createLyricsView } from './lyrics-view.js';
+import { moreLike } from './endless.js';
 import { onLocalChange } from './local.js';
 import { resumeMatching, rematchLocal } from './matcher.js';
 import { requestPersistence } from './db.js';
@@ -154,7 +155,7 @@ function paintPlayButtons() {
   playShown = k;
   const put = (btn, small) => {
     const el = busy ? h('div', { class: small ? 'spin small' : 'spin' }) : icon(k, small ? 28 : 38);
-    if (animate) el.classList.add('icon-pop');
+    if (animate && !busy) el.classList.add('icon-pop'); // (a pop animation would stop the spinner turning)
     clear(btn).appendChild(el);
   };
   put(mini.playBtn, true);
@@ -165,16 +166,45 @@ function paintPlayButtons() {
 // ---------- waveform seek bar ----------
 
 // Bars are generated from the track id, so each song keeps its own shape. The
-// played part fills smoothly, and the bars breathe very slightly with the music.
+// played part fills smoothly and the bars breathe very slightly with the music.
+// It is one small canvas drawn once per frame (56 DOM bars restyled every frame
+// cost far more).
 function buildWave(n = 56) {
-  const el = h('div', { class: 'wave', role: 'slider', 'aria-label': 'Перемотка', 'aria-valuemin': '0', 'aria-valuemax': '100', tabindex: '0' });
-  const bars = [];
-  for (let i = 0; i < n; i++) {
-    const b = h('i');
-    bars.push(b);
-    el.appendChild(b);
-  }
-  const w = { el, dragging: false, onScrub: null, onSeek: null, shapeKey: '' };
+  const canvas = h('canvas', { class: 'wave-canvas', 'aria-hidden': 'true' });
+  const el = h('div', { class: 'wave', role: 'slider', 'aria-label': 'Перемотка', 'aria-valuemin': '0', 'aria-valuemax': '100', tabindex: '0' }, canvas);
+  const ctx = canvas.getContext('2d');
+  const heights = new Float32Array(n).fill(0.4);
+  const levels = new Float32Array(n);
+  const shown = new Float32Array(n);
+  const w = { el, dragging: false, onScrub: null, onSeek: null, shapeKey: '', busy: false };
+  let frac = 0;
+  let grownAt = 0; // bars grow in when a new track's shape appears
+  let W = 0;
+  let H = 0;
+  let dpr = 1;
+  let colors = null;
+  let dirty = true;
+
+  const readColors = () => {
+    const cs = getComputedStyle(el);
+    colors = { on: cs.getPropertyValue('--lilac').trim() || '#b79cff', off: cs.getPropertyValue('--line').trim() || '#352a4f' };
+    dirty = true;
+  };
+  window.addEventListener('rez-theme', readColors);
+
+  const fit = () => {
+    const r = el.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = Math.max(1, Math.round(r.width * dpr));
+    H = Math.max(1, Math.round(r.height * dpr));
+    if (canvas.width !== W || canvas.height !== H) {
+      canvas.width = W;
+      canvas.height = H;
+    }
+    dirty = true;
+  };
+  if (window.ResizeObserver) new ResizeObserver(() => (fit(), w.draw())).observe(el);
+
   w.setShape = (key) => {
     if (key === w.shapeKey) return;
     w.shapeKey = key;
@@ -185,80 +215,99 @@ function buildWave(n = 56) {
       seed = Math.imul(seed ^ (seed >>> 13), 3266489909);
       return ((seed ^= seed >>> 16) >>> 0) / 4294967296;
     };
-    const raw = bars.map(() => rand());
-    bars.forEach((b, i) => {
+    const raw = Array.from({ length: n }, () => rand());
+    for (let i = 0; i < n; i++) {
       const v = (raw[i] * 2 + (raw[i - 1] ?? raw[i]) + (raw[i + 1] ?? raw[i])) / 4;
       const env = 0.55 + 0.45 * Math.sin((Math.PI * (i + 0.5)) / n);
-      b.style.height = Math.round(18 + 82 * v * env) + '%';
-    });
-    replay(el, 'reshape');
+      heights[i] = 0.18 + 0.82 * v * env;
+    }
+    grownAt = performance.now();
+    dirty = true;
   };
-  let lastOn = -1;
-  let partial = null;
-  let lastPct = -1;
   w.setFrac = (f) => {
-    const pos = Math.min(n, Math.max(0, f * n));
-    const on = Math.floor(pos);
-    if (on !== lastOn) {
-      bars.forEach((b, i) => b.classList.toggle('on', i < on));
-      lastOn = on;
-    }
-    const cur = bars[on] || null;
-    if (cur !== partial) {
-      if (partial) partial.style.removeProperty('--fill');
-      partial = cur;
-      lastPct = -1;
-    }
-    if (partial) {
-      const pct = Math.round((pos - on) * 100);
-      if (pct !== lastPct) partial.style.setProperty('--fill', pct + '%');
-      lastPct = pct;
-    }
+    f = Math.min(1, Math.max(0, f || 0));
+    if (Math.abs(f - frac) * W < 0.5) return;
+    frac = f;
+    dirty = true;
     const v = String(Math.round(f * 100));
     if (el.getAttribute('aria-valuenow') !== v) el.setAttribute('aria-valuenow', v);
   };
-  const levels = new Float32Array(n);
-  const shown = new Float32Array(n);
   w.pulse = (beat) => {
     waves.barLevels(n, levels);
     for (let i = 0; i < n; i++) {
-      // very gentle: a few percent of the bar's height
-      const target = levels[i] * 0.1 + beat * 0.05;
+      const target = levels[i] * 0.1 + beat * 0.05; // a few percent of the height
       const v = shown[i] + (target - shown[i]) * 0.35;
-      if (Math.abs(v - shown[i]) < 0.002 && Math.abs(target - v) < 0.002) continue;
-      shown[i] = v;
-      bars[i].style.transform = v > 0.003 ? `scaleY(${(1 + v).toFixed(3)})` : '';
+      if (Math.abs(v - shown[i]) > 0.001) {
+        shown[i] = v;
+        dirty = true;
+      }
     }
   };
+  w.animating = () => w.busy || performance.now() - grownAt < 650;
+  w.draw = (now = performance.now()) => {
+    if (W <= 1 || H <= 1) fit();
+    if (!colors) readColors();
+    const growing = now - grownAt < 650;
+    if (!dirty && !growing && !w.busy) return;
+    dirty = false;
+    const gap = 2 * dpr;
+    const bw = (W - gap * (n - 1)) / n;
+    if (!(bw > 0.5)) {
+      dirty = true; // not laid out yet (player hidden): try again later
+      return;
+    }
+    const r = Math.min(bw / 2, 2 * dpr);
+    const grow = growing ? 1 - Math.pow(1 - (now - grownAt) / 650, 3) : 1;
+    ctx.clearRect(0, 0, W, H);
+    const path = new Path2D();
+    for (let i = 0; i < n; i++) {
+      const g = growing ? Math.max(0.2, Math.min(1, grow * 1.4 - (i % 4) * 0.08)) : 1;
+      const hh = Math.max(3 * dpr, heights[i] * H * g * (1 + shown[i]));
+      const x = i * (bw + gap);
+      if (path.roundRect) path.roundRect(x, (H - hh) / 2, bw, hh, r);
+      else path.rect(x, (H - hh) / 2, bw, hh);
+    }
+    ctx.globalAlpha = w.busy ? 0.55 + 0.45 * Math.abs(Math.sin(now / 380)) : 1;
+    ctx.fillStyle = colors.off;
+    ctx.fill(path);
+    if (frac > 0) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, frac * W, H);
+      ctx.clip();
+      ctx.fillStyle = colors.on;
+      ctx.fill(path);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  };
+
   const fracAt = (x) => {
     const r = el.getBoundingClientRect();
     return Math.min(1, Math.max(0, (x - r.left) / r.width));
   };
   el.addEventListener('pointerdown', (e) => {
     w.dragging = true;
-    el.classList.add('scrubbing');
     el.setPointerCapture(e.pointerId);
     const f = fracAt(e.clientX);
     w.setFrac(f);
+    w.draw();
     w.onScrub && w.onScrub(f);
   });
   el.addEventListener('pointermove', (e) => {
     if (!w.dragging) return;
     const f = fracAt(e.clientX);
     w.setFrac(f);
+    w.draw();
     w.onScrub && w.onScrub(f);
   });
   const end = (e) => {
     if (!w.dragging) return;
     w.dragging = false;
-    el.classList.remove('scrubbing');
     w.onSeek && w.onSeek(fracAt(e.clientX));
   };
   el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', () => {
-    w.dragging = false;
-    el.classList.remove('scrubbing');
-  });
+  el.addEventListener('pointercancel', () => (w.dragging = false));
   el.addEventListener('keydown', (e) => {
     const d = player.duration();
     if (!d) return;
@@ -411,7 +460,8 @@ function paintFull() {
   full.lyricsBtn.classList.toggle('active', !!settings.lyricsOn);
   full.lyricsBtn.setAttribute('aria-pressed', settings.lyricsOn ? 'true' : 'false');
   full.wave.setShape(t.key);
-  full.wave.el.classList.toggle('busy', player.state.loading);
+  full.wave.busy = !!player.state.loading;
+  ensureLoop();
   const waitLeft = player.state.waitingUntil ? Math.ceil((player.state.waitingUntil - Date.now()) / 1000) : 0;
   full.via.textContent =
     waitLeft > 0
@@ -467,6 +517,7 @@ function paintTime() {
     full.tDur.textContent = fmtTime(d);
   }
   full.wave.pulse(beat);
+  full.wave.draw();
   if (settings.lyricsOn) lyricsView.tick(p);
 }
 
@@ -494,7 +545,7 @@ window.addEventListener('resize', () => {
 });
 
 let loopId = 0;
-const loopWanted = () => !!player.current() && !document.hidden && player.state.playing;
+const loopWanted = () => !!player.current() && !document.hidden && (player.state.playing || (!full.el.hidden && full.wave.animating()));
 function frame() {
   loopId = 0;
   paintTime();
@@ -580,6 +631,9 @@ function showQueue() {
 // ---------- player events ----------
 
 player.onPlayer((type, data) => {
+  if (type === 'track' && player.endlessStarted(data)) {
+    snack('Плейлист закончился — дальше похожая музыка', null, null, 4000);
+  }
   if (type === 'time') {
     // the frame loop paints while playing; this covers seeks while paused
     if (!loopId) paintTime();
@@ -637,6 +691,7 @@ App.addListener('backButton', async () => {
       saveSettings({ migrated11: true });
     }
     resumeMatching();
+    player.setContinuation(moreLike);
     player.initMediaSession({
       onLike: async () => {
         const t = player.current();

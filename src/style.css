@@ -2215,7 +2215,8 @@ body.has-mini .snack {
   transform: scale(0.985);
 }
 
-/* items of a page rise in one after another — only right after it appears */
+/* content that arrives after loading fades in (one layer, no per-item stagger:
+   dozens of items animating at once while the page slides made it stutter) */
 @keyframes rise {
   from {
     opacity: 0;
@@ -2223,43 +2224,14 @@ body.has-mini .snack {
   }
 }
 
-.page.fresh .page-body > *,
-.page.fresh .track-list > *,
-.page.fresh .list > *,
-.page.fresh .hscroll > *,
-.page.fresh .tiles > *,
-.page.fresh .folders > *,
-.page.fresh .theme-grid > *,
-.page.fresh .chips > * {
-  animation: rise 0.34s var(--ease-out) backwards;
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(2) {
-  animation-delay: 0.024s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(3) {
-  animation-delay: 0.048s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(4) {
-  animation-delay: 0.072s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(5) {
-  animation-delay: 0.096s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(6) {
-  animation-delay: 0.12s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(7) {
-  animation-delay: 0.144s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(8) {
-  animation-delay: 0.168s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(9) {
-  animation-delay: 0.192s;
-}
-.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(n + 10) {
-  animation-delay: 0.216s;
+.page.fresh .page-body > :not(.skeleton) {
+  animation: fade-in 0.28s ease backwards;
 }
 
 /* page transitions: a little depth */
@@ -3895,4 +3867,58 @@ body.has-mini .snack {
 .full.lyrics-on .full-bg.on {
   opacity: 0.5;
   transform: scale(1.15);
+}
+
+/* the seek bar is one canvas */
+.wave-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.theme-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.17s ease, background-color 0.17s ease;
+}
+
+.theme-veil.in {
+  opacity: 1;
+}
+
+.theme-veil:not(.in) {
+  transition-duration: 0.3s;
+}
+
+/* isolate the always-on chrome so its updates don't make the browser re-check the page */
+.mini,
+.tabbar,
+.full-bottom,
+.controls,
+.seek-wrap {
+  contain: layout style;
+}
+
+.acc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.acc-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.acc-name {
+  font-weight: 600;
+}
+
+.btn.small-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
 }

@@ -1,45 +1,52 @@
-// Listens to the music so the waves can move with it. Only one audio element is
-// ever connected here, and only for same-origin sources (local files, or Zvuk
-// streams passed through the app's own native proxy); anything else plays on a
-// separate, unconnected element so the sound is never at risk.
+// Listens to the music so the waves can move with it. The analysed audio
+// elements (the player has two, so the next track can start the instant the
+// current one ends) all play through one audio context and one analyser. Only
+// same-origin or CORS-approved sources go here; anything else plays on separate,
+// unconnected elements so the sound is never at risk.
 
 export const BANDS = 64;
 export const WAVE = 256;
 
 let ctx = null;
 let analyser = null;
-let attached = null;
+const attached = new Set();
 let freq = null;
 let time = null;
 let bandBins = null; // [start, end) bin range per band
+let broken = false;
 
 export function available() {
   return typeof (window.AudioContext || window.webkitAudioContext) === 'function';
 }
 
 export function attach(el) {
-  if (attached === el) return true;
-  if (attached) return false; // a media element can only be captured once
+  if (attached.has(el)) return true;
+  if (broken) return false;
   try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    ctx = new AC({ latencyHint: 'playback' });
-    const src = ctx.createMediaElementSource(el);
-    analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.55;
-    analyser.minDecibels = -90;
-    analyser.maxDecibels = -10;
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC({ latencyHint: 'playback' });
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.55;
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
+      freq = new Uint8Array(analyser.frequencyBinCount);
+      time = new Float32Array(analyser.fftSize);
+      bandBins = makeBands(ctx.sampleRate, analyser.frequencyBinCount);
+    }
+    const src = ctx.createMediaElementSource(el); // an element can be captured only once
     src.connect(ctx.destination);
     src.connect(analyser);
-    freq = new Uint8Array(analyser.frequencyBinCount);
-    time = new Float32Array(analyser.fftSize);
-    bandBins = makeBands(ctx.sampleRate, analyser.frequencyBinCount);
-    attached = el;
+    attached.add(el);
     return true;
   } catch (e) {
     console.warn('audio graph unavailable', e);
-    ctx = null;
-    analyser = null;
+    if (!attached.size) {
+      broken = true;
+      ctx = null;
+      analyser = null;
+    }
     return false;
   }
 }

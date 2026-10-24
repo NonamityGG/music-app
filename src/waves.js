@@ -115,6 +115,14 @@ function running() {
   return cfg.style !== 'off' && !document.hidden && (source.playing() || energy > 0.004 || ripples.length > 0);
 }
 
+// Frame pacing. On a 120/144 Hz screen drawing at "about 60" lands on uneven
+// refreshes (2, 3, 2, 3…) and looks jerky; drawing on every n-th refresh keeps
+// the rhythm even: 144 Hz → 72 fps, 120 Hz → 60, 90 and 60 Hz → every frame.
+let refreshMs = 0;
+let lastTick = 0;
+let frameNo = 0;
+let every = 1;
+
 export function kick() {
   if (!raf && running()) raf = requestAnimationFrame(loop);
   if (cfg.style === 'off') clearActive();
@@ -127,9 +135,13 @@ function clearActive() {
 
 function loop(now) {
   raf = 0;
-  // 60 fps is plenty; on 90/120 Hz screens drawing every refresh only costs battery
-  // and makes the frame pacing uneven when the phone can't keep up
-  if (now - lastDraw >= 15.5 || !lastDraw) {
+  if (lastTick) {
+    const d = now - lastTick;
+    if (d > 4 && d < 40) refreshMs = refreshMs ? refreshMs * 0.95 + d * 0.05 : d;
+    every = refreshMs ? Math.max(1, Math.round(1000 / refreshMs / 75)) : 1;
+  }
+  lastTick = now;
+  if (frameNo++ % every === 0) {
     const dt = lastFrame ? Math.min(0.05, (now - lastFrame) / 1000) : 1 / 60;
     lastFrame = now;
     lastDraw = now;
@@ -138,8 +150,11 @@ function loop(now) {
   }
   if (running()) raf = requestAnimationFrame(loop);
   else {
+    // nothing to show: stop completely until the music plays again
     lastFrame = 0;
     lastDraw = 0;
+    lastTick = 0;
+    frameNo = 0;
     clearActive();
   }
 }
@@ -228,8 +243,16 @@ function update(t, dt) {
   bass = b / 8;
   mid = m / 24;
   bassAvg += (bass - bassAvg) * (1 - Math.exp(-dt / 0.9));
+  // ripples age here, whatever the style (only "Кольца" draws them); before, they
+  // never went away for the other styles and kept the loop drawing after a pause
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rp = ripples[i];
+    rp.r += (170 + bass * 380) * dt;
+    rp.a *= Math.exp(-dt * 2.3);
+    if (rp.a < 0.02) ripples.splice(i, 1);
+  }
   const nowMs = t * 1000;
-  if ((beatPulse > 0.45 || (bass > 0.28 && bass > bassAvg * 1.25)) && nowMs - lastBeat > 240) {
+  if (playing && (beatPulse > 0.45 || (bass > 0.28 && bass > bassAvg * 1.25)) && nowMs - lastBeat > 240) {
     lastBeat = nowMs;
     ripples.push({ r: 0, a: 0.75 });
     if (ripples.length > 7) ripples.shift();
@@ -455,20 +478,12 @@ const DRAW = {
     ctx.globalAlpha = 0.9;
     ctx.lineWidth = 2 * dpr;
     ctx.stroke(path);
-    // ripples on the beat
-    for (let i = ripples.length - 1; i >= 0; i--) {
-      const rp = ripples[i];
-      const dt = f.dt || 1 / 60;
-      rp.r += (170 + bass * 380) * dt * dpr;
-      rp.a *= Math.exp(-dt * 2.3);
-      if (rp.a < 0.02) {
-        ripples.splice(i, 1);
-        continue;
-      }
+    // ripples on the beat (they age in update())
+    for (const rp of ripples) {
       ctx.globalAlpha = rp.a;
       ctx.lineWidth = 2 * dpr;
       ctx.beginPath();
-      ctx.arc(cx, cy, base + amp * 0.2 + rp.r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, base + amp * 0.2 + rp.r * dpr, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -562,7 +577,7 @@ export function renderPreview(canvas, styleId, paletteId) {
   energy = 0.45;
   bass = 0.55;
   mid = 0.4;
-  ripples.push({ r: 6 * dpr, a: 0.5 }, { r: 16 * dpr, a: 0.25 });
+  ripples.push({ r: 6, a: 0.5 }, { r: 16, a: 0.25 });
   const f = { ctx, w: s.w, h: s.h, cx: s.w / 2, cy: s.h / 2, amp: Math.min(s.w, s.h) * 0.42, dpr, t: 1.3, colors: pal.colors, g: { h: hg, v: vg }, full: false, rx: 0, blend: cfg.light ? 'source-over' : 'lighter' };
   if (styleId === 'rings') f.amp = Math.min(s.w, s.h) * 0.5;
   ctx.clearRect(0, 0, s.w, s.h);

@@ -41,6 +41,8 @@ const DEFAULTS = {
   yaName: '',
   yaPlus: false,
   theme: 'dark', // see theme.js
+  gapless: true, // the next track starts the instant the current one ends
+  endless: true, // when the queue ends, similar music keeps playing
 };
 
 export const settings = Object.assign({}, DEFAULTS, load('settings', {}));

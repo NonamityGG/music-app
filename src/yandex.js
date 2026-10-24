@@ -317,6 +317,16 @@ export async function getRelease(id) {
   return { ...rel, tracks: (r.volumes || []).flat().map(normTrack).filter(Boolean) };
 }
 
+// ---------- stations ("My Wave" style endless music) ----------
+
+// Tracks of a Yandex station, e.g. 'track:123' — music similar to that track.
+export async function stationTracks(station, lastId = '') {
+  const params = { settings2: 'true' };
+  if (lastId) params.queue = strip(lastId);
+  const r = await api('GET', `/rotor/station/${station}/tracks`, { params });
+  return ((r && r.sequence) || []).map((x) => normTrack(x && x.track)).filter(Boolean);
+}
+
 // ---------- lyrics ----------
 // The apps sign lyrics requests: HMAC-SHA256 of "<track id><unix time>".
 const LYRICS_KEY = 'p93jhgh689SBReK6ghtw62';

@@ -33,23 +33,44 @@ function setAttrs(t) {
   configureWaves({ light: !!t.light });
   // glass themes give the background waves a different area
   requestAnimationFrame(() => resizeWaves('bg'));
+  window.dispatchEvent(new Event('rez-theme'));
 }
 
 export function applyTheme() {
   setAttrs(currentTheme());
 }
 
-// Switches with a cross-fade of the whole screen where the WebView can do it.
+// Switches behind a quick veil in the new background colour: the veil fades in,
+// the colours change while the screen is covered (that repaint is the heavy
+// part), and the veil fades out. Only opacity animates, so it stays smooth.
+let switching = false;
 export function setTheme(id) {
   const t = themeById(id);
   saveSettings({ theme: t.id });
-  const go = () => setAttrs(t);
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (document.startViewTransition && !reduced) {
-    document.startViewTransition(go);
-  } else {
-    document.documentElement.classList.add('theme-fade');
-    go();
-    setTimeout(() => document.documentElement.classList.remove('theme-fade'), 450);
+  if (reduced || switching) {
+    setAttrs(t);
+    return;
   }
+  switching = true;
+  const veil = document.createElement('div');
+  veil.className = 'theme-veil';
+  veil.style.background = t.bg; // the screen washes into the new theme's colour
+  document.body.appendChild(veil);
+  requestAnimationFrame(() => {
+    veil.classList.add('in');
+    setTimeout(() => {
+      setAttrs(t);
+      // give the new colours two frames to paint under the veil
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          veil.classList.remove('in');
+          setTimeout(() => {
+            veil.remove();
+            switching = false;
+          }, 320);
+        })
+      );
+    }, 170);
+  });
 }

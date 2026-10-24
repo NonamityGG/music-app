@@ -65,7 +65,6 @@ export function freshen(page) {
 
 function mount(tab, page, withAnimation) {
   page.classList.add('page');
-  freshen(page);
   // the header gets its background once the content scrolls under it
   const head = page.querySelector('.page-head');
   if (head && !page._scrollWatch) {

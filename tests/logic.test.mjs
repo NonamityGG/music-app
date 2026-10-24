@@ -536,3 +536,50 @@ test('Lyrics view: active line search and pauses', () => {
   assert.ok(w.some((l) => l.pause && l.t === 20), 'long gap gets dots');
   assert.equal(w.filter((l) => l.text).length, 3);
 });
+
+// ---------- Spotify transfer, endless music ----------
+
+const sp = await import('../src/spotify.js');
+
+test('Spotify: playlists and liked songs come over with paging', async () => {
+  const seen = [];
+  sp.setToken('tok');
+  sp.setSpotifyTransport(async ({ url, headers }) => {
+    seen.push(url);
+    assert.equal(headers.Authorization, 'Bearer tok');
+    const u = new URL(url);
+    if (u.pathname === '/v1/me/playlists') return { status: 200, data: { items: [{ id: 'p1', name: 'Дорога' }, { id: 'p2', name: 'Discover Weekly' }], next: null } };
+    if (u.pathname === '/v1/me/tracks') {
+      if (!u.searchParams.get('offset')) return { status: 200, data: { items: [{ track: { name: 'Numb', duration_ms: 185000, artists: [{ name: 'Linkin Park' }], album: { name: 'Meteora' } } }], next: 'https://api.spotify.com/v1/me/tracks?offset=50&limit=50' } };
+      return { status: 200, data: { items: [{ track: { name: 'Кукушка', duration_ms: 400000, artists: [{ name: 'Кино' }] } }], next: null } };
+    }
+    if (u.pathname === '/v1/playlists/p1/tracks') return { status: 200, data: { items: [{ track: { name: 'Сансара', duration_ms: 260000, artists: [{ name: 'Баста' }, { name: 'Скриптонит' }] } }, { track: null }], next: null } };
+    if (u.pathname === '/v1/playlists/p2/tracks') return { status: 404, data: {} };
+    return { status: 404, data: {} };
+  });
+  const got = [];
+  await sp.importAll({ onStep: () => {}, onList: (g) => got.push(g) });
+  assert.deepEqual(got.map((g) => g.name), ['Любимые треки (Spotify)', 'Дорога']);
+  assert.equal(got[0].tracks.length, 2, 'second page read');
+  assert.equal(got[0].tracks[0].duration, 185);
+  assert.equal(got[1].tracks[0].artist, 'Баста, Скриптонит');
+  assert.equal(got[1].origin, 'spotify:p1');
+  const skipped = [];
+  await sp.importAll({ onStep: () => {}, onList: (g) => skipped.push(g), skip: new Set(['spotify:liked', 'spotify:p1']) });
+  assert.equal(skipped.length, 0, 'already brought over');
+  sp.setSpotifyTransport(null);
+});
+
+test('Yandex station tracks for endless music', async () => {
+  saveSettings({ yaToken: 'T', yaUid: '77' });
+  ya.setYandexTransport(async (req) => {
+    const u = new URL(req.url);
+    assert.equal(u.pathname, '/rotor/station/track:10/tracks');
+    assert.equal(u.searchParams.get('queue'), '10');
+    return { status: 200, data: { result: { sequence: [{ type: 'track', track: { id: 31, title: 'Похожая', artists: [{ id: 1, name: 'Кто-то' }], albums: [{ id: 2 }], durationMs: 200000 } }] } } };
+  });
+  const r = await ya.stationTracks('track:10', 'y:10');
+  assert.equal(r[0].key, 'y:31');
+  ya.setYandexTransport(null);
+  saveSettings({ yaToken: '', yaUid: '' });
+});

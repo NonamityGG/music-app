@@ -4,6 +4,7 @@
 
 import * as zvuk from './zvuk.js';
 import * as ya from './yandex.js';
+import * as sp from './spotify.js';
 import * as web from './serviceweb.js';
 import { logError, save, load } from './settings.js';
 import { toast } from './util.js';
@@ -20,7 +21,9 @@ function changed(service) {
   for (const fn of listeners) fn(service);
 }
 
-const CLIENT = { zvuk, yandex: ya };
+const CLIENT = { zvuk, yandex: ya, spotify: sp };
+const TITLE = { zvuk: 'Звук', yandex: 'Яндекс Музыка', spotify: 'Spotify' };
+const CONNECTED = { zvuk: 'Звук подключён', yandex: 'Яндекс Музыка подключена', spotify: 'Spotify подключён' };
 let busy = '';
 
 export const isBusy = (service) => busy === service;
@@ -36,8 +39,8 @@ export async function connect(service) {
   changed(service);
   try {
     const r = await CLIENT[service].loginViaWeb();
-    const who = service === 'yandex' ? r.name || r.login : '';
-    toast(`${service === 'yandex' ? 'Яндекс Музыка подключена' : 'Звук подключён'}${who ? ': ' + who : ''}`, 3500);
+    const who = service === 'zvuk' ? '' : (r && (r.name || r.login)) || '';
+    toast(`${CONNECTED[service]}${who ? ': ' + who : ''}`, 3500);
     return true;
   } catch (e) {
     logError('login:' + service, e);
@@ -58,7 +61,7 @@ export async function disconnect(service) {
     logError('logout:' + service, e);
   }
   changed(service);
-  toast(`${service === 'yandex' ? 'Яндекс Музыка' : 'Звук'}: ты вышел из аккаунта`);
+  toast(`${TITLE[service]}: ты вышел из аккаунта`);
 }
 
 export function loggedIn(service) {
