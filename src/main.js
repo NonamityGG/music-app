@@ -37,7 +37,7 @@ waves.setSource({
   onSilence: () => player.bypassAnalyser('Анализатор не слышит звук, волны переключены в простой режим'),
 });
 applyWaveSettings();
-waves.addSurface('bg', bgCanvas, { dpr: 1, place: 'low', ampScale: 0.17 });
+waves.addSurface('bg', bgCanvas, { dpr: 1, place: 'center', ampScale: 0.23 });
 waves.addSurface('full', full.canvas, {
   dpr: 1.5,
   full: true,
@@ -259,7 +259,7 @@ const VIA_LABEL = {
   local: 'Мой MP3',
   'local-fallback': 'Мой MP3 — в Звуке не нашлось',
   'zvuk-fallback': 'Звук — файла MP3 нет',
-  handoff: 'Звук закрыл доступ — трек открыт в другом приложении',
+  waiting: 'Звук ненадолго закрыл доступ, жду…',
 };
 
 function paintFull() {
@@ -272,7 +272,15 @@ function paintFull() {
   full.artist.textContent = t.artist || '';
   full.wave.setShape(t.key);
   full.wave.el.classList.toggle('busy', player.state.loading);
-  full.via.textContent = player.state.loading ? 'Загружаю…' : t.unavailable ? 'Не удалось включить' : VIA_LABEL[player.state.via] || '';
+  const waitLeft = player.state.waitingUntil ? Math.ceil((player.state.waitingUntil - Date.now()) / 1000) : 0;
+  full.via.textContent =
+    waitLeft > 0
+      ? `Звук ненадолго закрыл доступ, включу сам через ${waitLeft} с`
+      : player.state.loading
+      ? 'Загружаю…'
+      : t.unavailable
+      ? 'Не удалось включить'
+      : VIA_LABEL[player.state.via] || '';
   full.likeBtn.hidden = !(t.src === 'zvuk' && zvuk.isLoggedIn());
   clear(full.likeBtn).appendChild(icon(isLikedSync(t) ? 'heart' : 'heartOutline', 26));
   full.likeBtn.classList.toggle('liked', isLikedSync(t));
@@ -373,9 +381,8 @@ player.onPlayer((type, data) => {
     const t = data.track;
     snack(`«${t.title}»: ${data.error && data.error.message ? data.error.message : 'не играет'}`, 'Найти', () => otherPlatformsSheet(t));
   }
-  if (type === 'handoff') {
-    openExternal(data.url);
-    snack(`Звук временно закрыл доступ — открываю «${data.track.title}» ${data.platform.where}`, 'Другие', () => otherPlatformsSheet(data.track), 7000);
+  if (type === 'waiting') {
+    snack(`Звук ненадолго закрыл доступ. «${data.track.title}» включится сам через ${Math.ceil(data.ms / 1000)} с`, null, null, 5000);
   }
   if (type === 'fallback') {
     snack(data.via === 'local-fallback' ? `«${data.track.title}» нет в Звуке — играет твой MP3` : `«${data.track.title}»: MP3 нет — играет из Звука`, null, null, 3500);
@@ -410,5 +417,8 @@ App.addListener('backButton', () => {
   }
 })();
 
+setInterval(() => {
+  if (player.state.waitingUntil && !full.el.hidden) paintFull();
+}, 1000);
 window.addEventListener('unhandledrejection', (e) => logError('promise', e.reason));
 window.addEventListener('error', (e) => logError('js', e.error || e.message));

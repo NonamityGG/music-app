@@ -1338,6 +1338,33 @@ body.has-mini .page {
   overflow-y: auto;
 }
 
+.wave-status {
+  font-size: 13px;
+  color: var(--muted);
+  padding-left: 18px;
+  position: relative;
+}
+
+.wave-status::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.wave-status.ok {
+  color: var(--ok);
+}
+
+.wave-status.ok::before {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(123, 224, 176, 0.2);
+}
+
 .wave-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

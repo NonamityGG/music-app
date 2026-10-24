@@ -221,3 +221,19 @@ test('a guest token on a profile check is refused as a login', async () => {
   const r = await zvuk.checkToken('X');
   assert.equal(r.name, 'Сергей');
 });
+
+test('back-off grows with repeated blocks: 30 s, then 60 s', async () => {
+  saveSettings({ token: 'USER' });
+  zvuk.resetBotState();
+  mockZvuk(() => ({ status: 418, data: '<html></html>' }));
+  await assert.rejects(zvuk.quickSearch('a'), (e) => e.kind === 'bot' && /30 с/.test(e.message));
+  const first = zvuk.botRemaining();
+  assert.ok(first > 28000 && first <= 30000, 'first wait ~30 s, got ' + first);
+  zvuk.resetBotState();
+  // simulate a second block within ten minutes by blocking twice in a row without clearing history
+  mockZvuk(() => ({ status: 418, data: '<html></html>' }));
+  await assert.rejects(zvuk.quickSearch('b'));
+  const until = zvuk.botRemaining();
+  assert.ok(until > 28000, 'blocked again');
+  zvuk.resetBotState();
+});

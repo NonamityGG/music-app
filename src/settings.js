@@ -30,7 +30,6 @@ const DEFAULTS = {
   anonToken: '',    // anonymous Zvuk token (search and preview without login)
   quality: 'high',  // 'high' | 'mid'
   autoFallback: true,
-  fallbackPlatform: 'vk', // where to continue when Zvuk blocks the app: vk | yandex | ytm | soundcloud | off
   wavesStyle: 'neon', // see waves.js STYLES, or 'off'
   wavesPalette: 'violet',
   wavesReactive: true, // waves follow the real sound

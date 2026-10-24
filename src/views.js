@@ -10,7 +10,6 @@ import { buildFeed, cachedFeed, feedIsStale, favArtists, setFav } from './feed.j
 import { settings, saveSettings, getJournal, clearJournal, load, save, logError } from './settings.js';
 import { storageEstimate } from './db.js';
 import { wavesPicker } from './wave-settings.js';
-import { PLATFORMS } from './platforms.js';
 import {
   trackList,
   section,
@@ -121,6 +120,7 @@ export function feedView() {
     } catch (e) {
       logError('feed', e);
       status.remove();
+      if (e.kind === 'bot' || e.kind === 'rate') setTimeout(rebuild, zvuk.botRemaining() + 2500);
       if (!old || old.empty) {
         clear(body).appendChild(errorBox(e, rebuild));
       } else {
@@ -199,18 +199,11 @@ export function searchView() {
     if (zRes.status === 'rejected') {
       results.append(errorBox(zRes.reason, () => run(input.value)));
       if (zRes.reason && (zRes.reason.kind === 'bot' || zRes.reason.kind === 'rate')) {
-        const qq = encodeURIComponent(q);
-        results.append(
-          section(
-            'Поискать там',
-            null,
-            h(
-              'div',
-              { class: 'chips' },
-              PLATFORMS.map((p) => h('button', { class: 'chip', onclick: () => openExternal(p.url(qq)) }, p.name))
-            )
-          )
-        );
+        // search again by itself once Zvuk lets the app back in
+        const again = q;
+        setTimeout(() => {
+          if (my === seq && input.value.trim() === again) run(again);
+        }, zvuk.botRemaining() + 1500);
       }
       return;
     }
@@ -478,31 +471,7 @@ export function profileView() {
           'div',
           { class: 'card-box' },
           toggleRow('Высокое качество', 'Если выключить, треки грузятся быстрее и тратят меньше трафика', settings.quality !== 'mid', (v) => saveSettings({ quality: v ? 'high' : 'mid' })),
-          toggleRow('Замена из другого источника', 'Нет трека в Звуке — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v })),
-          h(
-            'div',
-            null,
-            h('div', null, 'Если Звук закрыл доступ'),
-            h('div', { class: 'muted small' }, 'Когда Звук принимает приложение за бота, а MP3 этого трека нет, трек откроется здесь'),
-            h(
-              'div',
-              { class: 'chips choice' },
-              [...PLATFORMS, { id: 'off', name: 'Никуда' }].map((p) =>
-                h(
-                  'button',
-                  {
-                    class: 'chip' + (settings.fallbackPlatform === p.id ? ' chip-on' : ''),
-                    'aria-pressed': settings.fallbackPlatform === p.id ? 'true' : 'false',
-                    onclick: () => {
-                      saveSettings({ fallbackPlatform: p.id });
-                      render();
-                    },
-                  },
-                  p.name
-                )
-              )
-            )
-          )
+          toggleRow('Замена из другого источника', 'Нет трека в Звуке — играет твой MP3, и наоборот', settings.autoFallback, (v) => saveSettings({ autoFallback: v }))
         )
       )
     );

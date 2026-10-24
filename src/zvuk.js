@@ -36,7 +36,10 @@ export function setTransport(fn) {
 // only two run at a time. When it does block, the app backs off for a while
 // instead of hammering it (which only extends the block).
 
-const pacing = { gap: 220, parallel: 2, botRetryMs: 2500, cooldownMs: 90000 };
+const pacing = { gap: 220, parallel: 2, botRetryMs: 2500 };
+// first block in ten minutes: wait 30 s, then 60 s, then 2 min
+const BACKOFF = [30000, 60000, 120000];
+let blockTimes = [];
 export function setPacing(p) {
   Object.assign(pacing, p);
 }
@@ -45,8 +48,10 @@ let lastStart = 0;
 let botUntil = 0;
 
 export const botBlocked = () => Date.now() < botUntil;
+export const botRemaining = () => Math.max(0, botUntil - Date.now());
 export function resetBotState() {
   botUntil = 0;
+  blockTimes = [];
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -77,7 +82,13 @@ async function http(req) {
   try {
     return await httpOnce(req);
   } catch (e) {
-    if (e.kind === 'bot') botUntil = Date.now() + pacing.cooldownMs;
+    if (e.kind === 'bot') {
+      const now = Date.now();
+      blockTimes = blockTimes.filter((t) => now - t < 10 * 60 * 1000);
+      blockTimes.push(now);
+      botUntil = now + BACKOFF[Math.min(blockTimes.length - 1, BACKOFF.length - 1)];
+      throw botError(e.status); // message with the actual wait
+    }
     throw e;
   } finally {
     inFlight--;
@@ -147,7 +158,8 @@ async function httpOnce({ method, url, params, data, token }) {
 }
 
 function botError(status) {
-  return new ZvukError('bot', 'Звук временно закрыл доступ (защита от ботов). Через пару минут попробую снова.', status);
+  const sec = Math.ceil(botRemaining() / 1000);
+  return new ZvukError('bot', sec ? `Звук ненадолго закрыл доступ. Повторю сам через ${sec} с` : 'Звук ненадолго закрыл доступ. Повторю сам чуть позже', status);
 }
 
 // ---------- tokens ----------

@@ -10,7 +10,6 @@ import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
-import { platformUrl, platformById } from './platforms.js';
 
 // Two elements: `fx` is connected to the analyser that drives the waves and only
 // ever gets same-origin sources; `plain` plays everything else directly.
@@ -20,6 +19,7 @@ plain.preload = 'auto';
 fx.preload = 'auto';
 let audio = plain;
 let fxBroken = false; // once the analyser path fails, this session plays everything directly
+let fxReason = '';
 let directUrl = ''; // the real source of the current track
 let curZid = ''; // Zvuk id whose stream is playing (the track itself or its replacement)
 let streamAttempts = 0;
@@ -34,6 +34,7 @@ export const state = {
   loading: false,
   via: '', // where the current track actually plays from
   error: '',
+  waitingUntil: 0, // set while waiting for Zvuk to let the app back in
 };
 
 const listeners = new Set();
@@ -58,7 +59,7 @@ export const duration = () => (isFinite(audio.duration) && audio.duration > 0 ? 
 let objectUrl = '';
 let loadSeq = 0;
 let failStreak = 0;
-let lastHandoff = 0;
+let waitCount = 0;
 
 function setObjectUrl(url) {
   if (objectUrl) URL.revokeObjectURL(objectUrl);
@@ -97,6 +98,8 @@ async function resolve(track) {
       if (blob) return { url: URL.createObjectURL(blob), via: 'local-fallback', match: m };
     }
   }
+  const pre = takePreloaded(track.zid);
+  if (pre) return pre;
   try {
     return { url: await zvuk.streamUrl(track.zid), via: 'zvuk', zid: track.zid };
   } catch (e) {
@@ -109,6 +112,77 @@ async function resolve(track) {
     }
     throw e;
   }
+}
+
+// ---------- preloading ----------
+// While a track plays, the app quietly gets stream links for the next three Zvuk
+// tracks and the audio of the next one. Switching tracks then needs no request to
+// Zvuk at all, so a short block by Zvuk's protection goes unnoticed.
+
+const ahead = new Map(); // zid -> { url, urlAt, blob, loading }
+const LINK_TTL = 10 * 60 * 1000;
+let preloadTimer = 0;
+
+function takePreloaded(zid) {
+  const p = ahead.get(zid);
+  if (!p) return null;
+  if (p.blob) {
+    ahead.delete(zid);
+    return { url: URL.createObjectURL(p.blob), via: 'zvuk', zid, preloaded: true };
+  }
+  if (p.url && Date.now() - p.urlAt < LINK_TTL) {
+    ahead.delete(zid);
+    return { url: p.url, via: 'zvuk', zid };
+  }
+  return null;
+}
+
+function hasPreloadedAudio(t) {
+  const p = t && t.zid && ahead.get(t.zid);
+  return !!(p && p.blob);
+}
+
+function schedulePreload(delay = 6000) {
+  clearTimeout(preloadTimer);
+  preloadTimer = setTimeout(preloadAhead, delay);
+}
+
+async function preloadAhead() {
+  if (zvuk.botBlocked()) return schedulePreload(zvuk.botRemaining() + 3000);
+  const seq = loadSeq;
+  const keep = new Set();
+  for (let k = 1; k <= 3; k++) {
+    const t = state.queue[state.index + k];
+    if (!t || t.src !== 'zvuk' || !t.zid) continue;
+    keep.add(t.zid);
+    const p = ahead.get(t.zid) || {};
+    ahead.set(t.zid, p);
+    if (!p.url || Date.now() - p.urlAt > LINK_TTL) {
+      try {
+        p.url = await zvuk.streamUrl(t.zid);
+        p.urlAt = Date.now();
+      } catch (e) {
+        if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate') break;
+        continue;
+      }
+    }
+    if (seq !== loadSeq) return;
+    if (k === 1 && !p.blob && !p.loading && Capacitor.isNativePlatform()) {
+      p.loading = true;
+      try {
+        const r = await fetch(proxied(p.url));
+        if (r.ok) {
+          const blob = await r.blob();
+          if (blob.size > 50000 && seq === loadSeq) p.blob = blob;
+        }
+      } catch (e) {
+        logError('preload', e);
+      } finally {
+        p.loading = false;
+      }
+    }
+  }
+  for (const id of [...ahead.keys()]) if (!keep.has(id)) ahead.delete(id);
 }
 
 // ---------- which element plays the source ----------
@@ -140,6 +214,7 @@ function setSource(url) {
   }
   if (el === fx && !graph.attach(fx)) {
     fxBroken = true;
+    fxReason = 'телефон не дал подключиться к звуку';
     el = plain;
     src = url;
   }
@@ -168,10 +243,22 @@ function seekWhenReady(at) {
 // True when the waves can use the real sound of the current track.
 export const analysing = () => audio === fx && !fxBroken && graph.state() === 'running';
 
+// One line for the settings screen: do the waves hear the music right now, and if not, why.
+export function waveStatus() {
+  if (settings.wavesStyle === 'off') return 'Волны выключены';
+  if (settings.wavesReactive === false) return 'Спокойный режим: «Двигаются под музыку» выключено';
+  if (!current() || !state.playing) return 'Включи трек — здесь будет видно, слышат ли волны музыку';
+  if (analysing()) return 'Волны слышат музыку';
+  if (fxBroken) return 'Простой режим: ' + (fxReason || 'анализатор недоступен');
+  if (audio === plain) return 'Простой режим для этого трека';
+  return 'Подключаю волны к звуку… (' + graph.state() + ')';
+}
+
 // Moves the current track to the direct element, e.g. when the analyser path goes silent.
 export function bypassAnalyser(reason) {
   if (audio !== fx || fxBroken) return;
   fxBroken = true;
+  fxReason = reason;
   logError('waves', new Error(reason));
   const at = audio.currentTime;
   const wasPlaying = !audio.paused;
@@ -208,10 +295,12 @@ async function load_(index, autoplay = true, auto = false) {
     setSource(src.url);
     if (autoplay) await audio.play().catch((e) => handlePlayError(e, seq));
     failStreak = 0;
+    waitCount = 0;
+    state.waitingUntil = 0;
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
   } catch (e) {
     if (seq !== loadSeq) return;
-    if ((e.kind === 'bot' || e.kind === 'rate') && handOff(track, auto, index)) return;
+    if ((e.kind === 'bot' || e.kind === 'rate') && waitOut(track, index, auto, seq)) return;
     failStreak++;
     track.unavailable = true;
     state.error = e.message || String(e);
@@ -232,30 +321,33 @@ async function load_(index, autoplay = true, auto = false) {
   }
 }
 
-// Zvuk has blocked the app for now and there's no MP3 copy: continue the track
-// on the platform chosen in the profile. Automatic track changes hand over at most
-// once every two minutes, so a blocked playlist doesn't keep throwing you into
-// another app; meanwhile local MP3s further down the queue still play here.
-function handOff(track, auto, index) {
-  const id = settings.fallbackPlatform;
-  if (!id || id === 'off' || !platformById(id)) return false;
-  const recent = Date.now() - lastHandoff < 120000;
-  if (auto && recent) {
-    const nextLocal = state.queue.findIndex((t, i) => i > index && t.src === 'local');
-    if (nextLocal > 0) {
-      load_(nextLocal, true, true);
+// Zvuk has blocked the app for a moment and this track has neither a preloaded
+// copy nor an MP3. Everything stays inside the app: on automatic track changes,
+// jump to the next track that can play without Zvuk; otherwise wait quietly and
+// start this track as soon as the block is over.
+function waitOut(track, index, auto, seq) {
+  if (auto) {
+    const n = state.queue.findIndex((t, i) => i > index && (t.src === 'local' || hasPreloadedAudio(t)));
+    if (n > 0) {
+      load_(n, true, true);
       return true;
     }
-    setPlaying(false);
-    state.via = 'handoff';
-    emit('state');
-    return true;
   }
-  lastHandoff = Date.now();
-  state.via = 'handoff';
+  if (++waitCount > 4) {
+    waitCount = 0;
+    state.waitingUntil = 0;
+    return false; // the usual "unavailable" message
+  }
+  const ms = Math.max(4000, zvuk.botRemaining() + 1500);
+  state.waitingUntil = Date.now() + ms;
+  state.via = 'waiting';
   track.unavailable = false;
   setPlaying(false);
-  emit('handoff', { track, platform: platformById(id), url: platformUrl(id, track) });
+  emit('waiting', { track, ms });
+  emit('state');
+  setTimeout(() => {
+    if (seq === loadSeq) load_(index, true, auto);
+  }, ms);
   return true;
 }
 
@@ -361,6 +453,7 @@ export function setShuffle(on) {
   saveQueue();
   emit('queue');
   emit('state');
+  schedulePreload(2000);
 }
 
 export function cycleRepeat() {
@@ -375,6 +468,7 @@ export function playNext(track) {
   if (state.original) state.original.push({ ...track });
   saveQueue();
   emit('queue');
+  schedulePreload(2000);
 }
 
 export function addToQueue(track) {
@@ -412,6 +506,7 @@ for (const el of [plain, fx]) {
     mine(() => {
       setPlaying(true);
       pushPosition();
+      schedulePreload(6000);
     })
   );
   el.addEventListener('pause', mine(() => setPlaying(false)));

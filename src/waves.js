@@ -26,14 +26,18 @@ const target = new Float32Array(BANDS);
 const wave = new Float32Array(WAVE);
 const waveTarget = new Float32Array(WAVE);
 const ripples = [];
-// spring state per band: smooth, slightly elastic motion instead of raw jumps
-const vel = new Float32Array(BANDS);
-const filtered = new Float32Array(BANDS);
+// Per-band automatic gain: loud, mastered tracks would otherwise sit at the top
+// all the time and nothing would seem to move with the music.
+const avgLevel = new Float32Array(BANDS).fill(0.3);
+const peakLevel = new Float32Array(BANDS).fill(0.6);
+const fallSpeed = new Float32Array(BANDS);
 let energy = 0;
 let bass = 0;
 let mid = 0;
 let bassAvg = 0.15;
 let lastBeat = 0;
+let prevBassRaw = 0;
+let beatPulse = 0; // 0..1, jumps on each kick drum and fades quickly
 
 let source = { playing: () => false, analysing: () => false, onSilence: () => {} };
 let cfg = { style: 'neon', palette: 'violet' };
@@ -167,38 +171,53 @@ function update(t, dt) {
       waveTarget.fill(0);
     }
   }
+
+  // bass transient: how much the low end jumped since the previous frame
+  let bassRaw = 0;
+  for (let i = 0; i < 6; i++) bassRaw += target[i];
+  bassRaw /= 6;
+  const flux = Math.max(0, bassRaw - prevBassRaw);
+  prevBassRaw = bassRaw;
+  beatPulse = Math.max(beatPulse * Math.exp(-dt / 0.12), Math.min(1, flux * 7));
+
+  const kAvg = 1 - Math.exp(-dt / 1.4);
+  const peakDecay = Math.exp(-dt / 2.5);
+  const gravity = 5.5; // how fast bars fall, in full heights per second squared
   let e = 0;
   let b = 0;
   let m = 0;
-  // 1) low-pass the raw data (fast up, slower down), 2) a damped spring follows it
-  const up = 1 - Math.exp(-dt / 0.045);
-  const down = 1 - Math.exp(-dt / 0.2);
-  const stiffness = 140;
-  const damping = 19;
   for (let i = 0; i < BANDS; i++) {
-    filtered[i] += (target[i] - filtered[i]) * (target[i] > filtered[i] ? up : down);
-    const acc = (filtered[i] - bands[i]) * stiffness - vel[i] * damping;
-    vel[i] += acc * dt;
-    bands[i] += vel[i] * dt;
-    if (bands[i] < 0) {
-      bands[i] = 0;
-      vel[i] = 0;
-    } else if (bands[i] > 1.05) {
-      bands[i] = 1.05;
-      vel[i] = 0;
+    const v = target[i];
+    let out = v;
+    if (real) {
+      // compare each band with its own recent level: hits stand out,
+      // steady loudness doesn't fill the screen
+      avgLevel[i] += (v - avgLevel[i]) * kAvg;
+      peakLevel[i] = Math.max(v, peakLevel[i] * peakDecay, avgLevel[i] + 0.08);
+      const floor = avgLevel[i] * 0.65;
+      const rel = (v - floor) / Math.max(0.1, peakLevel[i] - floor);
+      out = Math.min(1, 0.3 * v + 0.8 * Math.max(0, rel));
+    }
+    // rise at once, fall with gravity, like a level meter
+    if (out >= bands[i]) {
+      bands[i] += (out - bands[i]) * (1 - Math.exp(-dt / 0.018));
+      fallSpeed[i] = 0;
+    } else {
+      fallSpeed[i] += gravity * dt;
+      bands[i] = Math.max(out, bands[i] - fallSpeed[i] * dt);
     }
     e += bands[i];
     if (i < 8) b += bands[i];
     else if (i < 32) m += bands[i];
   }
-  const kw = 1 - Math.exp(-dt / 0.035);
+  const kw = 1 - Math.exp(-dt / 0.02);
   for (let j = 0; j < WAVE; j++) wave[j] += (waveTarget[j] - wave[j]) * kw;
   energy = e / BANDS;
   bass = b / 8;
   mid = m / 24;
   bassAvg += (bass - bassAvg) * (1 - Math.exp(-dt / 0.9));
   const nowMs = t * 1000;
-  if (bass > 0.28 && bass > bassAvg * 1.25 && nowMs - lastBeat > 300) {
+  if ((beatPulse > 0.45 || (bass > 0.28 && bass > bassAvg * 1.25)) && nowMs - lastBeat > 240) {
     lastBeat = nowMs;
     ripples.push({ r: 0, a: 0.75 });
     if (ripples.length > 7) ripples.shift();
@@ -248,6 +267,7 @@ function draw(t, dt) {
   f.dt = dt;
   f.ctx.clearRect(0, 0, f.w, f.h);
   if (cfg.style === 'off') return;
+  f.amp *= 1 + beatPulse * 0.22;
   (DRAW[cfg.style] || DRAW.neon)(f, bands, wave);
 }
 
@@ -507,4 +527,9 @@ export function renderPreview(canvas, styleId, paletteId) {
   energy = saved.energy;
   bass = saved.bass;
   mid = saved.mid;
+}
+
+// For diagnostics: current smoothed levels.
+export function levels() {
+  return { bass, energy, beat: beatPulse };
 }

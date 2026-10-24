@@ -26,9 +26,9 @@ export function attach(el) {
     const src = ctx.createMediaElementSource(el);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.82;
+    analyser.smoothingTimeConstant = 0.55;
     analyser.minDecibels = -90;
-    analyser.maxDecibels = -18;
+    analyser.maxDecibels = -10;
     src.connect(ctx.destination);
     src.connect(analyser);
     freq = new Uint8Array(analyser.frequencyBinCount);
@@ -84,7 +84,7 @@ export function read(bands, wave) {
     const tilt = 1 + (i / BANDS) * 0.55; // highs are naturally quieter
     let v = (peak / 255) * tilt;
     v = Math.max(0, Math.min(1, (v - 0.06) * 1.12));
-    bands[i] = Math.pow(v, 1.15);
+    bands[i] = v;
   }
 
   analyser.getFloatTimeDomainData(time);

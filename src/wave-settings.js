@@ -3,6 +3,7 @@
 import { h, icon, clear } from './util.js';
 import { settings, saveSettings } from './settings.js';
 import { STYLES, PALETTES, renderPreview, configure } from './waves.js';
+import { waveStatus } from './player.js';
 
 export function applyWaveSettings() {
   configure({ style: settings.wavesStyle, palette: settings.wavesPalette });
@@ -73,12 +74,21 @@ export function wavesPicker() {
       )
     );
 
-    root.append(grid, colors);
+    const status = h('div', { class: 'wave-status' });
+    const tick = () => {
+      if (!root.isConnected && tries > 0) return;
+      status.textContent = waveStatus();
+      status.classList.toggle('ok', status.textContent === 'Волны слышат музыку');
+      setTimeout(tick, 1000);
+    };
+    root.append(status, grid, colors);
     // thumbnails need the layout, so draw them once the picker is on screen
     let tries = 0;
     const paint = () => {
       if (!root.isConnected) return ++tries < 120 && requestAnimationFrame(paint);
       for (const [cv, id] of canvases) renderPreview(cv, id, settings.wavesPalette);
+      tries = 1;
+      tick();
     };
     requestAnimationFrame(paint);
   };
