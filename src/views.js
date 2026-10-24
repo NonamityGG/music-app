@@ -1,6 +1,6 @@
 // Root screens of the four tabs: Лента, Поиск, Медиатека, Профиль.
 
-import { h, icon, clear, debounce, tracksWord, toast } from './util.js';
+import { h, icon, clear, debounce, tracksWord, toast, plural, add } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as zvuk from './zvuk.js';
@@ -10,6 +10,7 @@ import { buildFeed, cachedFeed, feedIsStale, favArtists, setFav } from './feed.j
 import { settings, saveSettings, getJournal, clearJournal, load, save, logError } from './settings.js';
 import { storageEstimate } from './db.js';
 import { wavesPicker } from './wave-settings.js';
+import { SOURCES } from './importers.js';
 import {
   trackList,
   section,
@@ -33,6 +34,8 @@ import {
   customPlaylistPage,
   localPage,
   mixPage,
+  folderPage,
+  importPage,
   openExternal,
   likedIds,
 } from './pages.js';
@@ -50,7 +53,7 @@ export function feedView() {
   const render = (feed) => {
     clear(body);
     if (!feed || feed.empty) {
-      body.append(
+      add(body, 
         emptyState(
           'feed',
           'Лента строится по твоим артистам',
@@ -63,7 +66,7 @@ export function feedView() {
     }
     const mix = feed.mix || [];
     if (mix.length) {
-      body.append(
+      add(body, 
         h(
           'div',
           { class: 'mix-card' },
@@ -81,13 +84,13 @@ export function feedView() {
       );
     }
     if (feed.releases && feed.releases.length) {
-      body.append(section('Новинки твоих артистов', null, hscroll(feed.releases.map((r) => releaseCard(r, () => nav.push(releasePage(r.id)))))));
+      add(body, section('Новинки твоих артистов', null, hscroll(feed.releases.map((r) => releaseCard(r, () => nav.push(releasePage(r.id)))))));
     }
     if (feed.related && feed.related.length) {
-      body.append(section('Похожие артисты', null, hscroll(feed.related.map((a) => artistCard(a, () => nav.push(artistPage(a.id, a.name)))))));
+      add(body, section('Похожие артисты', null, hscroll(feed.related.map((a) => artistCard(a, () => nav.push(artistPage(a.id, a.name)))))));
     }
     if (feed.seeds && feed.seeds.length) {
-      body.append(
+      add(body, 
         section(
           'Лента учитывает',
           h('button', { class: 'btn btn-text small', onclick: () => nav.switchTab('search') }, '+ артист'),
@@ -100,7 +103,7 @@ export function feedView() {
       );
     }
     const at = new Date(feed.at);
-    body.append(h('div', { class: 'list-meta center' }, `Обновлено ${at.toLocaleDateString('ru-RU')} в ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`));
+    add(body, h('div', { class: 'list-meta center' }, `Обновлено ${at.toLocaleDateString('ru-RU')} в ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`));
   };
 
   const rebuild = async () => {
@@ -163,7 +166,7 @@ export function searchView() {
     const fav = favArtists();
     const rec = recent();
     if (rec.length) {
-      results.append(
+      add(results, 
         section(
           'Недавние',
           h('button', { class: 'btn btn-text small', onclick: () => (save('recentSearches', []), showIdle()) }, 'Очистить'),
@@ -171,7 +174,7 @@ export function searchView() {
         )
       );
     }
-    results.append(
+    add(results, 
       section(
         'Любимые артисты для ленты',
         null,
@@ -194,10 +197,10 @@ export function searchView() {
     clear(results);
     const local = localRes.status === 'fulfilled' ? localRes.value : [];
     if (local.length) {
-      results.append(section('В твоих MP3', null, trackList(local.slice(0, 10), { onPlay: (i) => player.playQueue(local, i), menu: (t) => trackMenu(t, { allowDelete: true }) })));
+      add(results, section('В твоих MP3', null, trackList(local.slice(0, 10), { onPlay: (i) => player.playQueue(local, i), menu: (t) => trackMenu(t, { allowDelete: true }) })));
     }
     if (zRes.status === 'rejected') {
-      results.append(errorBox(zRes.reason, () => run(input.value)));
+      add(results, errorBox(zRes.reason, () => run(input.value)));
       if (zRes.reason && (zRes.reason.kind === 'bot' || zRes.reason.kind === 'rate')) {
         // search again by itself once Zvuk lets the app back in
         const again = q;
@@ -209,16 +212,16 @@ export function searchView() {
     }
     const r = zRes.value;
     if (r.artists.length) {
-      results.append(section('Артисты', null, hscroll(r.artists.map((a) => artistCard(a, () => nav.push(artistPage(a.id, a.name)))))));
+      add(results, section('Артисты', null, hscroll(r.artists.map((a) => artistCard(a, () => nav.push(artistPage(a.id, a.name)))))));
     }
     if (r.tracks.length) {
-      results.append(section('Треки в Звуке', null, trackList(r.tracks, { onPlay: (i) => player.playQueue(r.tracks, i), menu: (t) => trackMenu(t) })));
+      add(results, section('Треки', null, trackList(r.tracks, { onPlay: (i) => player.playQueue(r.tracks, i), menu: (t) => trackMenu(t) })));
     }
     if (r.releases.length) {
-      results.append(section('Альбомы', null, hscroll(r.releases.map((x) => releaseCard(x, () => nav.push(releasePage(x.id)))))));
+      add(results, section('Альбомы', null, hscroll(r.releases.map((x) => releaseCard(x, () => nav.push(releasePage(x.id)))))));
     }
     if (!local.length && !r.tracks.length && !r.artists.length && !r.releases.length) {
-      results.append(
+      add(results, 
         emptyState(
           'search',
           'Ничего не нашлось',
@@ -264,109 +267,56 @@ export function searchView() {
 // ===================== Медиатека =====================
 
 export function libraryView() {
-  const el = nav.page({ title: 'Медиатека' });
+  const el = nav.page({ title: 'Медиатека', actions: [h('button', { class: 'icon-btn', 'aria-label': 'Перенести плейлист', onclick: () => nav.push(importPage()) }, icon('add', 26))] });
   const body = nav.pageBody(el);
-  let zvukLists = null;
-  let zvukErr = null;
-  let loadingZvuk = false;
+  let zvukCount = null;
 
-  const loadZvuk = async (force) => {
-    if (!zvuk.isLoggedIn() || loadingZvuk) return;
-    if (zvukLists && !force) return;
-    loadingZvuk = true;
-    zvukErr = null;
+  const loadZvukCount = async () => {
+    if (!zvuk.isLoggedIn() || zvukCount !== null) return;
     try {
-      zvukLists = await zvuk.userPlaylists();
-    } catch (e) {
-      zvukErr = e;
-      logError('library', e);
-    }
-    loadingZvuk = false;
-    render();
+      zvukCount = (await zvuk.userPlaylists()).length;
+      render();
+    } catch {}
   };
 
   const tile = (iconName, title, sub, onClick, cls = '') =>
     h('button', { class: 'tile ' + cls, onclick: onClick }, h('div', { class: 'tile-icon' }, icon(iconName, 26)), h('div', { class: 'tile-title' }, title), h('div', { class: 'tile-sub' }, sub));
 
-  const playlistRow = (img, title, sub, onClick) =>
-    h('div', { class: 'list-row', role: 'button', onclick: onClick }, cover(img, 'cover cover-sm', 'queue'), h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, title), h('div', { class: 'track-sub' }, sub)));
+  const folder = (src) => {
+    let sub;
+    if (src.id === 'zvuk') sub = !zvuk.isLoggedIn() ? 'войди в профиле' : zvukCount === null ? 'загружаю…' : plWord(zvukCount);
+    else {
+      const n = pl.playlistsFrom(src.id).length;
+      sub = n ? plWord(n) : src.id === 'mine' ? 'создать' : 'перенести';
+    }
+    return h(
+      'button',
+      { class: 'folder', style: { '--src': src.color }, onclick: () => nav.push(folderPage(src.id)) },
+      h('div', { class: 'folder-icon' }, icon(src.id === 'mine' ? 'queue' : 'folder', 22)),
+      h('div', { class: 'folder-text' }, h('div', { class: 'folder-name' }, src.name), h('div', { class: 'folder-sub' }, sub))
+    );
+  };
 
   const render = async () => {
     const localCount = (await localTracks()).length;
     clear(body);
-    body.append(
-      h(
-        'div',
-        { class: 'tiles' },
-        tile('heart', 'Мне нравится', zvuk.isLoggedIn() ? 'Звук' : 'нужен вход в Звук', () => (zvuk.isLoggedIn() ? nav.push(likedPage()) : nav.switchTab('profile')), 'tile-liked'),
-        tile('folder', 'Мои MP3', localCount ? tracksWord(localCount) : 'добавить файлы', () => nav.push(localPage()), 'tile-local')
-      )
+    add(body, 
+      h('div', { class: 'tiles' }, tile('folder', 'Мои MP3', localCount ? tracksWord(localCount) : 'добавить файлы', () => nav.push(localPage()), 'tile-local'), tile('add', 'Перенести плейлист', 'Яндекс, VK, Spotify и другие', () => nav.push(importPage()), 'tile-import')),
+      section('Папки', null, h('div', { class: 'folders' }, SOURCES.map(folder)))
     );
-
-    const mine = pl.allPlaylists();
-    body.append(
-      section(
-        'Мои плейлисты',
-        h(
-          'button',
-          {
-            class: 'btn btn-text small',
-            onclick: async () => {
-              const name = await askText('Новый плейлист', '', 'Создать');
-              if (name) {
-                const p = pl.createPlaylist(name);
-                nav.push(customPlaylistPage(p.id));
-              }
-            },
-          },
-          '+ Создать'
-        ),
-        mine.length
-          ? h(
-              'div',
-              { class: 'list' },
-              mine.map((p) => {
-                const local = p.tracks.filter((t) => t.src === 'local').length;
-                return playlistRow(coverOf(p.tracks.find((t) => coverOf(t))), p.name, tracksWord(p.tracks.length) + (local ? `, из них ${local} MP3` : ''), () =>
-                  nav.push(customPlaylistPage(p.id))
-                );
-              })
-            )
-          : h('div', { class: 'muted pad' }, 'Здесь можно смешивать треки из Звука и свои MP3 в одном плейлисте.')
-      )
-    );
-
-    if (zvuk.isLoggedIn()) {
-      let content;
-      if (zvukErr) content = errorBox(zvukErr, () => loadZvuk(true));
-      else if (!zvukLists) content = spinner();
-      else if (!zvukLists.length) content = h('div', { class: 'muted pad' }, 'В Звуке у тебя пока нет плейлистов.');
-      else
-        content = h(
-          'div',
-          { class: 'list' },
-          zvukLists.map((p) => playlistRow(p.cover, p.title, tracksWord(p.trackIds.length), () => nav.push(zvukPlaylistPage(p))))
-        );
-      body.append(section('Плейлисты из Звука', h('button', { class: 'icon-btn small', 'aria-label': 'Обновить', onclick: () => loadZvuk(true) }, icon('refresh', 20)), content));
-    } else {
-      body.append(
-        section(
-          'Плейлисты из Звука',
-          null,
-          h('div', { class: 'muted pad' }, 'Войди в Звук в профиле, и здесь появятся твои плейлисты.'),
-          h('button', { class: 'btn btn-ghost', onclick: () => nav.switchTab('profile') }, 'Войти в Звук')
-        )
-      );
-    }
   };
 
   pl.onPlaylistsChange(render);
   onLocalChange(render);
   el._onShow = () => {
     render();
-    loadZvuk(false);
+    loadZvukCount();
   };
   return el;
+}
+
+function plWord(n) {
+  return `${n} ${plural(n, 'плейлист', 'плейлиста', 'плейлистов')}`;
 }
 
 // ===================== Профиль =====================
@@ -424,7 +374,7 @@ export function profileView() {
       h('li', null, 'Вернись сюда, вставь в поле и нажми «Войти».')
     );
 
-    body.append(
+    add(body, 
       section(
         'Звук',
         null,
@@ -463,7 +413,7 @@ export function profileView() {
     );
 
     // --- playback ---
-    body.append(
+    add(body, 
       section(
         'Воспроизведение',
         null,
@@ -477,7 +427,7 @@ export function profileView() {
     );
 
     // --- waves ---
-    body.append(
+    add(body, 
       section(
         'Волны',
         null,
@@ -497,7 +447,7 @@ export function profileView() {
 
     // --- favourite artists ---
     const fav = favArtists();
-    body.append(
+    add(body, 
       section(
         'Артисты для ленты',
         h('button', { class: 'btn btn-text small', onclick: () => nav.switchTab('search') }, '+ Найти'),
@@ -527,7 +477,7 @@ export function profileView() {
     // --- storage ---
     const est = await storageEstimate();
     const count = (await localTracks()).length;
-    body.append(
+    add(body, 
       section(
         'Память',
         null,
@@ -542,7 +492,7 @@ export function profileView() {
 
     // --- error journal ---
     const journal = getJournal().slice(0, 15);
-    body.append(
+    add(body, 
       section(
         'Журнал ошибок',
         journal.length ? h('button', { class: 'btn btn-text small', onclick: () => (clearJournal(), render()) }, 'Очистить') : null,
@@ -558,7 +508,7 @@ export function profileView() {
       )
     );
 
-    body.append(h('div', { class: 'list-meta center' }, `Резонанс ${VERSION}`));
+    add(body, h('div', { class: 'list-meta center' }, `Резонанс ${VERSION}`));
   };
 
   el._onShow = render;

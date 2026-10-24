@@ -1,6 +1,6 @@
 // Detail pages (artist, album, playlists, MP3 library) and the track menu.
 
-import { h, icon, clear, tracksWord, toast } from './util.js';
+import { h, icon, clear, tracksWord, toast, add } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as zvuk from './zvuk.js';
@@ -10,6 +10,8 @@ import { setFav, isFav } from './feed.js';
 import { logError } from './settings.js';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { PLATFORMS, platformUrl } from './platforms.js';
+import { SOURCES, sourceById, importFromLink, parseTextList, parseExportFile, detectLink, ImportError } from './importers.js';
+import { matchProgress, onMatchProgress, queueMatch, rematchLocal } from './matcher.js';
 import {
   trackList,
   section,
@@ -313,70 +315,362 @@ export function likedPage() {
   return el;
 }
 
-// ---------- own playlist ----------
+// ---------- playlist kept in the app (own or imported) ----------
+
+const isMissing = (t) => t.src === 'ext' && t.match === 'none';
+const isPending = (t) => t.src === 'ext' && !t.match;
+
+function playable(tracks) {
+  return tracks.filter((t) => !isMissing(t));
+}
 
 export function customPlaylistPage(id) {
   const p0 = pl.getPlaylist(id);
   const el = nav.page({ title: p0 ? p0.name : 'Плейлист', back: true });
   const body = nav.pageBody(el);
+  let onlyMissing = false;
+
   const render = () => {
     const p = pl.getPlaylist(id);
+    const scroll = el.scrollTop;
     clear(body);
     if (!p) {
       body.appendChild(emptyState('queue', 'Плейлист удалён'));
       return;
     }
+    const src = sourceById(p.source || 'mine');
     el.querySelector('.page-title').textContent = p.name;
-    const local = p.tracks.filter((t) => t.src === 'local').length;
-    const sub = tracksWord(p.tracks.length) + (local ? `, из них ${local} MP3` : '');
-    body.append(
-      hero(coverOf(p.tracks.find((t) => coverOf(t))), p.name, sub),
-      h('div', { class: 'center-row' }, playButtons(async () => pl.getPlaylist(id).tracks)),
+    const missing = p.tracks.filter(isMissing).length;
+    const pending = p.tracks.filter(isPending).length;
+    const mp3 = p.tracks.filter((t) => t.src === 'local' || t.match === 'local').length;
+    const parts = [tracksWord(p.tracks.length)];
+    if (mp3) parts.push(`${mp3} из MP3`);
+    if (missing) parts.push(`нет у тебя ${missing}`);
+    const prog = matchProgress(id);
+
+    const menu = () =>
+      sheet(p.name, [
+        {
+          icon: 'edit',
+          label: 'Переименовать',
+          onClick: async () => {
+            const name = await askText('Новое название', p.name);
+            if (name) pl.renamePlaylist(id, name);
+          },
+        },
+        p.source && p.source !== 'mine'
+          ? {
+              icon: 'refresh',
+              label: 'Поискать недостающие ещё раз',
+              onClick: () => {
+                for (const t of p.tracks) if (isMissing(t)) pl.rememberMatch(t.key, { match: undefined });
+                queueMatch(id);
+                toast('Ищу заново');
+              },
+            }
+          : null,
+        {
+          icon: 'trash',
+          label: 'Удалить плейлист',
+          danger: true,
+          onClick: async () => {
+            if (await confirmSheet('Удалить плейлист?', `«${p.name}» удалится. Файлы MP3 останутся.`)) {
+              pl.deletePlaylist(id);
+              nav.back();
+            }
+          },
+        },
+      ]);
+
+    const shown = onlyMissing ? p.tracks.filter(isMissing) : p.tracks;
+    add(body, 
+      hero(coverOf(p.tracks.find((t) => coverOf(t))), p.name, parts.join(', ')),
+      p.source && p.source !== 'mine' ? h('div', { class: 'source-tag', style: { '--src': src.color } }, src.name) : null,
+      prog
+        ? h(
+            'div',
+            { class: 'match-progress' },
+            h('div', { class: 'match-text' }, `Ищу, откуда играть: ${prog.done} из ${prog.total}`),
+            h('div', { class: 'match-bar' }, h('i', { style: { width: Math.round((prog.done / Math.max(1, prog.total)) * 100) + '%' } }))
+          )
+        : null,
+      h('div', { class: 'center-row' }, playButtons(async () => playable(pl.getPlaylist(id).tracks))),
       h(
         'div',
         { class: 'center-row' },
-        h('button', { class: 'btn btn-ghost', onclick: () => searchInApp('') }, icon('add', 20), 'Добавить треки'),
-        h(
+        (p.source || 'mine') === 'mine' ? h('button', { class: 'btn btn-ghost', onclick: () => searchInApp('') }, icon('add', 20), 'Добавить треки') : null,
+        missing
+          ? h(
+              'button',
+              {
+                class: 'btn btn-ghost' + (onlyMissing ? ' active' : ''),
+                onclick: () => {
+                  onlyMissing = !onlyMissing;
+                  render();
+                },
+              },
+              onlyMissing ? 'Показать все' : `Чего нет: ${missing}`
+            )
+          : null,
+        h('button', { class: 'icon-btn', 'aria-label': 'Действия', onclick: menu }, icon('more', 22))
+      ),
+      onlyMissing ? h('div', { class: 'muted small pad center' }, 'Этих треков нет в твоих MP3 и онлайн. Добавь файлы — и они заиграют.') : null,
+      shown.length
+        ? trackList(shown, {
+            onPlay: (i) => {
+              const all = playable(pl.getPlaylist(id).tracks);
+              const at = all.findIndex((t) => t.key === shown[i].key);
+              if (at >= 0) player.playQueue(all, at);
+              else toast('Этого трека пока нет ни в MP3, ни онлайн');
+            },
+            menu: (t) => trackMenu(t, { playlistId: id, index: pl.getPlaylist(id).tracks.findIndex((x) => x.key === t.key) }),
+          })
+        : emptyState('queue', 'Плейлист пустой', (p.source || 'mine') === 'mine' ? 'Добавляй треки и свои MP3 через меню «⋮» у любого трека.' : '')
+    );
+    el.scrollTop = scroll;
+    if (pending && !prog) queueMatch(id);
+  };
+
+  // matching updates the playlist many times a second; redraw calmly
+  let pendingRender = 0;
+  const soon = () => {
+    if (pendingRender) return;
+    pendingRender = setTimeout(() => {
+      pendingRender = 0;
+      render();
+    }, 700);
+  };
+  render();
+  el._cleanup.push(
+    pl.onPlaylistsChange(soon),
+    onMatchProgress((pid) => pid === id && soon()),
+    onLocalChange(async () => (await refreshLocalCovers(), soon()))
+  );
+  return el;
+}
+
+// ---------- folders: one per service ----------
+
+function playlistRow(p, onClick) {
+  const missing = p.tracks.filter(isMissing).length;
+  const prog = matchProgress(p.id);
+  const sub = prog ? `ищу треки: ${prog.done} из ${prog.total}` : tracksWord(p.tracks.length) + (missing ? `, нет у тебя ${missing}` : '');
+  return h(
+    'div',
+    { class: 'list-row', role: 'button', onclick: onClick },
+    cover(coverOf(p.tracks.find((t) => coverOf(t))), 'cover cover-sm', 'queue'),
+    h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, p.name), h('div', { class: 'track-sub' }, sub))
+  );
+}
+
+export function folderPage(sourceId) {
+  const src = sourceById(sourceId);
+  const addBtn =
+    sourceId === 'zvuk'
+      ? null
+      : h(
           'button',
           {
             class: 'icon-btn',
-            'aria-label': 'Действия',
-            onclick: () =>
-              sheet(p.name, [
-                {
-                  icon: 'edit',
-                  label: 'Переименовать',
-                  onClick: async () => {
-                    const name = await askText('Новое название', p.name);
-                    if (name) pl.renamePlaylist(id, name);
-                  },
-                },
-                {
-                  icon: 'trash',
-                  label: 'Удалить плейлист',
-                  danger: true,
-                  onClick: async () => {
-                    if (await confirmSheet('Удалить плейлист?', `«${p.name}» удалится. Треки и файлы останутся.`)) {
-                      pl.deletePlaylist(id);
-                      nav.back();
-                    }
-                  },
-                },
-              ]),
+            'aria-label': sourceId === 'mine' ? 'Создать' : 'Перенести',
+            onclick: async () => {
+              if (sourceId === 'mine') {
+                const name = await askText('Новый плейлист', '', 'Создать');
+                if (name) nav.push(customPlaylistPage(pl.createPlaylist(name).id));
+              } else nav.push(importPage(sourceId));
+            },
           },
-          icon('more', 22)
+          icon('add', 26)
+        );
+  const el = nav.page({ title: src.name, back: true, actions: addBtn ? [addBtn] : [] });
+  const body = nav.pageBody(el);
+  let zvukLists = null;
+  let zvukErr = null;
+
+  const render = () => {
+    clear(body);
+    if (sourceId === 'zvuk') {
+      if (!zvuk.isLoggedIn()) {
+        add(body, 
+          emptyState(
+            'library',
+            'Плейлисты Звука появятся сами',
+            'Войди в Звук в профиле — плейлисты подтянутся сюда, и их не нужно переносить.',
+            h('button', { class: 'btn btn-primary', onclick: () => nav.switchTab('profile') }, 'Войти')
+          )
+        );
+        return;
+      }
+      add(body, 
+        h(
+          'div',
+          { class: 'list-row', role: 'button', onclick: () => nav.push(likedPage()) },
+          h('div', { class: 'cover cover-sm cover-box liked-cover' }, icon('heart', 22)),
+          h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, 'Мне нравится'), h('div', { class: 'track-sub' }, 'лайки из Звука'))
+        )
+      );
+      if (zvukErr) add(body, errorBox(zvukErr, () => loadZvuk(true)));
+      else if (!zvukLists) add(body, spinner());
+      else
+        add(body, 
+          h(
+            'div',
+            { class: 'list' },
+            zvukLists.map((p) =>
+              h(
+                'div',
+                { class: 'list-row', role: 'button', onclick: () => nav.push(zvukPlaylistPage(p)) },
+                cover(p.cover, 'cover cover-sm', 'queue'),
+                h('div', { class: 'track-text' }, h('div', { class: 'track-title' }, p.title), h('div', { class: 'track-sub' }, tracksWord(p.trackIds.length)))
+              )
+            )
+          )
+        );
+      return;
+    }
+    const lists = pl.playlistsFrom(sourceId);
+    if (!lists.length) {
+      add(body, 
+        sourceId === 'mine'
+          ? emptyState('queue', 'Своих плейлистов пока нет', 'Собирай в них треки из любых источников и свои MP3.', addBtn && h('button', { class: 'btn btn-primary', onclick: () => addBtn.click() }, icon('add', 20), 'Создать'))
+          : emptyState('library', `Из «${src.name}» пока ничего`, 'Перенеси плейлист — треки будут играть из твоих MP3, а чего нет — онлайн.', h('button', { class: 'btn btn-primary', onclick: () => nav.push(importPage(sourceId)) }, icon('add', 20), 'Перенести плейлист'))
+      );
+      return;
+    }
+    add(body, h('div', { class: 'list' }, lists.map((p) => playlistRow(p, () => nav.push(customPlaylistPage(p.id))))));
+  };
+
+  const loadZvuk = async (force) => {
+    if (sourceId !== 'zvuk' || !zvuk.isLoggedIn()) return;
+    if (zvukLists && !force) return;
+    zvukErr = null;
+    try {
+      zvukLists = await zvuk.userPlaylists();
+    } catch (e) {
+      zvukErr = e;
+    }
+    render();
+  };
+
+  render();
+  loadZvuk(false);
+  let t = 0;
+  const soon = () => {
+    if (!t) t = setTimeout(() => ((t = 0), render()), 700);
+  };
+  el._cleanup.push(pl.onPlaylistsChange(soon), onMatchProgress(soon));
+  return el;
+}
+
+// ---------- bringing a playlist in ----------
+
+const HOWTO = {
+  yandex: [
+    'Открой плейлист в Яндекс Музыке → «Поделиться» → «Скопировать ссылку».',
+    'Плейлист должен быть открытым. «Мне нравится» обычно закрыт — его проще перенести списком или файлом.',
+  ],
+  spotify: ['Открой плейлист → «Поделиться» → «Скопировать ссылку на плейлист».', 'Если Spotify не откроется, выгрузи плейлист в файл через любой сервис переноса и загрузи файл ниже.'],
+  vk: [
+    'VK не отдаёт плейлисты по ссылке, поэтому переносим списком.',
+    'На компьютере открой плейлист на vk.com, выдели все треки мышкой, скопируй и вставь сюда. Подойдёт и файл CSV/TXT из сервиса переноса.',
+  ],
+  other: ['Вставь список треков: по одному на строку, «Исполнитель — Название».', 'Или загрузи файл CSV/TXT — например, выгрузку из сервиса переноса плейлистов.'],
+};
+
+export function importPage(preselect = 'yandex') {
+  const choices = SOURCES.filter((s) => ['yandex', 'vk', 'spotify', 'other'].includes(s.id));
+  let current = choices.some((c) => c.id === preselect) ? preselect : 'yandex';
+  const el = nav.page({ title: 'Перенести плейлист', back: true });
+  const body = nav.pageBody(el);
+  const fileInput = h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', hidden: true });
+
+  const finish = (groups, source) => {
+    const made = groups.map((g) => pl.createPlaylist(g.name, g.tracks, source));
+    made.forEach((p) => queueMatch(p.id));
+    const total = groups.reduce((n, g) => n + g.tracks.length, 0);
+    toast(made.length > 1 ? `Перенесено плейлистов: ${made.length}, треков: ${total}` : `Перенесено: ${tracksWord(total)}`);
+    nav.back();
+    nav.push(made.length === 1 ? customPlaylistPage(made[0].id) : folderPage(source));
+  };
+
+  fileInput.addEventListener('change', async () => {
+    const f = fileInput.files && fileInput.files[0];
+    fileInput.value = '';
+    if (!f) return;
+    try {
+      const text = await f.text();
+      const groups = parseExportFile(text, f.name);
+      if (!groups.length) return toast('В файле не нашлось треков', 4000);
+      finish(groups, current);
+    } catch (e) {
+      toast('Не получилось прочитать файл: ' + e.message, 5000);
+    }
+  });
+
+  const render = () => {
+    clear(body);
+    const src = sourceById(current);
+    const byLink = current === 'yandex' || current === 'spotify';
+    const linkInput = h('input', { class: 'input', type: 'url', placeholder: 'Ссылка на плейлист', autocapitalize: 'off', autocomplete: 'off' });
+    const textArea = h('textarea', { class: 'input textarea', placeholder: 'Кино — Группа крови\nБаста — Сансара\n…', rows: '8' });
+    const status = h('div', { class: 'import-status', hidden: true });
+    const go = h('button', { class: 'btn btn-primary' }, 'Перенести');
+    go.onclick = async () => {
+      const link = byLink ? linkInput.value.trim() : '';
+      const text = textArea.value.trim();
+      if (!link && !text) return toast(byLink ? 'Вставь ссылку или список' : 'Вставь список треков');
+      go.disabled = true;
+      status.hidden = false;
+      status.textContent = 'Переношу…';
+      try {
+        if (link || detectLink(text)) {
+          const r = await importFromLink(link || text);
+          finish([{ name: r.name, tracks: r.tracks }], r.service || current);
+        } else {
+          const tracks = parseTextList(text);
+          if (!tracks.length) throw new ImportError('Не нашёл в тексте ни одного трека');
+          const name = (await askText('Как назвать плейлист?', src.short + ' — плейлист', 'Готово')) || src.short + ' — плейлист';
+          finish([{ name, tracks }], current);
+        }
+      } catch (e) {
+        status.textContent = e.message || String(e);
+        status.classList.add('error');
+      } finally {
+        go.disabled = false;
+      }
+    };
+
+    add(body, 
+      h(
+        'div',
+        { class: 'chips choice' },
+        choices.map((c) =>
+          h(
+            'button',
+            {
+              class: 'chip' + (c.id === current ? ' chip-on' : ''),
+              'aria-pressed': c.id === current ? 'true' : 'false',
+              style: { '--src': c.color },
+              onclick: () => {
+                current = c.id;
+                render();
+              },
+            },
+            h('span', { class: 'src-dot' }),
+            c.name
+          )
         )
       ),
-      p.tracks.length
-        ? trackList(p.tracks, {
-            onPlay: (i) => player.playQueue(pl.getPlaylist(id).tracks, i),
-            menu: (t, i) => trackMenu(t, { playlistId: id, index: i }),
-          })
-        : emptyState('queue', 'Плейлист пустой', 'Добавляй треки из Звука и свои MP3 через меню «⋮» у любого трека.')
+      h('ol', { class: 'howto' }, HOWTO[current].map((line) => h('li', null, line))),
+      byLink ? linkInput : null,
+      byLink ? h('div', { class: 'muted small or' }, 'или списком') : null,
+      textArea,
+      h('div', { class: 'row-start' }, go, h('button', { class: 'btn btn-ghost', onclick: () => fileInput.click() }, icon('folder', 20), 'Файл CSV/TXT')),
+      status,
+      fileInput
     );
   };
   render();
-  el._cleanup.push(pl.onPlaylistsChange(render), onLocalChange(async () => (await refreshLocalCovers(), render())));
   return el;
 }
 

@@ -1585,3 +1585,150 @@ body.has-mini .snack {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- folders and import ---------- */
+
+.folders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  text-align: left;
+}
+
+.folder:active {
+  background: var(--raised);
+}
+
+.folder-icon {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--src);
+  background: color-mix(in srgb, var(--src) 18%, transparent);
+}
+
+.folder-text {
+  min-width: 0;
+}
+
+.folder-name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tile-import .tile-icon {
+  background: rgba(183, 156, 255, 0.16);
+  color: var(--lilac);
+}
+
+.source-tag {
+  display: table;
+  margin: 10px auto 0;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--src);
+  background: color-mix(in srgb, var(--src) 16%, transparent);
+}
+
+.match-progress {
+  margin: 14px 0 0;
+}
+
+.match-text {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+.match-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.match-bar i {
+  display: block;
+  height: 100%;
+  background: var(--lilac);
+  transition: width 0.4s var(--ease-out);
+}
+
+.badge-missing {
+  background: rgba(255, 107, 139, 0.14);
+  color: var(--danger);
+}
+
+.textarea {
+  min-height: 150px;
+  padding: 12px 14px;
+  line-height: 1.45;
+  resize: vertical;
+  font-size: 15px;
+}
+
+.page-body > .input,
+.page-body > .textarea {
+  margin-top: 12px;
+}
+
+.or {
+  margin: 12px 0 0;
+  text-align: center;
+}
+
+.row-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.import-status {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.import-status.error {
+  color: var(--danger);
+  background: rgba(255, 107, 139, 0.1);
+}
+
+.chip .src-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--src, var(--muted));
+}
+
+.btn-ghost.active {
+  outline: 1.5px solid var(--lilac);
+}

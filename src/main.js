@@ -9,6 +9,7 @@ import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, searchInApp, openExternal } from './pages.js';
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack } from './components.js';
 import { onLocalChange } from './local.js';
+import { resumeMatching, rematchLocal } from './matcher.js';
 import { requestPersistence } from './db.js';
 import { logError, settings, saveSettings } from './settings.js';
 import * as waves from './waves.js';
@@ -255,10 +256,9 @@ function buildFull() {
 }
 
 const VIA_LABEL = {
-  zvuk: 'Звук',
+  zvuk: 'Онлайн',
   local: 'Мой MP3',
-  'local-fallback': 'Мой MP3 — в Звуке не нашлось',
-  'zvuk-fallback': 'Звук — файла MP3 нет',
+  'zvuk-fallback': 'Онлайн — файла MP3 больше нет',
   waiting: 'Звук ненадолго закрыл доступ, жду…',
 };
 
@@ -385,7 +385,7 @@ player.onPlayer((type, data) => {
     snack(`Звук ненадолго закрыл доступ. «${data.track.title}» включится сам через ${Math.ceil(data.ms / 1000)} с`, null, null, 5000);
   }
   if (type === 'fallback') {
-    snack(data.via === 'local-fallback' ? `«${data.track.title}» нет в Звуке — играет твой MP3` : `«${data.track.title}»: MP3 нет — играет из Звука`, null, null, 3500);
+    snack(`«${data.track.title}»: файла MP3 больше нет — играет онлайн`, null, null, 3500);
   }
   paintMini();
   if (!full.el.hidden) paintFull();
@@ -408,6 +408,8 @@ App.addListener('backButton', () => {
     await requestPersistence();
     await refreshLocalCovers();
     onLocalChange(refreshLocalCovers);
+    onLocalChange(() => rematchLocal().catch((e) => logError('rematch', e)));
+    resumeMatching();
     player.initMediaSession();
     player.restoreQueue();
     paintMini();

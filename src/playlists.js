@@ -1,6 +1,9 @@
-// The user's own playlists. They can mix Zvuk tracks and local MP3s.
+// Playlists kept in the app: the user's own, and ones brought in from other
+// services (each remembers its source, which decides its folder). Tracks can be
+// MP3s, Zvuk tracks, or songs from another service ("ext") that play from an MP3
+// or from Zvuk once matched.
 
-import { load, save } from './settings.js';
+import { load, logError } from './settings.js';
 import { uid } from './util.js';
 
 let lists = load('playlists', []);
@@ -10,8 +13,19 @@ export function onPlaylistsChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
-function commit() {
-  save('playlists', lists);
+
+let saveTimer = 0;
+function commit(now = true) {
+  const write = () => {
+    try {
+      localStorage.setItem('rez.playlists', JSON.stringify(lists));
+    } catch (e) {
+      logError('playlists', new Error('Не хватает места для плейлистов: ' + e.message));
+    }
+  };
+  clearTimeout(saveTimer);
+  if (now) write();
+  else saveTimer = setTimeout(write, 600);
   for (const fn of listeners) fn();
 }
 
@@ -31,6 +45,8 @@ export function snapshot(t) {
   if (t.zid) s.zid = t.zid;
   if (t.lid) s.lid = t.lid;
   if (t.releaseId) s.releaseId = t.releaseId;
+  if (t.ambiguous) s.ambiguous = true;
+  if (t.match) s.match = t.match;
   return s;
 }
 
@@ -38,12 +54,16 @@ export function allPlaylists() {
   return lists;
 }
 
+export function playlistsFrom(source) {
+  return lists.filter((p) => (p.source || 'mine') === source);
+}
+
 export function getPlaylist(id) {
   return lists.find((p) => p.id === id) || null;
 }
 
-export function createPlaylist(name, tracks = []) {
-  const p = { id: uid(), name: name.trim() || 'Новый плейлист', tracks: tracks.map(snapshot), createdAt: Date.now() };
+export function createPlaylist(name, tracks = [], source = 'mine', extra = {}) {
+  const p = { id: uid(), name: String(name || '').trim() || 'Новый плейлист', source, tracks: tracks.map(snapshot), createdAt: Date.now(), ...extra };
   lists.unshift(p);
   commit();
   return p;
@@ -62,6 +82,28 @@ export function addTracks(id, tracks) {
   }
   commit();
   return added;
+}
+
+// Stores what a song was matched to (MP3 or Zvuk) in every playlist that has it.
+export function rememberMatch(key, patch) {
+  let changed = false;
+  for (const p of lists) {
+    for (const t of p.tracks) {
+      if (t.key !== key) continue;
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined) {
+          if (k in t) {
+            delete t[k];
+            changed = true;
+          }
+        } else if (t[k] !== v) {
+          t[k] = v;
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) commit(false);
 }
 
 export function removeTrackAt(id, index) {
@@ -90,6 +132,3 @@ export function deletePlaylist(id) {
   lists = lists.filter((p) => p.id !== id);
   commit();
 }
-
-// When a local file is deleted, its entries stay in playlists; the player
-// then looks for the same song in Zvuk. Nothing to clean up here.

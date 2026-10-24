@@ -15,7 +15,7 @@ export async function refreshLocalCovers() {
 export function coverOf(t) {
   if (!t) return '';
   if (t.cover) return t.cover;
-  if (t.src === 'local' && t.lid) return localCovers.get(t.lid) || '';
+  if ((t.src === 'local' || t.match === 'local') && t.lid) return localCovers.get(t.lid) || '';
   return '';
 }
 
@@ -37,7 +37,8 @@ export function cover(src, cls = 'cover', fallbackIcon = 'note') {
 // ---------- track rows ----------
 
 export function sourceBadge(t) {
-  if (t.src === 'local') return h('span', { class: 'badge' }, 'MP3');
+  if (t.src === 'local' || t.match === 'local') return h('span', { class: 'badge' }, 'MP3');
+  if (t.src === 'ext' && t.match === 'none') return h('span', { class: 'badge badge-missing' }, 'нет');
   return null;
 }
 
@@ -47,7 +48,7 @@ export function trackRow(t, i, opts = {}) {
   const row = h(
     'div',
     {
-      class: 'track' + (cur && cur.key === t.key ? ' playing' : '') + (t.unavailable ? ' unavailable' : ''),
+      class: 'track' + (cur && cur.key === t.key ? ' playing' : '') + (t.unavailable || (t.src === 'ext' && t.match === 'none') ? ' unavailable' : ''),
       'data-key': t.key,
       role: 'button',
     },

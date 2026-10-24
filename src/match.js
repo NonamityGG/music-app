@@ -40,11 +40,19 @@ export function matchScore(a, b) {
   return score;
 }
 
+// Pasted lists don't always say which line is the artist and which the title.
+function scoreEither(track, c) {
+  const s = matchScore(track, c);
+  if (!track.ambiguous) return s;
+  const swapped = { ...track, title: track.artist, artist: track.title, artists: [] };
+  return Math.max(s, track.artist ? matchScore(swapped, c) : 0);
+}
+
 export function bestMatch(track, candidates, threshold = 0.7) {
   let best = null;
   let bestScore = threshold;
   for (const c of candidates) {
-    const s = matchScore(track, c);
+    const s = scoreEither(track, c);
     if (s >= bestScore) {
       best = c;
       bestScore = s;

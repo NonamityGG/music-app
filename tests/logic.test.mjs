@@ -237,3 +237,101 @@ test('back-off grows with repeated blocks: 30 s, then 60 s', async () => {
   assert.ok(until > 28000, 'blocked again');
   zvuk.resetBotState();
 });
+
+// ---------- importers ----------
+
+const imp = await import('../src/importers.js');
+
+test('pasted list: "Artist - Title" lines with numbers and durations', () => {
+  const t = imp.parseTextList('1. Кино - Группа крови 4:45\n2) Баста — Сансара\n\nLinkin Park – Numb');
+  assert.deepEqual(t.map((x) => [x.artist, x.title]), [['Кино', 'Группа крови'], ['Баста', 'Сансара'], ['Linkin Park', 'Numb']]);
+  assert.equal(t[0].src, 'ext');
+  assert.equal(t[0].key, 'x:кино|группа крови');
+});
+
+test('pasted list copied from a web page: title / artist / duration blocks', () => {
+  const t = imp.parseTextList('Группа крови\nКино\n4:45\nСансара\nБаста\n5:03\n');
+  assert.equal(t.length, 2);
+  assert.equal(t[0].title, 'Группа крови');
+  assert.equal(t[0].artist, 'Кино');
+  assert.equal(t[0].duration, 285);
+  assert.equal(t[0].ambiguous, true);
+  // matching tries both orders, so a swapped block still finds the MP3
+  const swapped = imp.parseTextList('Кино\nГруппа крови\n4:45')[0];
+  assert.ok(bestMatch(swapped, [{ title: 'Группа крови', artist: 'Кино' }]));
+});
+
+test('CSV exports: Spotify-style, several playlists in one file, semicolons', () => {
+  const exportify = 'Track URI,Track Name,Artist Name(s),Album Name,Track Duration (ms)\nspotify:track:1,"Numb","Linkin Park","Meteora",185586\nspotify:track:2,"Hello, World","A, B",X,200000\n';
+  const [p] = imp.parseExportFile(exportify, 'Мой плейлист.csv');
+  assert.equal(p.name, 'Мой плейлист');
+  assert.equal(p.tracks.length, 2);
+  assert.equal(p.tracks[0].duration, 186);
+  assert.equal(p.tracks[1].title, 'Hello, World');
+  assert.equal(p.tracks[1].artists.length, 2);
+
+  const tmm = 'Track name,Artist name,Album,Playlist name,Type\nКукла колдуна,Король и Шут,Камнем по голове,Рок,Playlist\nНумб,LP,,Другой,Playlist\n';
+  const groups = imp.parseExportFile(tmm, 'export.csv');
+  assert.deepEqual(groups.map((g) => g.name), ['Рок', 'Другой']);
+
+  const semi = 'Исполнитель;Название\nКино;Звезда по имени Солнце\n';
+  assert.equal(imp.parseExportFile(semi, 'list.csv')[0].tracks[0].artist, 'Кино');
+  // plain text file falls back to the line parser
+  assert.equal(imp.parseExportFile('Кино - Пачка сигарет', 'a.txt')[0].tracks[0].title, 'Пачка сигарет');
+});
+
+test('links are recognised', () => {
+  assert.deepEqual(imp.detectLink('https://music.yandex.ru/users/serg.m/playlists/1003?utm=1'), { service: 'yandex', kind: 'user-playlist', owner: 'serg.m', id: '1003' });
+  assert.equal(imp.detectLink('https://music.yandex.ru/playlists/lk.6f0e0b3e-1a2b').kind, 'playlist-uuid');
+  assert.equal(imp.detectLink('https://music.yandex.ru/album/123').kind, 'album');
+  assert.deepEqual(imp.detectLink('https://open.spotify.com/intl-ru/playlist/37i9dQZF1DXcBWIGoYBM5M?si=x'), { service: 'spotify', kind: 'playlist', id: '37i9dQZF1DXcBWIGoYBM5M' });
+  assert.equal(imp.detectLink('https://vk.com/music/playlist/1_2').service, 'vk');
+  assert.equal(imp.detectLink('просто текст'), null);
+});
+
+test('Yandex playlist by link, including tracks that come as ids only', async () => {
+  const calls = [];
+  imp.setImportTransport(async (req) => {
+    calls.push(req);
+    if (req.url.endsWith('/users/serg/playlists/5')) {
+      return {
+        status: 200,
+        data: {
+          result: {
+            title: 'Вечер',
+            tracks: [
+              { id: 1, track: { id: 1, title: 'Хочешь?', artists: [{ name: 'Земфира' }], albums: [{ title: 'ПММЛ', coverUri: 'avatars.yandex.net/get-music-content/1/%%' }], durationMs: 245000 } },
+              { id: 2, albumId: 9 },
+            ],
+          },
+        },
+      };
+    }
+    if (req.url.endsWith('/tracks')) {
+      assert.match(req.data, /track-ids=2%3A9/);
+      return { status: 200, data: { result: [{ id: 2, title: 'Романс', version: 'Live', artists: [{ name: 'Сплин' }], albums: [], durationMs: 200000 }] } };
+    }
+    return { status: 404, data: {} };
+  });
+  const r = await imp.importFromLink('https://music.yandex.ru/users/serg/playlists/5');
+  assert.equal(r.name, 'Вечер');
+  assert.deepEqual(r.tracks.map((t) => t.title), ['Хочешь?', 'Романс (Live)']);
+  assert.equal(r.tracks[0].cover, 'https://avatars.yandex.net/get-music-content/1/300x300');
+  assert.equal(r.tracks[0].duration, 245);
+
+  imp.setImportTransport(async () => ({ status: 403, data: {} }));
+  await assert.rejects(imp.importFromLink('https://music.yandex.ru/users/serg/playlists/6'), /закрытый/);
+});
+
+test('Spotify playlist from the public embed page', async () => {
+  const next = { props: { pageProps: { state: { data: { entity: { name: 'Chill', trackList: [{ title: 'Numb', subtitle: 'Linkin Park', duration: 185000 }, { title: 'Hey', subtitle: 'A, B', duration: 1000 }] } } } } } };
+  imp.setImportTransport(async (req) => {
+    assert.match(req.url, /open\.spotify\.com\/embed\/playlist\/abc/);
+    return { status: 200, data: `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(next)}</script></html>` };
+  });
+  const r = await imp.importFromLink('https://open.spotify.com/playlist/abc');
+  assert.equal(r.name, 'Chill');
+  assert.equal(r.tracks[1].artist, 'A, B');
+  assert.equal(r.tracks[0].duration, 185);
+  imp.setImportTransport(null);
+});

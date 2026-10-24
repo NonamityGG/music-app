@@ -10,6 +10,8 @@ import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
 import { settings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
+import * as pl from './playlists.js';
+import { findOnZvuk, zvukPatch } from './matcher.js';
 
 // Two elements: `fx` is connected to the analyser that drives the waves and only
 // ever gets same-origin sources; `plain` plays everything else directly.
@@ -67,113 +69,143 @@ function setObjectUrl(url) {
 }
 
 // ---------- source resolution ----------
+// Order for every song: the user's MP3, then Zvuk. Zvuk stays in the background.
 
 async function localMatch(track) {
   const all = await localTracks();
+  if (track.lid) {
+    const byId = all.find((t) => t.lid === track.lid);
+    if (byId) return byId;
+  }
   return bestMatch(track, all);
 }
 
-async function zvukMatch(track) {
-  const q = `${track.artist || ''} ${track.title}`.trim();
-  const res = await zvuk.quickSearch(q, 12);
-  return bestMatch(track, res.tracks);
+async function localSource(track) {
+  const m = await localMatch(track);
+  if (!m) return null;
+  const blob = await localBlob(m.lid);
+  return blob ? { url: URL.createObjectURL(blob), via: 'local', match: m } : null;
+}
+
+// Zvuk id for a song from another service; searches once and remembers the answer.
+async function zidFor(track) {
+  if (track.zid) return track.zid;
+  if (track.src !== 'ext' || track.match === 'none') return '';
+  const z = await findOnZvuk(track);
+  pl.rememberMatch(track.key, z ? zvukPatch(track, z) : { match: 'none' });
+  if (z) {
+    track.zid = z.zid;
+    track.cover = track.cover || z.cover;
+  }
+  return z ? z.zid : '';
 }
 
 async function resolve(track) {
+  const pre = takePrepared(track);
+  if (pre) return pre;
+
   if (track.src === 'local') {
     const blob = await localBlob(track.lid);
-    if (blob) return { url: URL.createObjectURL(blob), via: 'local', blobUrl: true };
+    if (blob) return { url: URL.createObjectURL(blob), via: 'local' };
     if (settings.autoFallback) {
-      const m = await zvukMatch(track).catch(() => null);
+      const m = await findOnZvuk(track).catch(() => null);
       if (m) return { url: await zvuk.streamUrl(m.zid), via: 'zvuk-fallback', match: m, zid: m.zid };
     }
     throw new Error('Файла больше нет в медиатеке');
   }
 
-  // Zvuk track. Offline: try the local copy first.
-  if (!navigator.onLine && settings.autoFallback) {
-    const m = await localMatch(track);
-    if (m) {
-      const blob = await localBlob(m.lid);
-      if (blob) return { url: URL.createObjectURL(blob), via: 'local-fallback', match: m };
-    }
+  if (track.src === 'ext' || settings.autoFallback) {
+    const loc = await localSource(track);
+    if (loc) return loc;
   }
-  const pre = takePreloaded(track.zid);
-  if (pre) return pre;
-  try {
-    return { url: await zvuk.streamUrl(track.zid), via: 'zvuk', zid: track.zid };
-  } catch (e) {
-    if (settings.autoFallback) {
-      const m = await localMatch(track);
-      if (m) {
-        const blob = await localBlob(m.lid);
-        if (blob) return { url: URL.createObjectURL(blob), via: 'local-fallback', match: m };
-      }
-    }
-    throw e;
-  }
+  const zid = await zidFor(track);
+  if (!zid) throw new Error('Этого трека нет ни в твоих MP3, ни онлайн');
+  return { url: await zvuk.streamUrl(zid), via: 'zvuk', zid };
 }
 
-// ---------- preloading ----------
-// While a track plays, the app quietly gets stream links for the next three Zvuk
-// tracks and the audio of the next one. Switching tracks then needs no request to
-// Zvuk at all, so a short block by Zvuk's protection goes unnoticed.
+// ---------- getting the next tracks ready ----------
+// Right after a track starts, the app prepares the next one completely (for an
+// online track it downloads the audio) and finds the links for two more. When the
+// track ends or you press "next", the prepared one starts at once, with no
+// request to Zvuk at all — so a short block by Zvuk's protection goes unnoticed too.
 
-const ahead = new Map(); // zid -> { url, urlAt, blob, loading }
+const ahead = new Map(); // track key -> { zid, url, urlAt, blob, loading, local }
 const LINK_TTL = 10 * 60 * 1000;
-let preloadTimer = 0;
+let prepTimer = 0;
 
-function takePreloaded(zid) {
-  const p = ahead.get(zid);
+function takePrepared(track) {
+  const p = ahead.get(track.key);
   if (!p) return null;
   if (p.blob) {
-    ahead.delete(zid);
-    return { url: URL.createObjectURL(p.blob), via: 'zvuk', zid, preloaded: true };
+    ahead.delete(track.key);
+    return { url: URL.createObjectURL(p.blob), via: 'zvuk', zid: p.zid, preloaded: true };
   }
   if (p.url && Date.now() - p.urlAt < LINK_TTL) {
-    ahead.delete(zid);
-    return { url: p.url, via: 'zvuk', zid };
+    ahead.delete(track.key);
+    return { url: p.url, via: 'zvuk', zid: p.zid };
   }
   return null;
 }
 
 function hasPreloadedAudio(t) {
-  const p = t && t.zid && ahead.get(t.zid);
-  return !!(p && p.blob);
+  const p = t && ahead.get(t.key);
+  return !!(p && (p.blob || p.local));
 }
 
-function schedulePreload(delay = 6000) {
-  clearTimeout(preloadTimer);
-  preloadTimer = setTimeout(preloadAhead, delay);
+function schedulePreload(delay = 800) {
+  clearTimeout(prepTimer);
+  prepTimer = setTimeout(prepareAhead, delay);
 }
 
-async function preloadAhead() {
+function upcoming(n) {
+  const out = [];
+  for (let k = 1; k <= n; k++) {
+    let i = state.index + k;
+    if (i >= state.queue.length) {
+      if (state.repeat !== 'all') break;
+      i -= state.queue.length;
+    }
+    if (i === state.index) break;
+    out.push(state.queue[i]);
+  }
+  return out;
+}
+
+async function prepareAhead() {
   if (zvuk.botBlocked()) return schedulePreload(zvuk.botRemaining() + 3000);
   const seq = loadSeq;
-  const keep = new Set();
-  for (let k = 1; k <= 3; k++) {
-    const t = state.queue[state.index + k];
-    if (!t || t.src !== 'zvuk' || !t.zid) continue;
-    keep.add(t.zid);
-    const p = ahead.get(t.zid) || {};
-    ahead.set(t.zid, p);
-    if (!p.url || Date.now() - p.urlAt > LINK_TTL) {
-      try {
-        p.url = await zvuk.streamUrl(t.zid);
-        p.urlAt = Date.now();
-      } catch (e) {
-        if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate') break;
-        continue;
+  const next = upcoming(3);
+  const keep = new Set(next.map((t) => t.key));
+  for (let k = 0; k < next.length; k++) {
+    const t = next[k];
+    if (!t || t.src === 'local' || t.unavailable) continue;
+    const p = ahead.get(t.key) || {};
+    ahead.set(t.key, p);
+    try {
+      if (t.src === 'ext' || settings.autoFallback) {
+        if (await localMatch(t)) {
+          p.local = true; // an MP3 starts instantly anyway
+          continue;
+        }
       }
+      if (!p.zid) p.zid = await zidFor(t);
+      if (!p.zid) continue;
+      if (!p.url || Date.now() - p.urlAt > LINK_TTL) {
+        p.url = await zvuk.streamUrl(p.zid);
+        p.urlAt = Date.now();
+      }
+    } catch (e) {
+      if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate') break;
+      continue;
     }
     if (seq !== loadSeq) return;
-    if (k === 1 && !p.blob && !p.loading && Capacitor.isNativePlatform()) {
+    if (k === 0 && !p.blob && !p.loading && Capacitor.isNativePlatform()) {
       p.loading = true;
       try {
         const r = await fetch(proxied(p.url));
         if (r.ok) {
           const blob = await r.blob();
-          if (blob.size > 50000 && seq === loadSeq) p.blob = blob;
+          if (blob.size > 50000 && ahead.get(t.key) === p) p.blob = blob;
         }
       } catch (e) {
         logError('preload', e);
@@ -182,7 +214,7 @@ async function preloadAhead() {
       }
     }
   }
-  for (const id of [...ahead.keys()]) if (!keep.has(id)) ahead.delete(id);
+  for (const key of [...ahead.keys()]) if (!keep.has(key)) ahead.delete(key);
 }
 
 // ---------- which element plays the source ----------
@@ -307,9 +339,10 @@ async function load_(index, autoplay = true, auto = false) {
     logError('play', e);
     emit('unavailable', { track, error: e });
     if (failStreak < 5 && state.queue.length > 1 && hasNext()) {
+      const known = track.src === 'ext' && track.match === 'none';
       setTimeout(() => {
         if (seq === loadSeq) next(true);
-      }, 1200);
+      }, known ? 250 : 1200);
     } else {
       setPlaying(false);
     }
@@ -506,7 +539,7 @@ for (const el of [plain, fx]) {
     mine(() => {
       setPlaying(true);
       pushPosition();
-      schedulePreload(6000);
+      schedulePreload(800);
     })
   );
   el.addEventListener('pause', mine(() => setPlaying(false)));
