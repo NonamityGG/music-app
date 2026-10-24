@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "app.slukh.player"
+    namespace = "app.rezonans.player"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.slukh.player"
+        applicationId "app.rezonans.player"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode = Integer.parseInt(System.getenv("APP_VERSION_CODE") ?: "1")
@@ -18,10 +18,10 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file('slukh-release.keystore')
-            storePassword 'slukh-app-2026'
-            keyAlias 'slukh'
-            keyPassword 'slukh-app-2026'
+            storeFile file('rezonans-release.keystore')
+            storePassword 'rezonans-app-2026'
+            keyAlias 'rezonans'
+            keyPassword 'rezonans-app-2026'
         }
     }
     buildTypes {

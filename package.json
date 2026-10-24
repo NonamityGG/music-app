@@ -1,7 +1,7 @@
 {
-  "name": "slukh",
+  "name": "rezonans",
   "version": "1.0.0",
-  "description": "Слух — один плеер для Звука и своих MP3",
+  "description": "Резонанс — один плеер для Звука и своих MP3",
   "scripts": {
     "build": "node tools/build.mjs",
     "sync": "npm run build && npx cap sync android",

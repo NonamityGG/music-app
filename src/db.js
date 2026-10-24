@@ -1,6 +1,6 @@
 // Minimal promise wrapper over IndexedDB. Holds imported MP3 files and their tags.
 
-const DB_NAME = 'slukh';
+const DB_NAME = 'rezonans';
 const VERSION = 1;
 let dbPromise;
 

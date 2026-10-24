@@ -1,6 +1,6 @@
 {
-  "appId": "app.slukh.player",
-  "appName": "Слух",
+  "appId": "app.rezonans.player",
+  "appName": "Резонанс",
   "webDir": "www",
   "backgroundColor": "#0f0b16",
   "android": {

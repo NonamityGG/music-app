@@ -52,20 +52,20 @@ jobs:
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk "Slukh-${APP_VERSION_NAME}.apk"
+        run: cp android/app/build/outputs/apk/release/app-release.apk "Rezonans-${APP_VERSION_NAME}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Slukh-${{ env.APP_VERSION_NAME }}
-          path: Slukh-*.apk
+          name: Rezonans-${{ env.APP_VERSION_NAME }}
+          path: Rezonans-*.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
-          name: Слух ${{ env.APP_VERSION_NAME }}
+          name: Резонанс ${{ env.APP_VERSION_NAME }}
           body: |
-            Скачай файл Slukh-${{ env.APP_VERSION_NAME }}.apk ниже и открой его на телефоне.
+            Скачай файл Rezonans-${{ env.APP_VERSION_NAME }}.apk ниже и открой его на телефоне.
             Если уже стоит прошлая версия — новая установится поверх, данные сохранятся.
-          files: Slukh-*.apk
+          files: Rezonans-*.apk
           make_latest: true

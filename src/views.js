@@ -530,7 +530,7 @@ export function profileView() {
       )
     );
 
-    body.append(h('div', { class: 'list-meta center' }, `Слух ${VERSION}`));
+    body.append(h('div', { class: 'list-meta center' }, `Резонанс ${VERSION}`));
   };
 
   el._onShow = render;

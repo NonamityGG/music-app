@@ -1,4 +1,4 @@
-package app.slukh.player;
+package app.rezonans.player;
 
 import com.getcapacitor.BridgeActivity;
 

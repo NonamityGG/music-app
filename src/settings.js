@@ -1,6 +1,6 @@
 // Persistent settings and small JSON stores in localStorage.
 
-const PREFIX = 'slukh.';
+const PREFIX = 'rez.';
 
 export function load(key, fallback) {
   try {
