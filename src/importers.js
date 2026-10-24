@@ -1,6 +1,7 @@
 // Bringing playlists in from other services. What arrives is a list of songs
-// (artist + title); the sound comes later from the user's MP3s or Zvuk.
+// (artist + title); the sound comes later from the user's MP3s or Yandex Music.
 //
+// - Zvuk: see zvuk-import.js (by link, or all playlists after signing in)
 // - Yandex Music: by link to an open playlist or album
 // - Spotify: by link to a public playlist or album
 // - VK and anything else: a pasted list, or a CSV/TXT export file

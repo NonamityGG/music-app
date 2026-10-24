@@ -17,9 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       APP_VERSION_CODE: ${{ github.run_number }}
-      APP_VERSION_NAME: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+
+      # 1.1.0 is build 8; every build after it counts up
+      - name: Version
+        run: echo "APP_VERSION_NAME=1.1.$(( ${{ github.run_number }} - 8 ))" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:

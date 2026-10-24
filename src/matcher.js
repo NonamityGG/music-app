@@ -1,6 +1,7 @@
-// Finds where each imported song can play from: the user's MP3 first, Zvuk
-// second. Runs in the background one playlist at a time, slowly enough not to
-// upset Zvuk, and remembers the result in the playlist.
+// Finds where each imported song can play from: the user's MP3 first, Yandex
+// Music second. Runs in the background one playlist at a time and remembers the
+// result in the playlist. Without Yandex Music signed in, songs that have no MP3
+// simply wait, and are looked up as soon as the user signs in.
 
 import * as pl from './playlists.js';
 import * as online from './online.js';
@@ -109,6 +110,8 @@ async function matchOne(id) {
     const m = bestMatch(t, locals);
     if (m) {
       pl.rememberMatch(t.key, { match: 'local', lid: m.lid });
+    } else if (!online.isLoggedIn()) {
+      // no online service yet: leave it waiting
     } else {
       let z = null;
       let gaveUp = false;
@@ -121,7 +124,7 @@ async function matchOne(id) {
             await sleep(online.blockedRemaining() + 1500);
             continue;
           }
-          if (e.kind === 'network' || e.kind === 'check' || e.kind === 'auth') {
+          if (e.kind === 'network' || e.kind === 'nologin' || e.kind === 'auth') {
             gaveUp = true; // offline: try again next time the app starts
             break;
           }

@@ -326,6 +326,24 @@ public class ServiceWebPlugin extends Plugin {
         }, timeout + 5000L);
     }
 
+    /** Runs a script in the service page once it has loaded; resolves { value } (JSON of the result). */
+    @PluginMethod
+    public void run(PluginCall call) {
+        String service = call.getString("service", "default");
+        String js = call.getString("js", "null");
+        main.post(() -> {
+            Holder h = holder(service);
+            Runnable go = () ->
+                h.web.evaluateJavascript(js, (value) -> {
+                    JSObject r = new JSObject();
+                    r.put("value", value);
+                    call.resolve(r);
+                });
+            if (h.loading) h.waiting.add(go);
+            else go.run();
+        });
+    }
+
     /** Signs the service out by dropping the cookies of its domains. */
     @PluginMethod
     public void forget(PluginCall call) {

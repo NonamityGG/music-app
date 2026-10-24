@@ -40,7 +40,7 @@ let prevBassRaw = 0;
 let beatPulse = 0; // 0..1, jumps on each kick drum and fades quickly
 
 let source = { playing: () => false, analysing: () => false, onSilence: () => {} };
-let cfg = { style: 'neon', palette: 'violet' };
+let cfg = { style: 'neon', palette: 'violet', light: false };
 const surfaces = {}; // name -> { canvas, ctx, dpr, w, h, opts }
 let active = 'bg';
 let raf = 0;
@@ -258,7 +258,9 @@ function frameFor(s, t) {
   const cx = c ? c.x * s.dpr : s.w / 2;
   const cy = c ? c.y * s.dpr : s.opts.place === 'low' ? s.h * 0.79 : s.h / 2;
   const amp = c && c.amp ? c.amp * s.dpr : Math.min(s.w, s.h) * (s.opts.ampScale || 0.3);
-  return { ctx: s.ctx, w: s.w, h: s.h, cx, cy, amp, dpr: s.dpr, t, colors: pal.colors, g: gradients(s, pal.colors), full: !!s.opts.full, rx: c ? c.r * s.dpr : 0 };
+  // glowing 'lighter' blending washes out to white on a light background
+  const blend = cfg.light ? 'source-over' : 'lighter';
+  return { ctx: s.ctx, w: s.w, h: s.h, cx, cy, amp, dpr: s.dpr, t, colors: pal.colors, g: gradients(s, pal.colors), full: !!s.opts.full, rx: c ? c.r * s.dpr : 0, blend };
 }
 
 function draw(t, dt) {
@@ -295,7 +297,7 @@ const DRAW = {
       path.lineTo(x, cy + hh);
     }
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = f.blend;
     ctx.lineCap = 'round';
     ctx.strokeStyle = f.g.h;
     ctx.globalAlpha = 0.16;
@@ -312,7 +314,7 @@ const DRAW = {
     const lines = 18;
     const step = 5 * dpr;
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = f.blend;
     ctx.strokeStyle = f.g.h;
     ctx.lineWidth = 1.3 * dpr;
     const lift = 0.12 + bass * 1.1 + energy * 0.5;
@@ -409,7 +411,7 @@ const DRAW = {
       path.lineTo(cx + c * (base + len), cy + s * (base + len));
     }
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = f.blend;
     ctx.strokeStyle = f.g.h;
     ctx.lineCap = 'round';
     ctx.globalAlpha = 0.18;
@@ -473,7 +475,7 @@ const DRAW = {
       py = y;
     }
     path.lineTo(px, py);
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = f.blend;
     ctx.strokeStyle = f.g.h;
     ctx.lineJoin = 'round';
     ctx.globalAlpha = 0.2;
@@ -526,7 +528,7 @@ export function renderPreview(canvas, styleId, paletteId) {
   bass = 0.55;
   mid = 0.4;
   ripples.push({ r: 6 * dpr, a: 0.5 }, { r: 16 * dpr, a: 0.25 });
-  const f = { ctx, w: s.w, h: s.h, cx: s.w / 2, cy: s.h / 2, amp: Math.min(s.w, s.h) * 0.42, dpr, t: 1.3, colors: pal.colors, g: { h: hg, v: vg }, full: false, rx: 0 };
+  const f = { ctx, w: s.w, h: s.h, cx: s.w / 2, cy: s.h / 2, amp: Math.min(s.w, s.h) * 0.42, dpr, t: 1.3, colors: pal.colors, g: { h: hg, v: vg }, full: false, rx: 0, blend: cfg.light ? 'source-over' : 'lighter' };
   if (styleId === 'rings') f.amp = Math.min(s.w, s.h) * 0.5;
   ctx.clearRect(0, 0, s.w, s.h);
   (DRAW[styleId] || DRAW.neon)(f, sample, wv);
@@ -537,7 +539,15 @@ export function renderPreview(canvas, styleId, paletteId) {
   mid = saved.mid;
 }
 
-// For diagnostics: current smoothed levels.
+// For diagnostics and the seek bar: current smoothed levels.
 export function levels() {
+  if (cfg.style === 'off') return { bass: 0, energy: 0, beat: 0 };
   return { bass, energy, beat: beatPulse };
+}
+
+// n values 0..1 from low to high notes, for things that move gently with the music.
+export function barLevels(n, out = new Float32Array(n)) {
+  const live = cfg.style !== 'off' && (source.playing() || energy > 0.004);
+  for (let i = 0; i < n; i++) out[i] = live ? bands[Math.min(BANDS - 1, Math.floor((i / n) * BANDS * 0.7))] : 0;
+  return out;
 }

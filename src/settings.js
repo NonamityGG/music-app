@@ -40,7 +40,7 @@ const DEFAULTS = {
   yaLogin: '',
   yaName: '',
   yaPlus: false,
-  primaryService: '', // 'zvuk' | 'yandex' when both are connected
+  theme: 'dark', // see theme.js
 };
 
 export const settings = Object.assign({}, DEFAULTS, load('settings', {}));

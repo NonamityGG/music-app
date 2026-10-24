@@ -6,10 +6,13 @@ import * as nav from './nav.js';
 import * as player from './player.js';
 import * as online from './online.js';
 import * as web from './serviceweb.js';
-import { onAccountsChange } from './accounts.js';
+import { onAccountsChange, connect as connectService } from './accounts.js';
+import { migrateFromZvuk } from './playlists.js';
+import { toExt as zvukToExt } from './zvuk-import.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, onLikeChange, searchInApp, openExternal } from './pages.js';
-import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack } from './components.js';
+import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose } from './components.js';
+import { applyTheme } from './theme.js';
 import { onLocalChange } from './local.js';
 import { resumeMatching, rematchLocal } from './matcher.js';
 import { requestPersistence } from './db.js';
@@ -24,11 +27,17 @@ const TABS = [
   { name: 'profile', label: 'Профиль', icon: 'user', view: profileView },
 ];
 
+applyTheme();
+
 const content = h('main', { class: 'content' });
+const tabIndicator = h('div', { class: 'tab-indicator', 'aria-hidden': 'true' });
 const tabbar = h('nav', { class: 'tabbar' });
 const mini = buildMini();
 const full = buildFull();
 const bgCanvas = h('canvas', { class: 'waves-bg', 'aria-hidden': 'true' });
+// soft colour clouds behind the glass themes (only shown there)
+const aurora = h('div', { class: 'aurora', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
+document.body.insertBefore(aurora, document.getElementById('app'));
 document.body.insertBefore(bgCanvas, document.getElementById('app'));
 document.getElementById('app').append(content, mini.el, tabbar, full.el);
 
@@ -69,8 +78,11 @@ for (const t of TABS) {
   tabButtons[t.name] = b;
   tabbar.appendChild(b);
 }
+tabbar.appendChild(tabIndicator);
 nav.onTab((name) => {
   for (const [n, b] of Object.entries(tabButtons)) b.classList.toggle('active', n === name);
+  const i = TABS.findIndex((t) => t.name === name);
+  tabIndicator.style.transform = `translateX(${i * 100}%)`;
 });
 nav.initNav(content, Object.fromEntries(TABS.map((t) => [t.name, t.view])), 'feed');
 
@@ -94,27 +106,55 @@ function buildMini() {
   return { el, coverBox, title, sub, playBtn, bar };
 }
 
+let miniKey = '';
 function paintMini() {
   const t = player.current();
   mini.el.hidden = !t;
   document.body.classList.toggle('has-mini', !!t);
   if (!t) return;
-  clear(mini.coverBox).appendChild(cover(coverOf(t), 'cover cover-mini'));
-  mini.title.textContent = t.title;
-  mini.sub.textContent = t.artist || '';
+  const key = t.key + '|' + coverOf(t);
+  if (key !== miniKey) {
+    const first = !miniKey;
+    miniKey = key;
+    clear(mini.coverBox).appendChild(cover(coverOf(t), 'cover cover-mini'));
+    mini.title.textContent = t.title;
+    mini.sub.textContent = t.artist || '';
+    if (!first) replay(mini.el, 'swap');
+  }
   paintPlayButtons();
+  ensureLoop();
 }
 
+// Restarts a one-shot CSS animation class.
+function replay(el, cls) {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+// The play/pause icon only changes (with a little morph) when the state does.
+let playShown = '';
 function paintPlayButtons() {
   const busy = player.state.loading;
   const playing = player.state.playing;
-  clear(mini.playBtn).appendChild(busy ? h('div', { class: 'spin small' }) : icon(playing ? 'pause' : 'play', 28));
-  clear(full.playBtn).appendChild(busy ? h('div', { class: 'spin' }) : icon(playing ? 'pause' : 'play', 38));
+  const k = busy ? 'busy' : playing ? 'pause' : 'play';
+  if (k === playShown) return;
+  const animate = !!playShown;
+  playShown = k;
+  const put = (btn, small) => {
+    const el = busy ? h('div', { class: small ? 'spin small' : 'spin' }) : icon(k, small ? 28 : 38);
+    if (animate) el.classList.add('icon-pop');
+    clear(btn).appendChild(el);
+  };
+  put(mini.playBtn, true);
+  put(full.playBtn, false);
+  full.el.classList.toggle('is-playing', playing && !busy);
 }
 
 // ---------- waveform seek bar ----------
 
-// Bars are generated from the track id, so each song keeps its own shape.
+// Bars are generated from the track id, so each song keeps its own shape. The
+// played part fills smoothly, and the bars breathe very slightly with the music.
 function buildWave(n = 56) {
   const el = h('div', { class: 'wave', role: 'slider', 'aria-label': 'Перемотка', 'aria-valuemin': '0', 'aria-valuemax': '100', tabindex: '0' });
   const bars = [];
@@ -140,11 +180,44 @@ function buildWave(n = 56) {
       const env = 0.55 + 0.45 * Math.sin((Math.PI * (i + 0.5)) / n);
       b.style.height = Math.round(18 + 82 * v * env) + '%';
     });
+    replay(el, 'reshape');
   };
+  let lastOn = -1;
+  let partial = null;
+  let lastPct = -1;
   w.setFrac = (f) => {
-    const on = Math.round(f * n);
-    bars.forEach((b, i) => b.classList.toggle('on', i < on));
-    el.setAttribute('aria-valuenow', String(Math.round(f * 100)));
+    const pos = Math.min(n, Math.max(0, f * n));
+    const on = Math.floor(pos);
+    if (on !== lastOn) {
+      bars.forEach((b, i) => b.classList.toggle('on', i < on));
+      lastOn = on;
+    }
+    const cur = bars[on] || null;
+    if (cur !== partial) {
+      if (partial) partial.style.removeProperty('--fill');
+      partial = cur;
+      lastPct = -1;
+    }
+    if (partial) {
+      const pct = Math.round((pos - on) * 100);
+      if (pct !== lastPct) partial.style.setProperty('--fill', pct + '%');
+      lastPct = pct;
+    }
+    const v = String(Math.round(f * 100));
+    if (el.getAttribute('aria-valuenow') !== v) el.setAttribute('aria-valuenow', v);
+  };
+  const levels = new Float32Array(n);
+  const shown = new Float32Array(n);
+  w.pulse = (beat) => {
+    waves.barLevels(n, levels);
+    for (let i = 0; i < n; i++) {
+      // very gentle: a few percent of the bar's height
+      const target = levels[i] * 0.1 + beat * 0.05;
+      const v = shown[i] + (target - shown[i]) * 0.35;
+      if (Math.abs(v - shown[i]) < 0.002 && Math.abs(target - v) < 0.002) continue;
+      shown[i] = v;
+      bars[i].style.transform = v > 0.003 ? `scaleY(${(1 + v).toFixed(3)})` : '';
+    }
   };
   const fracAt = (x) => {
     const r = el.getBoundingClientRect();
@@ -152,6 +225,7 @@ function buildWave(n = 56) {
   };
   el.addEventListener('pointerdown', (e) => {
     w.dragging = true;
+    el.classList.add('scrubbing');
     el.setPointerCapture(e.pointerId);
     const f = fracAt(e.clientX);
     w.setFrac(f);
@@ -166,10 +240,14 @@ function buildWave(n = 56) {
   const end = (e) => {
     if (!w.dragging) return;
     w.dragging = false;
+    el.classList.remove('scrubbing');
     w.onSeek && w.onSeek(fracAt(e.clientX));
   };
   el.addEventListener('pointerup', end);
-  el.addEventListener('pointercancel', () => (w.dragging = false));
+  el.addEventListener('pointercancel', () => {
+    w.dragging = false;
+    el.classList.remove('scrubbing');
+  });
   el.addEventListener('keydown', (e) => {
     const d = player.duration();
     if (!d) return;
@@ -182,7 +260,10 @@ function buildWave(n = 56) {
 // ---------- full player ----------
 
 function buildFull() {
-  const bg = h('div', { class: 'full-bg' });
+  // two background layers, so a new cover fades in over the old one
+  const bgA = h('div', { class: 'full-bg' });
+  const bgB = h('div', { class: 'full-bg' });
+  const bg = h('div', { class: 'full-bgs' }, bgA, bgB);
   const art = h('div', { class: 'full-art' });
   const title = h('div', { class: 'full-title' });
   const artist = h('button', { class: 'full-artist' });
@@ -236,6 +317,8 @@ function buildFull() {
   likeBtn.onclick = async () => {
     const t = player.current();
     if (!t || !canLike(t)) return;
+    const was = isLikedSync(t);
+    if (!was) replay(likeBtn, 'pop');
     await toggleLike(t);
     paintFull();
     syncNotificationLike();
@@ -248,6 +331,8 @@ function buildFull() {
     if (a) nav.push(artistPage(a.id, a.name));
     else if (t.artist) searchInApp(t.artist);
   };
+  // pull the player down to close it
+  dragToClose(el, el, () => closeFull(), el, { threshold: 140, ignore: '.wave, .controls, .full-bottom, .full-meta button, .sheet' });
   // tap the cover: waves take the whole stage, tap again to bring the cover back
   art.addEventListener('click', () => {
     saveSettings({ wavesFocus: !settings.wavesFocus });
@@ -255,74 +340,153 @@ function buildFull() {
     waves.resize('full');
     waves.kick();
   });
-  return { el, bg, canvas, art, title, artist, via, likeBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
+  return { el, bg, bgLayers: [bgA, bgB], canvas, art, title, artist, via, likeBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
 }
 
 const VIA_LABEL = {
-  zvuk: 'Онлайн',
+  online: 'Яндекс Музыка',
   local: 'Мой MP3',
-  'zvuk-fallback': 'Онлайн — файла MP3 больше нет',
-  waiting: 'Звук ненадолго закрыл доступ, жду…',
+  'online-fallback': 'Яндекс Музыка — файла MP3 больше нет',
 };
+
+let fullKey = '';
+let bgFront = 0;
+
+// A new cover slides in over the old one instead of blinking.
+function swapCover(src) {
+  const old = full.art.querySelector('.cover-full:not(.cover-out)');
+  const next = cover(src ? src.replace(/size=\d+x\d+/, 'size=600x600') : '', 'cover cover-full');
+  if (old) {
+    old.classList.add('cover-out');
+    setTimeout(() => old.remove(), 420);
+    next.classList.add('cover-in');
+  }
+  full.art.appendChild(next);
+}
+
+function swapBackground(src) {
+  const [a, b] = full.bgLayers;
+  const front = bgFront ? b : a;
+  const back = bgFront ? a : b;
+  back.style.backgroundImage = src ? `url("${src}")` : '';
+  back.classList.add('on');
+  front.classList.remove('on');
+  bgFront = bgFront ? 0 : 1;
+}
 
 function paintFull() {
   const t = player.current();
   if (!t) return;
   const c = coverOf(t);
-  full.bg.style.backgroundImage = c ? `url("${c}")` : '';
-  clear(full.art).appendChild(cover(c ? c.replace(/size=\d+x\d+/, 'size=600x600') : '', 'cover cover-full'));
-  full.title.textContent = t.title;
-  full.artist.textContent = t.artist || '';
+  const key = t.key + '|' + c;
+  if (key !== fullKey) {
+    const changedTrack = !fullKey.startsWith(t.key + '|');
+    const first = !fullKey;
+    fullKey = key;
+    swapCover(c);
+    swapBackground(c);
+    full.title.textContent = t.title;
+    full.artist.textContent = t.artist || '';
+    if (changedTrack && !first) replay(full.el.querySelector('.full-meta-text'), 'swap');
+  }
   full.wave.setShape(t.key);
   full.wave.el.classList.toggle('busy', player.state.loading);
   const waitLeft = player.state.waitingUntil ? Math.ceil((player.state.waitingUntil - Date.now()) / 1000) : 0;
   full.via.textContent =
     waitLeft > 0
-      ? `Звук ненадолго закрыл доступ, включу сам через ${waitLeft} с`
+      ? `Сервис ненадолго закрыл доступ, включу сам через ${waitLeft} с`
       : player.state.loading
       ? 'Загружаю…'
       : t.unavailable
       ? 'Не удалось включить'
       : VIA_LABEL[player.state.via] || '';
   full.likeBtn.hidden = !canLike(t);
-  clear(full.likeBtn).appendChild(icon(isLikedSync(t) ? 'heart' : 'heartOutline', 26));
-  full.likeBtn.classList.toggle('liked', isLikedSync(t));
+  const liked = isLikedSync(t);
+  if (full.likeBtn.dataset.liked !== String(liked) || !full.likeBtn.firstChild) {
+    full.likeBtn.dataset.liked = String(liked);
+    clear(full.likeBtn).appendChild(icon(liked ? 'heart' : 'heartOutline', 26));
+  }
+  full.likeBtn.classList.toggle('liked', liked);
   full.shuffleBtn.classList.toggle('active', player.state.shuffle);
-  clear(full.repeatBtn).appendChild(icon(player.state.repeat === 'one' ? 'repeatOne' : 'repeat', 24));
+  const rep1 = player.state.repeat === 'one' ? 'repeatOne' : 'repeat';
+  if (full.repeatBtn.dataset.icon !== rep1) {
+    full.repeatBtn.dataset.icon = rep1;
+    clear(full.repeatBtn).appendChild(icon(rep1, 24));
+  }
   full.repeatBtn.classList.toggle('active', player.state.repeat !== 'off');
   paintPlayButtons();
   paintTime();
 }
 
+// ---------- progress, every frame while playing ----------
+
+let lastSec = -1;
+let lastDurSec = -1;
 function paintTime() {
   const d = player.duration();
   const p = player.position();
   const frac = d ? Math.min(1, p / d) : 0;
-  mini.bar.style.width = (frac * 100).toFixed(2) + '%';
+  const beat = player.state.playing ? waves.levels().beat : 0;
+  mini.bar.style.transform = `scaleX(${frac.toFixed(4)})`;
+  mini.bar.style.setProperty('--beat', beat.toFixed(3));
   if (full.el.hidden) return;
   if (!full.wave.dragging) {
     full.wave.setFrac(frac);
-    full.tCur.textContent = fmtTime(p);
+    const sec = Math.floor(p);
+    if (sec !== lastSec) {
+      lastSec = sec;
+      full.tCur.textContent = fmtTime(p);
+    }
   }
-  full.tDur.textContent = fmtTime(d);
+  const ds = Math.floor(d);
+  if (ds !== lastDurSec) {
+    lastDurSec = ds;
+    full.tDur.textContent = fmtTime(d);
+  }
+  full.wave.pulse(beat);
 }
 
+let loopId = 0;
+const loopWanted = () => !!player.current() && !document.hidden && player.state.playing;
+function frame() {
+  loopId = 0;
+  paintTime();
+  if (loopWanted()) loopId = requestAnimationFrame(frame);
+  else {
+    // let the bars settle back
+    requestAnimationFrame(() => paintTime());
+  }
+}
+function ensureLoop() {
+  if (!loopId && loopWanted()) loopId = requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange', ensureLoop);
+
+let closeTimer = 0;
 function openFull() {
   if (!player.current()) return;
+  clearTimeout(closeTimer);
   full.el.hidden = false;
+  lastSec = -1;
+  lastDurSec = -1;
   paintFull();
-  requestAnimationFrame(() => {
-    full.el.classList.add('open');
-    waves.setActive('full');
-    setTimeout(() => waves.resize('full'), 340); // measure the cover once it has slid in
-  });
+  // two frames: the first lays the player out below the screen, the second slides it up
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      full.el.classList.add('open');
+      waves.setActive('full');
+      ensureLoop();
+      setTimeout(() => waves.resize('full'), 460); // measure the cover once it has slid in
+    })
+  );
 }
 
 function closeFull() {
-  if (full.el.hidden) return false;
+  if (full.el.hidden || !full.el.classList.contains('open')) return false;
   full.el.classList.remove('open');
   waves.setActive('bg');
-  setTimeout(() => (full.el.hidden = true), 250);
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => (full.el.hidden = true), 460);
   return true;
 }
 
@@ -368,24 +532,19 @@ function showQueue() {
 
 // ---------- player events ----------
 
-let paintPending = false;
 player.onPlayer((type, data) => {
   if (type === 'time') {
-    if (!paintPending) {
-      paintPending = true;
-      requestAnimationFrame(() => {
-        paintPending = false;
-        paintTime();
-      });
-    }
+    // the frame loop paints while playing; this covers seeks while paused
+    if (!loopId) paintTime();
     return;
   }
   if (type === 'unavailable') {
     const t = data.track;
-    snack(`«${t.title}»: ${data.error && data.error.message ? data.error.message : 'не играет'}`, 'Найти', () => otherPlatformsSheet(t));
+    if (data.error && data.error.kind === 'nologin') snack(data.error.message, 'Войти', () => connectService('yandex'), 8000);
+    else snack(`«${t.title}»: ${data.error && data.error.message ? data.error.message : 'не играет'}`, 'Найти', () => otherPlatformsSheet(t));
   }
   if (type === 'waiting') {
-    snack(`Звук ненадолго закрыл доступ. «${data.track.title}» включится сам через ${Math.ceil(data.ms / 1000)} с`, null, null, 5000);
+    snack(`Сервис ненадолго закрыл доступ. «${data.track.title}» включится сам через ${Math.ceil(data.ms / 1000)} с`, null, null, 5000);
   }
   if (type === 'fallback') {
     snack(`«${data.track.title}»: файла MP3 больше нет — играет онлайн`, null, null, 3500);
@@ -426,6 +585,10 @@ App.addListener('backButton', async () => {
     await refreshLocalCovers();
     onLocalChange(refreshLocalCovers);
     onLocalChange(() => rematchLocal().catch((e) => logError('rematch', e)));
+    if (!settings.migrated11) {
+      migrateFromZvuk(zvukToExt);
+      saveSettings({ migrated11: true });
+    }
     resumeMatching();
     player.initMediaSession({
       onLike: async () => {
@@ -440,6 +603,7 @@ App.addListener('backButton', async () => {
     paintMini();
     if (online.isLoggedIn()) likedIds().then(syncNotificationLike).catch(() => {});
     onAccountsChange(() => {
+      resumeMatching();
       if (online.isLoggedIn()) likedIds(true).then(syncNotificationLike).catch(() => {});
       paintMini();
       if (!full.el.hidden) paintFull();

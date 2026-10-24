@@ -1,7 +1,7 @@
 {
   "name": "rezonans",
-  "version": "1.0.0",
-  "description": "Резонанс — один плеер для Звука и своих MP3",
+  "version": "1.1.0",
+  "description": "Резонанс — один плеер для своих MP3 и Яндекс Музыки, с переносом плейлистов",
   "scripts": {
     "build": "node tools/build.mjs",
     "sync": "npm run build && npx cap sync android",

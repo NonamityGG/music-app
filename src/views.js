@@ -3,7 +3,6 @@
 import { h, icon, clear, debounce, tracksWord, toast, plural, add } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
-import * as zvuk from './zvuk.js';
 import * as ya from './yandex.js';
 import * as online from './online.js';
 import * as accounts from './accounts.js';
@@ -14,6 +13,7 @@ import { settings, saveSettings, getJournal, clearJournal, load, save, logError 
 import { storageEstimate } from './db.js';
 import { wavesPicker } from './wave-settings.js';
 import { SOURCES } from './importers.js';
+import { THEMES, setTheme, currentTheme } from './theme.js';
 import {
   trackList,
   section,
@@ -58,9 +58,12 @@ export function feedView() {
         emptyState(
           'feed',
           'Лента строится по твоим артистам',
-          'Подключи Звук или Яндекс Музыку, добавь свои MP3 или выбери любимых артистов — и здесь появятся новинки, похожие артисты и микс.',
-          h('button', { class: 'btn btn-primary', onclick: () => nav.switchTab('search') }, icon('star', 20), 'Выбрать артистов'),
-          online.isLoggedIn() ? null : h('button', { class: 'btn btn-ghost', onclick: () => nav.switchTab('profile') }, 'Подключить сервис')
+          online.isLoggedIn()
+            ? 'Добавь свои MP3, ставь лайки в Яндекс Музыке или выбери любимых артистов — и здесь появятся новинки, похожие артисты и микс.'
+            : 'Лента собирается из Яндекс Музыки: войди через Яндекс ID — и здесь появятся новинки твоих артистов, похожие артисты и микс.',
+          online.isLoggedIn()
+            ? h('button', { class: 'btn btn-primary', onclick: () => nav.switchTab('search') }, icon('star', 20), 'Выбрать артистов')
+            : h('button', { class: 'btn btn-primary', onclick: () => accounts.connect('yandex') }, 'Войти через Яндекс ID')
         )
       );
       return;
@@ -201,14 +204,17 @@ export function searchView() {
       add(results, section('В твоих MP3', null, trackList(local.slice(0, 10), { onPlay: (i) => player.playQueue(local, i), menu: (t) => trackMenu(t, { allowDelete: true }) })));
     }
     if (zRes.status === 'rejected') {
-      add(results, errorBox(zRes.reason, () => run(input.value)));
-      if (zRes.reason && (zRes.reason.kind === 'bot' || zRes.reason.kind === 'rate')) {
-        // search again by itself once Zvuk lets the app back in
-        const again = q;
-        setTimeout(() => {
-          if (my === seq && input.value.trim() === again) run(again);
-        }, online.blockedRemaining() + 1500);
-      }
+      if (zRes.reason && zRes.reason.kind === 'nologin') {
+        add(
+          results,
+          emptyState(
+            'search',
+            local.length ? 'Остальное найдёт Яндекс Музыка' : 'Онлайн-поиск — через Яндекс Музыку',
+            'Войди через Яндекс ID, и здесь будут треки, артисты и альбомы. Твои MP3 ищутся и без входа.',
+            h('button', { class: 'btn btn-primary', onclick: () => accounts.connect('yandex') }, 'Войти через Яндекс ID')
+          )
+        );
+      } else add(results, errorBox(zRes.reason, () => run(input.value)));
       return;
     }
     const r = zRes.value;
@@ -290,8 +296,7 @@ export function libraryView() {
     if (src.id in online.SERVICES && accounts.loggedIn(src.id)) {
       const n = (liveCount[src.id] ?? 0) + pl.playlistsFrom(src.id).length;
       sub = liveCount[src.id] === undefined ? 'загружаю…' : plWord(n);
-    } else if (src.id === 'zvuk') sub = 'войти';
-    else {
+    } else {
       const n = pl.playlistsFrom(src.id).length;
       sub = n ? plWord(n) : src.id === 'mine' ? 'создать' : 'перенести';
     }
@@ -307,7 +312,7 @@ export function libraryView() {
     const localCount = (await localTracks()).length;
     clear(body);
     add(body, 
-      h('div', { class: 'tiles' }, tile('folder', 'Мои MP3', localCount ? tracksWord(localCount) : 'добавить файлы', () => nav.push(localPage()), 'tile-local'), tile('add', 'Перенести плейлист', 'Яндекс, VK, Spotify и другие', () => nav.push(importPage()), 'tile-import')),
+      h('div', { class: 'tiles' }, tile('folder', 'Мои MP3', localCount ? tracksWord(localCount) : 'добавить файлы', () => nav.push(localPage()), 'tile-local'), tile('add', 'Перенести плейлист', 'Звук, Яндекс, VK и другие', () => nav.push(importPage()), 'tile-import')),
       section('Папки', null, h('div', { class: 'folders' }, SOURCES.map(folder)))
     );
   };
@@ -359,20 +364,12 @@ function tokenForm(placeholder, check) {
 }
 
 const SERVICE_INFO = {
-  zvuk: {
-    title: 'Звук',
-    color: '#8a5cff',
-    login: 'Войти через Сбер ID или телефон',
-    about: 'Откроется сайт Звука прямо в приложении — войди как обычно (Сбер ID, СберБум или номер телефона) и нажми «Готово».',
-    guest: 'Без входа работают поиск и прослушивание, но без твоих плейлистов и лайков.',
-    tokenHelp: 'Токен — строка "token" со страницы zvuk.com/api/tiny/profile в браузере, где ты вошёл в Звук.',
-  },
   yandex: {
     title: 'Яндекс Музыка',
     color: '#ffcc33',
     login: 'Войти через Яндекс ID',
     about: 'Откроется вход Яндекса прямо в приложении — войди и подтверди, окно закроется само.',
-    guest: 'Нужен аккаунт Яндекса. С Плюсом треки играют целиком, без него — только отрывки.',
+    guest: 'Через неё играет всё, чего нет в твоих MP3: поиск, лента, перенесённые плейлисты. С Плюсом треки играют целиком.',
     tokenHelp: 'Токен Яндекс Музыки (OAuth), если вход на странице не сработал.',
   },
 };
@@ -383,10 +380,7 @@ function serviceCard(svc, rerender) {
   const busy = accounts.isBusy(svc);
   const head = h('div', { class: 'service-head', style: { '--src': info.color } }, h('div', { class: 'service-dot' }), h('div', { class: 'service-name' }, info.title));
   if (logged) {
-    const who =
-      svc === 'yandex'
-        ? [settings.yaName || settings.yaLogin, settings.yaPlus ? 'Плюс есть' : 'без Плюса — только отрывки'].filter(Boolean).join(' · ')
-        : 'плейлисты, лайки и подписка';
+    const who = [settings.yaName || settings.yaLogin, settings.yaPlus ? 'Плюс есть' : 'без Плюса — только отрывки'].filter(Boolean).join(' · ');
     return h(
       'div',
       { class: 'card-box service-card' },
@@ -419,21 +413,12 @@ function serviceCard(svc, rerender) {
     },
     busy ? 'Вход…' : info.login
   );
-  const check =
-    svc === 'zvuk'
-      ? async (t) => {
-          await zvuk.checkToken(t);
-          saveSettings({ token: t });
-          toast('Готово, Звук подключён');
-          accounts.notify(svc);
-          rerender();
-        }
-      : async (t) => {
-          await ya.loginWithToken(t);
-          toast('Готово, Яндекс Музыка подключена');
-          accounts.notify(svc);
-          rerender();
-        };
+  const check = async (t) => {
+    await ya.loginWithToken(t);
+    toast('Готово, Яндекс Музыка подключена');
+    accounts.notify(svc);
+    rerender();
+  };
   return h(
     'div',
     { class: 'card-box service-card' },
@@ -445,35 +430,42 @@ function serviceCard(svc, rerender) {
   );
 }
 
-// With both services connected: which one search, the feed and matching use.
-function mainServiceCard(rerender) {
-  const c = online.connected();
-  if (c.length < 2) return null;
-  const cur = online.primaryId();
-  return h(
-    'div',
-    { class: 'card-box' },
-    h('div', null, 'Главный сервис'),
-    h('div', { class: 'muted small' }, 'Через него идут поиск, лента и поиск треков из перенесённых плейлистов. Плейлисты обоих сервисов доступны всегда.'),
-    h(
-      'div',
-      { class: 'seg' },
-      c.map((svc) =>
+// Theme cards: each one is a tiny mock of the app drawn with that theme's own colours.
+function themePicker() {
+  const grid = h('div', { class: 'theme-grid' });
+  const paint = () => {
+    clear(grid);
+    const cur = currentTheme().id;
+    for (const t of THEMES) {
+      const preview = h(
+        'div',
+        { class: 'theme-preview', 'data-theme': t.id, 'data-glass': t.glass ? '' : null, 'data-light': t.light ? '' : null },
+        t.glass ? h('div', { class: 'tp-aura' }) : null,
+        h('div', { class: 'tp-card' }, h('i', { class: 'tp-dot' }), h('div', { class: 'tp-lines' }, h('i'), h('i'))),
+        h('div', { class: 'tp-bars' }, [0.5, 0.9, 0.65, 1, 0.75, 0.45].map((v) => h('i', { style: { height: v * 100 + '%' } }))),
+        h('div', { class: 'tp-tab' }, h('i', { class: 'on' }), h('i'), h('i'))
+      );
+      grid.appendChild(
         h(
           'button',
           {
-            class: 'seg-btn' + (svc === cur ? ' active' : ''),
+            class: 'theme-card' + (t.id === cur ? ' active' : ''),
+            'aria-pressed': t.id === cur ? 'true' : 'false',
             onclick: () => {
-              saveSettings({ primaryService: svc });
-              accounts.notify(svc);
-              rerender();
+              if (t.id === currentTheme().id) return;
+              setTheme(t.id);
+              paint();
             },
           },
-          SERVICE_INFO[svc].title
+          preview,
+          h('div', { class: 'theme-name' }, t.name),
+          h('div', { class: 'theme-sub' }, t.sub)
         )
-      )
-    )
-  );
+      );
+    }
+  };
+  paint();
+  return grid;
 }
 
 export function profileView() {
@@ -491,7 +483,10 @@ export function profileView() {
     clear(body);
 
     // --- music services ---
-    add(body, section('Сервисы', null, serviceCard('zvuk', render), serviceCard('yandex', render), mainServiceCard(render)));
+    add(body, section('Музыка онлайн', null, serviceCard('yandex', render)));
+
+    // --- look ---
+    add(body, section('Оформление', null, themePicker()));
 
     // --- playback ---
     add(body, 

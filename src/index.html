@@ -1,11 +1,22 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0f0b16" />
     <title>Резонанс</title>
+    <script>
+      // the saved theme, before anything is drawn (no flash of the wrong colours)
+      try {
+        var s = JSON.parse(localStorage.getItem('rez.settings') || '{}');
+        var t = s.theme || 'dark';
+        var r = document.documentElement;
+        r.setAttribute('data-theme', t);
+        if (t.indexOf('glass') === 0) r.setAttribute('data-glass', '');
+        if (t === 'light' || t === 'glass-light') r.setAttribute('data-light', '');
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>

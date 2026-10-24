@@ -409,7 +409,7 @@ test('Yandex: sign-in, track shapes, stream link signing', async () => {
   saveSettings({ token: '' });
   assert.equal(online.primaryId(), 'yandex');
   assert.deepEqual(online.refOf(tracks[0]), { p: 'yandex', id: '10' });
-  assert.deepEqual(online.refOf({ src: 'zvuk', zid: '5' }), { p: 'zvuk', id: '5' });
+  assert.equal(online.refOf({ src: 'zvuk', zid: '5' }), null, 'Zvuk no longer plays');
   assert.deepEqual(online.refOf({ src: 'ext', match: 'online', yid: '10' }), { p: 'yandex', id: '10' });
   assert.equal(online.likeKey(tracks[0]), 'y:10');
 
@@ -420,7 +420,7 @@ test('Yandex: sign-in, track shapes, stream link signing', async () => {
 
   await ya.logout();
   assert.ok(!ya.isLoggedIn());
-  assert.equal(online.primaryId(), 'zvuk');
+  await assert.rejects(online.quickSearch('кино'), (e) => e.kind === 'nologin');
   ya.setYandexTransport(null);
 });
 
@@ -434,4 +434,59 @@ test('Zvuk block response is described for the error journal', async () => {
   assert.doesNotMatch(err.detail, /var x/);
   zvuk.resetBotState();
   zvuk.setTransport(null);
+});
+
+// ---------- Zvuk: transfer only ----------
+
+const zi = await import('../src/zvuk-import.js');
+
+test('Zvuk share links are recognised', () => {
+  assert.deepEqual(zi.detectZvukLink('Слушай https://zvuk.com/playlist/7823546?utm=1'), { kind: 'playlist', id: '7823546', url: 'https://zvuk.com/playlist/7823546' });
+  assert.equal(zi.detectZvukLink('https://zvuk.com/release/42').kind, 'release');
+  assert.equal(zi.detectZvukLink('https://zvuk.com/sh/AbC12').kind, 'page');
+  assert.equal(zi.detectZvukLink('просто текст'), null);
+});
+
+test('Tracks are found in a web page data blob of any shape', () => {
+  const page = {
+    props: {
+      pageProps: {
+        menu: [{ title: 'Главная' }, { title: 'Подкасты' }],
+        playlist: {
+          title: 'Ночная смена',
+          tracks: [
+            { id: 1, title: 'Группа крови', duration: 285, artists: [{ title: 'Кино' }], release: { title: 'Группа крови' } },
+            { id: 2, title: 'Сансара', duration: 260000, artists: [{ title: 'Баста' }, { title: 'Скриптонит' }] },
+            { id: 3, title: 'Корабли', artistNames: ['Pyrokinesis'] },
+          ],
+        },
+      },
+    },
+  };
+  const r = zi.findTracksIn(page);
+  assert.equal(r.title, 'Ночная смена');
+  assert.equal(r.tracks.length, 3);
+  assert.equal(r.tracks[1].artist, 'Баста, Скриптонит');
+  assert.equal(r.tracks[1].duration, 260);
+  assert.equal(r.tracks[0].album, 'Группа крови');
+  const ext = zi.toExt({ title: 'Сансара', artist: 'Баста', album: '', duration: 260, cover: '' });
+  assert.equal(ext.src, 'ext');
+  assert.equal(ext.artists.length, 1);
+});
+
+test('Old Zvuk tracks in playlists become songs to match', async () => {
+  const pl = await import('../src/playlists.js');
+  const p = pl.createPlaylist('Старый', [
+    { key: 'z:1', src: 'zvuk', zid: '1', title: 'Лесник', artist: 'Король и Шут', artists: [], duration: 200 },
+    { key: 'x:a|b', src: 'ext', title: 'B', artist: 'A', artists: [], match: 'zvuk', zid: '9' },
+    { key: 'x:c|d', src: 'ext', title: 'D', artist: 'C', artists: [], match: 'local', lid: 'L1' },
+  ]);
+  pl.migrateFromZvuk(zi.toExt);
+  const t = pl.getPlaylist(p.id).tracks;
+  assert.equal(t[0].src, 'ext');
+  assert.equal(t[0].title, 'Лесник');
+  assert.ok(!t[0].match);
+  assert.ok(!t[1].match && !t[1].zid);
+  assert.equal(t[2].match, 'local');
+  pl.deletePlaylist(p.id);
 });

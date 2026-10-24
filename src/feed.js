@@ -1,5 +1,6 @@
 // Recommendation feed. Built from the artists you listen to: liked tracks and
-// artists in the main service (Zvuk or Yandex Music), your own playlists, your MP3s and artists you pick by hand.
+// artists in Yandex Music, your own playlists, your MP3s and artists you pick by
+// hand.
 // For them it gathers new releases, similar artists and a mix of their songs.
 
 import * as online from './online.js';
@@ -80,9 +81,20 @@ export async function buildFeed(onStep = () => {}) {
     seeds.set(id, cur);
   };
   const knownKeys = new Set();
+  if (!online.isLoggedIn()) {
+    // everything below comes from Yandex Music
+    const empty = { at: Date.now(), svc, empty: true, nologin: true, seeds: [], releases: [], related: [], mix: [] };
+    save('feed', empty);
+    return empty;
+  }
 
   onStep('Смотрю твоих артистов');
-  for (const a of favArtists()) add(a, 12);
+  // artists picked before 1.1 may have Zvuk ids: those are found again by name
+  const byName = [];
+  for (const a of favArtists()) {
+    if (String(a.id).startsWith('y:')) add(a, 12);
+    else if (a.name) byName.push({ name: a.name, w: 12 });
+  }
 
   for (const p of allPlaylists()) {
     for (const t of p.tracks) {
@@ -99,9 +111,9 @@ export async function buildFeed(onStep = () => {}) {
       logError('feed:artists', e);
     }
     try {
-      onStep(`Смотрю, что тебе нравится в ${svc === 'yandex' ? 'Яндекс Музыке' : 'Звуке'}`);
+      onStep('Смотрю, что тебе нравится в Яндекс Музыке');
       const liked = await online.likedTrackIds();
-      for (const id of liked) knownKeys.add((svc === 'yandex' ? 'y:' : 'z:') + id);
+      for (const id of liked) knownKeys.add('y:' + id);
       const tracks = await online.getTracks(liked.slice(0, 300));
       for (const t of tracks) for (const a of t.artists) add(a, 1);
     } catch (e) {
@@ -111,14 +123,15 @@ export async function buildFeed(onStep = () => {}) {
 
   try {
     const locals = (await localArtists()).slice(0, 8);
-    if (locals.length) onStep('Ищу артистов из твоих MP3');
-    for (const la of locals) {
+    for (const la of locals) byName.push({ name: la.name, w: 2 + la.count * 1.5 });
+    if (byName.length) onStep('Ищу твоих артистов');
+    for (const la of byName.slice(0, 14)) {
       try {
         const res = await online.quickSearch(la.name, 6);
         const hit = res.artists.find((a) => norm(a.name) === norm(la.name));
-        if (hit) add(hit, 2 + la.count * 1.5);
+        if (hit) add(hit, la.w);
       } catch (e) {
-        if (e.kind === 'network' || e.kind === 'bot') throw e;
+        if (e.kind === 'network' || e.kind === 'nologin') throw e;
       }
     }
   } catch (e) {

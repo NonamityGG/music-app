@@ -1,89 +1,100 @@
-// One door to the online services. The user may be signed in to Zvuk, to Yandex
-// Music, or both; search, likes, the feed and matching use the main one, while
-// artist/album/playlist pages and playback go to whichever service an id belongs
-// to (Yandex ids start with "y:").
+// One door to online music. Since 1.1 that is Yandex Music only: Zvuk kept
+// blocking the app, so it is used just to bring playlists over (importers).
+// Search, likes, the feed, matching and playback of anything that isn't the
+// user's own MP3 go through Yandex Music once the user has signed in.
 
-import * as zvuk from './zvuk.js';
 import * as ya from './yandex.js';
-import { settings } from './settings.js';
 
-export const SERVICES = { zvuk, yandex: ya };
-export const NAMES = { zvuk: 'Звук', yandex: 'Яндекс Музыка' };
+export const SERVICES = { yandex: ya };
+export const NAMES = { yandex: 'Яндекс Музыка' };
 
 export function connected() {
-  const c = [];
-  if (zvuk.isLoggedIn()) c.push('zvuk');
-  if (ya.isLoggedIn()) c.push('yandex');
-  return c;
+  return ya.isLoggedIn() ? ['yandex'] : [];
 }
 
-export function primaryId() {
-  const c = connected();
-  if (c.includes(settings.primaryService)) return settings.primaryService;
-  return c[0] || 'zvuk'; // nobody signed in: Zvuk's guest access
+export const primaryId = () => 'yandex';
+export const isLoggedIn = () => ya.isLoggedIn();
+export const primaryName = () => NAMES.yandex;
+
+export class OfflineError extends Error {
+  constructor() {
+    super('Подключи Яндекс Музыку в профиле — без неё играют только твои MP3');
+    this.kind = 'nologin';
+  }
 }
 
-const primary = () => SERVICES[primaryId()];
-const forId = (id) => (String(id).startsWith('y:') ? ya : zvuk);
+function need() {
+  if (!ya.isLoggedIn()) throw new OfflineError();
+}
 
-export const isLoggedIn = () => connected().length > 0;
-export const primaryName = () => NAMES[primaryId()];
+export async function quickSearch(q, n) {
+  need();
+  return ya.quickSearch(q, n);
+}
+export async function getTracks(ids) {
+  need();
+  return ya.getTracks(ids);
+}
+export async function collectionArtistIds() {
+  need();
+  return ya.collectionArtistIds();
+}
+export async function userPlaylists() {
+  need();
+  return ya.userPlaylists();
+}
+export async function playlistTracks(id) {
+  need();
+  return ya.playlistTracks(id);
+}
+export async function getRelease(id) {
+  need();
+  return ya.getRelease(id);
+}
+export async function getArtists(ids, opts) {
+  need();
+  return ya.getArtists(
+    ids.filter((id) => String(id).startsWith('y:')),
+    opts
+  );
+}
 
-export const quickSearch = (q, n) => primary().quickSearch(q, n);
-export const getTracks = (ids, service) => (service ? SERVICES[service] : primary()).getTracks(ids);
 // Liked ids are asked for by the feed, the menus and the player; one request per
 // few minutes is enough.
-const likedCache = new Map(); // service -> { at, ids }
-export async function likedTrackIds(service, fresh = false) {
-  const svc = service || primaryId();
-  const c = likedCache.get(svc);
-  if (!fresh && c && Date.now() - c.at < 5 * 60 * 1000) return c.ids;
-  const ids = await SERVICES[svc].likedTrackIds();
-  likedCache.set(svc, { at: Date.now(), ids });
+let likedCache = null; // { at, ids }
+export async function likedTrackIds(_service, fresh = false) {
+  need();
+  if (!fresh && likedCache && Date.now() - likedCache.at < 5 * 60 * 1000) return likedCache.ids;
+  const ids = await ya.likedTrackIds();
+  likedCache = { at: Date.now(), ids };
   return ids;
 }
-export const collectionArtistIds = () => primary().collectionArtistIds();
-export const userPlaylists = (service) => (service ? SERVICES[service] : primary()).userPlaylists();
-export const playlistTracks = (id) => forId(id).playlistTracks(id);
-export const getRelease = (id) => forId(id).getRelease(id);
 
-export async function getArtists(ids, opts) {
-  const y = ids.filter((id) => String(id).startsWith('y:'));
-  const z = ids.filter((id) => !String(id).startsWith('y:'));
-  const [ry, rz] = await Promise.all([y.length ? ya.getArtists(y, opts) : [], z.length ? zvuk.getArtists(z, opts) : []]);
-  const all = new Map([...ry, ...rz].map((a) => [a.id, a]));
-  return ids.map((id) => all.get(String(id))).filter(Boolean);
-}
-
-// Where a track streams from: { p: 'zvuk' | 'yandex', id } or null.
+// Where a track streams from: { p: 'yandex', id } or null.
 export function refOf(track) {
   if (!track) return null;
-  if (track.src === 'yandex' || (track.src === 'ext' && track.yid)) return track.yid ? { p: 'yandex', id: track.yid } : null;
-  if (track.zid) return { p: 'zvuk', id: track.zid };
+  if ((track.src === 'yandex' || track.src === 'ext') && track.yid) return { p: 'yandex', id: track.yid };
   return null;
 }
 
-// Zvuk works without signing in (guest), Yandex only after sign-in.
-export const usable = (p) => p === 'zvuk' || ya.isLoggedIn();
+export const usable = (p) => p === 'yandex' && ya.isLoggedIn();
 
-export const streamFor = (ref) => (ref.p === 'yandex' ? ya.streamUrl(ref.id) : zvuk.streamUrl(ref.id));
+export const streamFor = (ref) => ya.streamUrl(ref.id);
 
-// Track's own service, if it is one we can act on as the user (likes).
+// Track's own service, if the user can like it there.
 export function serviceOf(track) {
-  if (!track) return '';
-  if (track.src === 'yandex') return ya.isLoggedIn() ? 'yandex' : '';
-  if (track.src === 'zvuk') return zvuk.isLoggedIn() ? 'zvuk' : '';
-  return '';
+  return track && track.src === 'yandex' && ya.isLoggedIn() ? 'yandex' : '';
 }
 
 export function likeKey(track) {
-  return track.src === 'yandex' || track.yid ? 'y:' + track.yid : track.zid ? 'z:' + track.zid : '';
+  return track && track.yid ? 'y:' + track.yid : '';
 }
 
 export function setLiked(track, liked) {
-  likedCache.delete(track.src === 'yandex' ? 'yandex' : 'zvuk');
-  return track.src === 'yandex' ? ya.setLiked(track.yid, liked) : zvuk.setLiked(track.zid, liked);
+  likedCache = null;
+  return ya.setLiked(track.yid, liked);
 }
 
-export const blocked = () => primaryId() === 'zvuk' && zvuk.botBlocked();
-export const blockedRemaining = () => zvuk.botRemaining();
+// Kept for the player and matcher: Yandex doesn't throttle the app.
+export const blocked = () => false;
+export const blockedRemaining = () => 0;

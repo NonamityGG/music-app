@@ -54,8 +54,32 @@ export function activeTab() {
   return active;
 }
 
+// Items of a page rise in one after another, but only right after the page
+// appears: later re-renders (progress, likes) must not replay it.
+export function freshen(page) {
+  if (!page || reduced()) return;
+  page.classList.add('fresh');
+  clearTimeout(page._freshTimer);
+  page._freshTimer = setTimeout(() => page.classList.remove('fresh'), 620);
+}
+
 function mount(tab, page, withAnimation) {
   page.classList.add('page');
+  freshen(page);
+  // the header gets its background once the content scrolls under it
+  const head = page.querySelector('.page-head');
+  if (head && !page._scrollWatch) {
+    page._scrollWatch = true;
+    let on = false;
+    page.addEventListener(
+      'scroll',
+      () => {
+        const now = page.scrollTop > 6;
+        if (now !== on) head.classList.toggle('scrolled', (on = now));
+      },
+      { passive: true }
+    );
+  }
   const st = stacks[tab];
   const prev = st[st.length - 1];
   st.push(page);

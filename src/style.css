@@ -2,6 +2,29 @@
    Unbounded for titles, Onest for everything else (both cover Cyrillic). */
 
 :root {
+  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --tabbar-h: 62px;
+  --mini-h: 62px;
+
+  --display: 'Unbounded', 'Onest', system-ui, sans-serif;
+  --body: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1); /* iOS-like sheet curve */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* small overshoot */
+  --t-fast: 0.16s;
+  --t-mid: 0.28s;
+  --t-slow: 0.44s;
+}
+
+/* ---------- themes ----------
+   --ink is the page background, --surface cards, --raised pressed/elevated
+   things, --lilac the accent. Glass themes add the --glass-* set. */
+
+:root,
+[data-theme='dark'] {
   --ink: #140f1f;
   --surface: #1e172d;
   --raised: #2a2140;
@@ -10,17 +33,132 @@
   --muted: #9c92b8;
   --lilac: #b79cff;
   --violet: #7c4dff;
+  --on-accent: #1b1030;
   --amber: #ffb86b;
   --danger: #ff6b8b;
   --ok: #7be0b0;
+  --press: rgba(255, 255, 255, 0.06);
+  --scrim: rgba(5, 2, 12, 0.6);
+  --shadow: rgba(5, 2, 12, 0.55);
+  --toast-bg: #3a2f55;
+  --toast-text: #f2edff;
+  --head-solid: rgba(20, 15, 31, 0.92);
+  --full-fade: rgba(20, 15, 31, 0.2);
+  --waves-opacity: 0.36;
+}
 
-  --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
-  --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
-  --tabbar-h: 62px;
-  --mini-h: 62px;
+[data-theme='amoled'] {
+  --ink: #000;
+  --surface: #0e0c13;
+  --raised: #1b1823;
+  --line: #26222f;
+  --text: #f4f1fb;
+  --muted: #8f88a3;
+  --toast-bg: #221e2c;
+  --head-solid: rgba(0, 0, 0, 0.92);
+  --full-fade: rgba(0, 0, 0, 0.25);
+  --shadow: rgba(0, 0, 0, 0.7);
+  --scrim: rgba(0, 0, 0, 0.7);
+}
 
-  --display: 'Unbounded', 'Onest', system-ui, sans-serif;
-  --body: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+[data-theme='light'] {
+  --ink: #f5f3fa;
+  --surface: #ffffff;
+  --raised: #ece8f5;
+  --line: #e2dcef;
+  --text: #1b1528;
+  --muted: #6f6787;
+  --lilac: #6f3ff5;
+  --violet: #6236e8;
+  --on-accent: #ffffff;
+  --amber: #b86200;
+  --danger: #d6325a;
+  --ok: #148a57;
+  --press: rgba(40, 20, 90, 0.06);
+  --scrim: rgba(25, 15, 50, 0.32);
+  --shadow: rgba(40, 25, 90, 0.16);
+  --toast-bg: #2a2238;
+  --toast-text: #f6f2ff;
+  --head-solid: rgba(245, 243, 250, 0.92);
+  --full-fade: rgba(245, 243, 250, 0.35);
+  --waves-opacity: 0.5;
+}
+
+[data-theme='glass-violet'] {
+  --ink: #120a24;
+  --surface: rgba(255, 255, 255, 0.075);
+  --raised: rgba(255, 255, 255, 0.13);
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #ffffff;
+  --muted: rgba(236, 228, 255, 0.64);
+  --lilac: #c6b1ff;
+  --press: rgba(255, 255, 255, 0.08);
+  --toast-bg: rgba(40, 26, 74, 0.72);
+  --head-solid: transparent;
+  --full-fade: rgba(18, 10, 36, 0.25);
+  --aura-1: #7a3cff;
+  --aura-2: #ff4fb4;
+  --aura-3: #2f6bff;
+  --aura-strength: 0.55;
+  --glass-fill: rgba(255, 255, 255, 0.075);
+  --glass-strong: rgba(30, 18, 60, 0.42);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-hi: rgba(255, 255, 255, 0.42);
+  --glass-shadow: rgba(8, 2, 24, 0.35);
+}
+
+[data-theme='glass-black'] {
+  --ink: #000;
+  --surface: rgba(255, 255, 255, 0.06);
+  --raised: rgba(255, 255, 255, 0.11);
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #ffffff;
+  --muted: rgba(230, 226, 240, 0.58);
+  --press: rgba(255, 255, 255, 0.07);
+  --toast-bg: rgba(28, 26, 34, 0.72);
+  --head-solid: transparent;
+  --full-fade: rgba(0, 0, 0, 0.3);
+  --aura-1: #4b22b8;
+  --aura-2: #8a1d6b;
+  --aura-3: #123f8f;
+  --aura-strength: 0.26;
+  --glass-fill: rgba(255, 255, 255, 0.06);
+  --glass-strong: rgba(10, 10, 14, 0.5);
+  --glass-edge: rgba(255, 255, 255, 0.13);
+  --glass-hi: rgba(255, 255, 255, 0.34);
+  --glass-shadow: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='glass-light'] {
+  --ink: #eef0fb;
+  --surface: rgba(255, 255, 255, 0.55);
+  --raised: rgba(255, 255, 255, 0.78);
+  --line: rgba(40, 25, 90, 0.09);
+  --text: #18122a;
+  --muted: rgba(30, 22, 52, 0.58);
+  --lilac: #6c3cf5;
+  --violet: #5f33e6;
+  --on-accent: #ffffff;
+  --amber: #b05e00;
+  --danger: #d6325a;
+  --ok: #148a57;
+  --press: rgba(40, 20, 90, 0.05);
+  --scrim: rgba(40, 30, 80, 0.22);
+  --shadow: rgba(60, 40, 120, 0.16);
+  --toast-bg: rgba(255, 255, 255, 0.72);
+  --toast-text: #18122a;
+  --head-solid: transparent;
+  --full-fade: rgba(238, 240, 251, 0.4);
+  --waves-opacity: 0.55;
+  --aura-1: #b9a2ff;
+  --aura-2: #ffb3d6;
+  --aura-3: #9fdcff;
+  --aura-strength: 0.75;
+  --glass-fill: rgba(255, 255, 255, 0.5);
+  --glass-strong: rgba(255, 255, 255, 0.62);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-hi: rgba(255, 255, 255, 0.95);
+  --glass-shadow: rgba(70, 50, 140, 0.14);
 }
 
 * {
@@ -32,13 +170,14 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--ink);
+  background-color: var(--ink);
   color: var(--text);
   font-family: var(--body);
   font-size: 15px;
   line-height: 1.4;
   overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--t-slow), color var(--t-slow);
 }
 
 button {
@@ -82,7 +221,7 @@ svg {
   height: 100%;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.36;
+  opacity: var(--waves-opacity, 0.36);
 }
 
 .waves-full {
@@ -122,10 +261,6 @@ svg {
 }
 
 /* ---------- navigation motion ---------- */
-
-:root {
-  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
-}
 
 .page-enter {
   animation: page-in 0.28s var(--ease-out) both;
@@ -202,7 +337,13 @@ body.has-mini .page {
   align-items: center;
   gap: 8px;
   padding: calc(var(--sat) + 14px) 16px 10px;
-  background: linear-gradient(var(--ink) 75%, rgba(20, 15, 31, 0));
+  background: linear-gradient(var(--ink) 75%, transparent);
+  transition: background-color var(--t-mid), box-shadow var(--t-mid);
+}
+
+.page-head.scrolled {
+  background: var(--head-solid);
+  box-shadow: 0 1px 0 var(--line);
 }
 
 .page-head.with-back {
@@ -285,11 +426,11 @@ body.has-mini .page {
 
 .btn-primary {
   background: var(--lilac);
-  color: #1b1030;
+  color: var(--on-accent);
 }
 
 .btn-primary:active {
-  background: #a588ff;
+  filter: brightness(0.93);
 }
 
 .btn-ghost {
@@ -392,7 +533,7 @@ body.has-mini .page {
   margin-right: 6px;
   padding: 0 5px;
   border-radius: 4px;
-  background: rgba(255, 184, 107, 0.16);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
   color: var(--amber);
   font-size: 11px;
   font-weight: 700;
@@ -576,7 +717,7 @@ body.has-mini .page {
 }
 
 .chip-on {
-  background: rgba(183, 156, 255, 0.16);
+  background: color-mix(in srgb, var(--lilac) 16%, transparent);
   border-color: var(--lilac);
   color: var(--lilac);
 }
@@ -589,6 +730,7 @@ body.has-mini .page {
 
 .track,
 .list-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -596,11 +738,29 @@ body.has-mini .page {
   padding: 6px 0;
 }
 
-.track:active,
-.list-row:active {
-  background: var(--surface);
-  margin: 0 -16px;
-  padding: 6px 16px;
+/* press highlight that doesn't move the layout */
+.track::before,
+.list-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 -10px;
+  border-radius: 14px;
+  background: var(--press);
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity var(--t-fast), transform var(--t-mid) var(--ease-out);
+  pointer-events: none;
+}
+
+.track:active::before,
+.list-row:active::before {
+  opacity: 1;
+  transform: none;
+}
+
+.track > *,
+.list-row > * {
+  position: relative;
 }
 
 .track-num {
@@ -790,7 +950,7 @@ body.has-mini .page {
 }
 
 .tile-local .tile-icon {
-  background: rgba(255, 184, 107, 0.16);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
   color: var(--amber);
 }
 
@@ -1078,8 +1238,8 @@ details.more[open] summary {
   margin: 12px 0;
   padding: 14px 16px;
   border-radius: 14px;
-  background: rgba(255, 107, 139, 0.1);
-  border: 1px solid rgba(255, 107, 139, 0.3);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
 /* ---------- tab bar ---------- */
@@ -1094,7 +1254,30 @@ details.more[open] summary {
   border-top: 1px solid var(--line);
 }
 
+/* a soft pill slides under the active tab */
+.tab-indicator {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 25%;
+  height: 48px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  transition: transform 0.42s var(--spring);
+}
+
+.tab-indicator::before {
+  content: '';
+  width: 64px;
+  height: 100%;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--lilac) 15%, transparent);
+}
+
 .tab {
+  position: relative;
+  z-index: 1;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1104,6 +1287,10 @@ details.more[open] summary {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
+}
+
+.tab {
+  transition: color var(--t-mid);
 }
 
 .tab.active {
@@ -1162,8 +1349,14 @@ details.more[open] summary {
   left: 0;
   top: 0;
   height: 2px;
-  width: 0;
+  width: 100%;
   background: var(--lilac);
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+  /* glows a little on each beat */
+  box-shadow: 0 0 calc(var(--beat, 0) * 10px) var(--lilac);
+  opacity: calc(0.75 + var(--beat, 0) * 0.25);
 }
 
 .mini-cover .cover-mini {
@@ -1201,12 +1394,31 @@ details.more[open] summary {
   z-index: 40;
   background: var(--ink);
   transform: translateY(100%);
-  transition: transform 0.32s var(--ease-out);
+  transition: transform var(--t-slow) var(--ease-sheet), border-radius var(--t-slow);
   overflow: hidden;
+  will-change: transform;
 }
 
 .full.open {
   transform: none;
+}
+
+.full.dragging {
+  transition: none;
+  border-radius: 28px 28px 0 0;
+}
+
+.full-bgs {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--t-mid);
+}
+
+.full-bgs::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(var(--full-fade), var(--ink) 80%);
 }
 
 .full-bg {
@@ -1215,15 +1427,14 @@ details.more[open] summary {
   background-size: cover;
   background-position: center;
   filter: blur(48px) saturate(1.3);
-  opacity: 0.3;
-  transition: opacity 0.25s;
+  opacity: 0;
+  transform: scale(1.08);
+  transition: opacity 0.6s ease, transform 1.2s var(--ease-out);
 }
 
-.full-bg::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(rgba(20, 15, 31, 0.2), var(--ink) 80%);
+.full-bg.on {
+  opacity: 0.32;
+  transform: none;
 }
 
 .full-inner {
@@ -1264,7 +1475,7 @@ details.more[open] summary {
   aspect-ratio: 1;
   height: auto;
   border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(5, 2, 12, 0.6);
+  box-shadow: 0 24px 60px var(--shadow);
 }
 
 .full.focus .cover-full {
@@ -1272,8 +1483,8 @@ details.more[open] summary {
   transform: scale(0.92);
 }
 
-.full.focus .full-bg {
-  opacity: 0.18;
+.full.focus .full-bgs {
+  opacity: 0.55;
 }
 
 .cover-full .cover-icon {
@@ -1342,12 +1553,40 @@ details.more[open] summary {
   flex: 1;
   min-width: 2px;
   border-radius: 2px;
-  background: var(--line);
-  transition: background 0.12s;
+  /* the bar under the playhead fills smoothly from the left */
+  background: linear-gradient(90deg, var(--lilac) var(--fill, 0%), var(--line) var(--fill, 0%));
+  transform-origin: center;
+  transition: height 0.5s var(--ease-out);
+  will-change: transform;
 }
 
 .wave i.on {
   background: var(--lilac);
+}
+
+.wave.scrubbing i {
+  transition: none;
+}
+
+.wave.reshape i {
+  animation: bar-grow 0.6s var(--ease-out) both;
+}
+
+.wave.reshape i:nth-child(4n + 1) {
+  animation-delay: 0.02s;
+}
+.wave.reshape i:nth-child(4n + 2) {
+  animation-delay: 0.05s;
+}
+.wave.reshape i:nth-child(4n + 3) {
+  animation-delay: 0.08s;
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0.2);
+    opacity: 0.4;
+  }
 }
 
 .wave.busy i {
@@ -1389,16 +1628,22 @@ details.more[open] summary {
   align-items: center;
   justify-content: center;
   background: var(--lilac);
-  color: #1b1030;
+  color: var(--on-accent);
+  transition: transform var(--t-mid) var(--spring), box-shadow var(--t-slow);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--lilac) 30%, transparent);
+}
+
+.full.is-playing .play-big {
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--lilac) 45%, transparent);
 }
 
 .play-big:active {
-  transform: scale(0.96);
+  transform: scale(0.92);
 }
 
 .play-big .spin {
-  border-color: rgba(27, 16, 48, 0.25);
-  border-top-color: #1b1030;
+  border-color: color-mix(in srgb, var(--on-accent) 25%, transparent);
+  border-top-color: var(--on-accent);
 }
 
 .full-bottom {
@@ -1531,9 +1776,9 @@ details.more[open] summary {
 .sheet-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(5, 2, 12, 0.6);
+  background: var(--scrim);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--t-slow) ease;
 }
 
 .sheet-panel {
@@ -1545,10 +1790,21 @@ details.more[open] summary {
   display: flex;
   flex-direction: column;
   padding: 6px 0 calc(var(--sab) + 10px);
-  border-radius: 20px 20px 0 0;
+  border-radius: 24px 24px 0 0;
   background: var(--surface);
+  box-shadow: 0 -10px 40px var(--shadow);
   transform: translateY(100%);
-  transition: transform 0.22s ease;
+  transition: transform var(--t-slow) var(--ease-sheet);
+  will-change: transform;
+}
+
+.sheet.dragging .sheet-panel {
+  transition: none;
+}
+
+.sheet-handle {
+  touch-action: none;
+  cursor: grab;
 }
 
 .sheet.open .sheet-backdrop {
@@ -1626,14 +1882,14 @@ details.more[open] summary {
   bottom: calc(var(--tabbar-h) + var(--sab) + 12px);
   z-index: 80;
   padding: 12px 16px;
-  border-radius: 12px;
-  background: #3a2f55;
-  color: var(--text);
+  border-radius: 16px;
+  background: var(--toast-bg);
+  color: var(--toast-text);
   font-size: 14px;
-  box-shadow: 0 10px 30px rgba(5, 2, 12, 0.5);
+  box-shadow: 0 10px 30px var(--shadow);
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 0.2s, transform 0.2s;
+  transform: translateY(14px) scale(0.96);
+  transition: opacity var(--t-mid), transform var(--t-slow) var(--spring);
   pointer-events: none;
 }
 
@@ -1727,7 +1983,7 @@ body.has-mini .snack {
 }
 
 .tile-import .tile-icon {
-  background: rgba(183, 156, 255, 0.16);
+  background: color-mix(in srgb, var(--lilac) 16%, transparent);
   color: var(--lilac);
 }
 
@@ -1768,7 +2024,7 @@ body.has-mini .snack {
 }
 
 .badge-missing {
-  background: rgba(255, 107, 139, 0.14);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
   color: var(--danger);
 }
 
@@ -1807,7 +2063,7 @@ body.has-mini .snack {
 
 .import-status.error {
   color: var(--danger);
-  background: rgba(255, 107, 139, 0.1);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .chip .src-dot {
@@ -1819,4 +2075,863 @@ body.has-mini .snack {
 
 .btn-ghost.active {
   outline: 1.5px solid var(--lilac);
+}
+
+/* =====================================================================
+   1.1 — motion
+   ===================================================================== */
+
+/* everything you tap gives way a little and springs back */
+.btn,
+.tile,
+.folder,
+.card,
+.chip,
+.seg-btn,
+.wave-tile,
+.palette,
+.theme-card,
+.icon-btn,
+.mini,
+.sheet-item,
+.snack-btn {
+  transition: transform var(--t-mid) var(--spring), background-color var(--t-mid), color var(--t-mid), border-color var(--t-mid), box-shadow var(--t-mid), opacity var(--t-mid);
+}
+
+.btn:active,
+.tile:active,
+.folder:active,
+.card:active,
+.chip:active,
+.seg-btn:active,
+.wave-tile:active,
+.palette:active,
+.theme-card:active {
+  transform: scale(0.96);
+  transition-duration: 0.08s;
+}
+
+.icon-btn:active {
+  transform: scale(0.88);
+  transition-duration: 0.08s;
+}
+
+.mini:active {
+  transform: scale(0.985);
+}
+
+/* items of a page rise in one after another — only right after it appears */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+.page.fresh .page-body > *,
+.page.fresh .track-list > *,
+.page.fresh .list > *,
+.page.fresh .hscroll > *,
+.page.fresh .tiles > *,
+.page.fresh .folders > *,
+.page.fresh .theme-grid > *,
+.page.fresh .chips > * {
+  animation: rise 0.34s var(--ease-out) both;
+}
+
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(2) {
+  animation-delay: 0.024s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(3) {
+  animation-delay: 0.048s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(4) {
+  animation-delay: 0.072s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(5) {
+  animation-delay: 0.096s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(6) {
+  animation-delay: 0.12s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(7) {
+  animation-delay: 0.144s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(8) {
+  animation-delay: 0.168s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(9) {
+  animation-delay: 0.192s;
+}
+.page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(n + 10) {
+  animation-delay: 0.216s;
+}
+
+/* page transitions: a little depth */
+@keyframes page-in {
+  from {
+    opacity: 0.4;
+    transform: translateX(42%);
+  }
+}
+
+@keyframes page-under {
+  to {
+    opacity: 0.35;
+    transform: translateX(-18%) scale(0.98);
+  }
+}
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: translateX(46%);
+  }
+}
+
+@keyframes page-reveal {
+  from {
+    opacity: 0.35;
+    transform: translateX(-18%) scale(0.98);
+  }
+}
+
+.page-enter,
+.page-leave {
+  box-shadow: -18px 0 40px var(--shadow);
+}
+
+.page-enter,
+.page-under,
+.page-reveal {
+  animation-duration: 0.34s !important;
+  animation-timing-function: var(--ease-sheet) !important;
+}
+
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+/* tab icons */
+.tab.active svg {
+  animation: tab-pop 0.42s var(--spring);
+}
+
+@keyframes tab-pop {
+  0% {
+    transform: scale(0.8);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+}
+
+/* play/pause and other icons that change */
+.icon-pop {
+  animation: icon-pop 0.32s var(--spring);
+}
+
+@keyframes icon-pop {
+  from {
+    transform: scale(0.5) rotate(-12deg);
+    opacity: 0;
+  }
+}
+
+/* the heart */
+.icon-btn.liked {
+  color: var(--lilac);
+}
+
+.icon-btn.pop svg {
+  animation: heart-pop 0.5s var(--spring);
+}
+
+.icon-btn.pop::after {
+  content: '';
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--lilac);
+  animation: heart-ring 0.55s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+.full-meta .icon-btn {
+  position: relative;
+}
+
+@keyframes heart-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.7);
+  }
+  65% {
+    transform: scale(1.3);
+  }
+}
+
+@keyframes heart-ring {
+  from {
+    transform: scale(0.4);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+/* mini player: a new track slides in */
+.mini.swap .mini-cover,
+.mini.swap .mini-text {
+  animation: swap-in 0.42s var(--ease-out);
+}
+
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+.mini:not([hidden]) {
+  animation: mini-in 0.5s var(--spring);
+}
+
+/* full player: covers cross over, titles slide */
+.full-art {
+  position: relative;
+}
+
+.cover-full.cover-in {
+  animation: cover-in 0.5s var(--ease-out) both;
+}
+
+.cover-full.cover-out {
+  position: absolute;
+  animation: cover-out 0.4s var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+@keyframes cover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86) translateX(30px);
+  }
+}
+
+@keyframes cover-out {
+  to {
+    opacity: 0;
+    transform: scale(0.86) translateX(-30px);
+  }
+}
+
+.full-meta-text.swap {
+  animation: swap-up 0.45s var(--ease-out);
+}
+
+@keyframes swap-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+.full.open .full-inner > * {
+  animation: rise 0.5s var(--ease-out) both;
+}
+.full.open .full-inner > :nth-child(2) {
+  animation-name: cover-rise;
+  animation-delay: 0.04s;
+}
+.full.open .full-inner > :nth-child(3) {
+  animation-delay: 0.08s;
+}
+.full.open .full-inner > :nth-child(4) {
+  animation-delay: 0.11s;
+}
+.full.open .full-inner > :nth-child(5) {
+  animation-delay: 0.14s;
+}
+.full.open .full-inner > :nth-child(6) {
+  animation-delay: 0.17s;
+}
+
+@keyframes cover-rise {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+.full:not(.open) .full-inner > * {
+  animation: none;
+}
+
+/* sheet contents settle in */
+.sheet.open .sheet-panel > * {
+  animation: rise 0.4s var(--ease-out) both;
+}
+
+.sheet.open .sheet-panel > :nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+/* toasts */
+.toast.show,
+.snack.show {
+  transform: none;
+}
+
+/* theme change without a hard cut (fallback for WebViews without View Transitions) */
+.theme-fade,
+.theme-fade * {
+  transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease !important;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.45s;
+}
+
+/* ---------- loading placeholders ---------- */
+
+.skeleton {
+  padding-top: 4px;
+}
+
+.sk {
+  position: relative;
+  overflow: hidden;
+  background: var(--raised);
+  border-radius: 8px;
+}
+
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 7%, transparent), transparent);
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.sk-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.sk-hero-cover {
+  width: 200px;
+  height: 200px;
+  border-radius: 14px;
+}
+
+.sk-line {
+  height: 12px;
+  border-radius: 6px;
+}
+
+.sk-line.wide {
+  width: 55%;
+  height: 18px;
+  margin-top: 6px;
+}
+
+.sk-line.mid {
+  width: 35%;
+}
+
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  opacity: 0;
+  animation: rise 0.4s var(--ease-out) forwards;
+  animation-delay: calc(var(--i) * 0.04s);
+}
+
+.sk-cover {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  flex: none;
+}
+
+.sk-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sk-line.short {
+  height: 10px;
+  opacity: 0.7;
+}
+
+/* ---------- theme picker ---------- */
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px 10px;
+  border-radius: 18px;
+  border: 1.5px solid transparent;
+  text-align: center;
+  color: var(--text);
+}
+
+.theme-card.active {
+  border-color: var(--lilac);
+  background: color-mix(in srgb, var(--lilac) 10%, transparent);
+}
+
+.theme-name {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.theme-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.theme-preview {
+  position: relative;
+  overflow: hidden;
+  height: 108px;
+  border-radius: 13px;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  padding: 9px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  isolation: isolate;
+}
+
+.tp-aura {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 50% at 15% 20%, color-mix(in srgb, var(--aura-1) calc(var(--aura-strength) * 100%), transparent), transparent 70%),
+    radial-gradient(55% 45% at 90% 45%, color-mix(in srgb, var(--aura-2) calc(var(--aura-strength) * 100%), transparent), transparent 70%),
+    radial-gradient(70% 50% at 40% 100%, color-mix(in srgb, var(--aura-3) calc(var(--aura-strength) * 100%), transparent), transparent 70%);
+}
+
+.tp-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.theme-preview[data-glass] .tp-card,
+.theme-preview[data-glass] .tp-tab {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.tp-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  background: var(--lilac);
+  flex: none;
+}
+
+.tp-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tp-lines i {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text);
+  opacity: 0.8;
+  width: 80%;
+}
+
+.tp-lines i + i {
+  width: 50%;
+  opacity: 0.35;
+}
+
+.tp-bars {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.tp-bars i {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--lilac);
+  opacity: 0.85;
+}
+
+.tp-tab {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tp-tab i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.tp-tab i.on {
+  background: var(--lilac);
+}
+
+/* =====================================================================
+   Light themes: things that were drawn for a dark background
+   ===================================================================== */
+
+[data-light] .cover-full {
+  box-shadow: 0 24px 50px var(--shadow);
+}
+
+[data-light] .full-bg.on {
+  opacity: 0.45;
+}
+
+[data-light] .btn-ghost {
+  color: var(--text);
+}
+
+[data-light] .switch:checked::after {
+  background: #fff;
+}
+
+[data-light] .switch::after {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+[data-light] .switch:not(:checked) {
+  background: var(--line);
+}
+
+[data-light] .wave-status.ok::before {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent);
+}
+
+/* =====================================================================
+   Liquid Glass: frosted panels over drifting colour clouds
+   ===================================================================== */
+
+.aurora {
+  display: none;
+}
+
+[data-glass] .aurora {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+[data-glass] .aurora i {
+  position: absolute;
+  width: 90vmax;
+  height: 90vmax;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+[data-glass] .aurora i:nth-child(1) {
+  left: -35vmax;
+  top: -30vmax;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-1) calc(var(--aura-strength) * 100%), transparent), transparent);
+  animation: drift-a 26s ease-in-out infinite alternate;
+}
+
+[data-glass] .aurora i:nth-child(2) {
+  right: -40vmax;
+  top: 10vh;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-2) calc(var(--aura-strength) * 90%), transparent), transparent);
+  animation: drift-b 31s ease-in-out infinite alternate;
+}
+
+[data-glass] .aurora i:nth-child(3) {
+  left: -20vmax;
+  bottom: -50vmax;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-3) calc(var(--aura-strength) * 100%), transparent), transparent);
+  animation: drift-c 37s ease-in-out infinite alternate;
+}
+
+@keyframes drift-a {
+  to {
+    transform: translate(18vmax, 22vmax) scale(1.15);
+  }
+}
+
+@keyframes drift-b {
+  to {
+    transform: translate(-22vmax, 18vmax) scale(0.9);
+  }
+}
+
+@keyframes drift-c {
+  to {
+    transform: translate(24vmax, -16vmax) scale(1.1);
+  }
+}
+
+/* the glass material */
+[data-glass] :is(.card-box, .tile, .folder, .search-bar, .journal, .import-status, .error-box, .seg, .wave-tile, .chip, .btn-ghost, .empty-icon, .tp-card) {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 24px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+}
+
+[data-glass] .seg-btn.active {
+  background: var(--glass-strong);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+[data-glass] .chip-on {
+  background: color-mix(in srgb, var(--lilac) 22%, transparent);
+  border-color: var(--lilac);
+}
+
+[data-glass] .btn-primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px color-mix(in srgb, var(--lilac) 35%, transparent);
+}
+
+/* a bright rim on the edge, like light caught in thick glass */
+[data-glass] :is(.card-box, .tile, .folder) {
+  position: relative;
+}
+
+[data-glass] :is(.tabbar, .mini, .sheet-panel, .card-box)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, var(--glass-hi), transparent 30%, transparent 70%, color-mix(in srgb, var(--glass-hi) 50%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* floating tab bar and mini player */
+[data-glass] .tabbar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--sab) + 10px);
+  height: var(--tabbar-h);
+  padding-bottom: 0;
+  border: 0;
+  border-radius: 30px;
+  background: var(--glass-strong);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 36px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  backdrop-filter: blur(26px) saturate(180%);
+}
+
+[data-glass] .tab-indicator {
+  top: 6px;
+  height: calc(var(--tabbar-h) - 12px);
+}
+
+[data-glass] .tab-indicator::before {
+  width: 76%;
+  border-radius: 24px;
+  background: var(--glass-fill);
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 0 0 1px var(--glass-edge);
+}
+
+[data-glass] .mini {
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--tabbar-h) + var(--sab) + 18px);
+  border: 0;
+  border-radius: 22px;
+  background: var(--glass-strong);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 36px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  backdrop-filter: blur(26px) saturate(180%);
+}
+
+[data-glass] .mini-progress {
+  left: 18px;
+  right: 18px;
+  width: auto;
+  top: auto;
+  bottom: 0;
+  border-radius: 2px;
+}
+
+/* content scrolls under the floating bars */
+[data-glass] .page {
+  padding-bottom: calc(var(--tabbar-h) + var(--sab) + 30px);
+}
+
+[data-glass] body.has-mini .page,
+[data-glass] .has-mini .page {
+  padding-bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--sab) + 40px);
+}
+
+[data-glass] .toast,
+[data-glass] .snack {
+  bottom: calc(var(--tabbar-h) + var(--sab) + 22px);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 30px var(--glass-shadow);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+}
+
+[data-glass] body.has-mini .toast,
+[data-glass] body.has-mini .snack {
+  bottom: calc(var(--tabbar-h) + var(--sab) + var(--mini-h) + 30px);
+}
+
+[data-glass] .page-head {
+  background: transparent;
+}
+
+[data-glass] .page-head.scrolled {
+  background: var(--glass-strong);
+  box-shadow: 0 1px 0 var(--glass-edge);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+
+[data-glass] .sheet-panel {
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 -10px 40px var(--glass-shadow);
+}
+
+[data-glass] .sheet-backdrop {
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* the full player: glass controls over the blurred cover */
+[data-glass] .full {
+  background: var(--ink);
+}
+
+[data-glass] .full-bottom .btn-text,
+[data-glass] .controls .icon-btn:not(.big) {
+  border-radius: 20px;
+}
+
+[data-glass] .play-big {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 12px 36px color-mix(in srgb, var(--lilac) 40%, transparent);
+}
+
+[data-glass] .full-bottom {
+  margin: 0;
+  padding: 4px;
+  border-radius: 24px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+}
+
+[data-glass] .mix-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 16px 40px color-mix(in srgb, var(--violet) 30%, transparent);
+}
+
+[data-glass] .track::before,
+[data-glass] .list-row::before {
+  background: var(--glass-fill);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+[data-glass] .input {
+  background: var(--glass-fill);
+  border-color: var(--glass-edge);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-glass] .aurora i {
+    animation: none;
+  }
+}
+
+.chips.choice + .howto {
+  margin-top: 14px;
+}
+
+.import-all {
+  margin-top: 22px;
+}
+
+.import-all-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* the full player is pulled with a finger: no browser panning, no image dragging */
+.full {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.full img,
+.mini img {
+  -webkit-user-drag: none;
 }

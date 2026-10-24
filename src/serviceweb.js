@@ -36,6 +36,16 @@ export function request(service, url, { method = 'GET', headers = {}, body, time
   return ServiceWeb.request({ service, url, method, headers, body, timeout, mode });
 }
 
+// Runs a script inside the service page; resolves to its result (parsed JSON).
+export async function run(service, js) {
+  const r = await ServiceWeb.run({ service, js });
+  try {
+    return JSON.parse(r.value);
+  } catch {
+    return null;
+  }
+}
+
 export function forget(domains) {
   return ServiceWeb.forget({ domains: domains.join(',') });
 }

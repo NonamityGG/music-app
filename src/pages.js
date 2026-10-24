@@ -5,6 +5,8 @@ import * as nav from './nav.js';
 import * as player from './player.js';
 import * as online from './online.js';
 import * as accounts from './accounts.js';
+import * as zvuk from './zvuk.js';
+import { detectZvukLink, importZvukLink, importAllMine } from './zvuk-import.js';
 import * as pl from './playlists.js';
 import { localTracks, importFiles, removeLocal, onLocalChange } from './local.js';
 import { setFav, isFav } from './feed.js';
@@ -29,6 +31,7 @@ import {
   askText,
   confirmSheet,
   refreshLocalCovers,
+  skeleton,
 } from './components.js';
 
 // ---------- liked tracks cache (for the heart in menus and the player) ----------
@@ -185,14 +188,15 @@ export function trackMenu(t, ctx = {}) {
   sheet(t.title, items);
 }
 
-// Renders an async page body: spinner → content or error with retry.
-function asyncBody(el, loader) {
+// Renders an async page body: skeleton → content or error with retry.
+function asyncBody(el, loader, kind = 'hero') {
   const body = nav.pageBody(el);
   const run = async () => {
-    clear(body).appendChild(spinner());
+    clear(body).appendChild(skeleton(kind));
     try {
       const content = await loader();
       clear(body).appendChild(content);
+      nav.freshen(el);
     } catch (e) {
       logError('page', e);
       clear(body).appendChild(errorBox(e, run));
@@ -489,28 +493,20 @@ function playlistRow(p, onClick) {
   );
 }
 
-const SIGN_IN = {
-  zvuk: { how: 'через Сбер ID или номер телефона', button: 'Войти в Звук' },
-  yandex: { how: 'через Яндекс ID', button: 'Войти через Яндекс ID' },
-};
-
 function signInCard(service, text) {
   const busy = accounts.isBusy(service);
   return emptyState(
     'library',
-    `Плейлисты ${service === 'yandex' ? 'Яндекс Музыки' : 'Звука'} появятся сами`,
-    text || `Войди ${SIGN_IN[service].how} прямо в приложении — плейлисты и «Мне нравится» подтянутся сюда, а треки будут играть отсюда.`,
-    h('button', { class: 'btn btn-primary', disabled: busy, onclick: () => accounts.connect(service) }, busy ? 'Вход…' : SIGN_IN[service].button)
+    'Плейлисты Яндекс Музыки появятся сами',
+    text || 'Войди через Яндекс ID прямо в приложении — плейлисты и «Мне нравится» подтянутся сюда, и треки будут играть отсюда.',
+    h('button', { class: 'btn btn-primary', disabled: busy, onclick: () => accounts.connect(service) }, busy ? 'Вход…' : 'Войти через Яндекс ID')
   );
 }
 
 export function folderPage(sourceId) {
   const src = sourceById(sourceId);
   const isService = sourceId in online.SERVICES;
-  const addBtn =
-    sourceId === 'zvuk'
-      ? null
-      : h(
+  const addBtn = h(
           'button',
           {
             class: 'icon-btn',
@@ -616,6 +612,10 @@ export function folderPage(sourceId) {
 // ---------- bringing a playlist in ----------
 
 const HOWTO = {
+  zvuk: [
+    'В Звуке открой плейлист → «Поделиться» → «Скопировать ссылку» и вставь её сюда.',
+    'Или перенеси сразу все свои плейлисты и «Мне нравится» — кнопка ниже. Играть всё будет из твоих MP3 и Яндекс Музыки.',
+  ],
   yandex: [
     'Открой плейлист в Яндекс Музыке → «Поделиться» → «Скопировать ссылку».',
     'Плейлист должен быть открытым. «Мне нравится» обычно закрыт — его проще перенести списком или файлом.',
@@ -628,15 +628,15 @@ const HOWTO = {
   other: ['Вставь список треков: по одному на строку, «Исполнитель — Название».', 'Или загрузи файл CSV/TXT — например, выгрузку из сервиса переноса плейлистов.'],
 };
 
-export function importPage(preselect = 'yandex') {
-  const choices = SOURCES.filter((s) => ['yandex', 'vk', 'spotify', 'other'].includes(s.id));
-  let current = choices.some((c) => c.id === preselect) ? preselect : 'yandex';
+export function importPage(preselect = 'zvuk') {
+  const choices = SOURCES.filter((s) => ['zvuk', 'yandex', 'vk', 'spotify', 'other'].includes(s.id));
+  let current = choices.some((c) => c.id === preselect) ? preselect : 'zvuk';
   const el = nav.page({ title: 'Перенести плейлист', back: true });
   const body = nav.pageBody(el);
   const fileInput = h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', hidden: true });
 
   const finish = (groups, source) => {
-    const made = groups.map((g) => pl.createPlaylist(g.name, g.tracks, source));
+    const made = groups.map((g) => pl.createPlaylist(g.name, g.tracks, source, g.origin ? { origin: g.origin } : {}));
     made.forEach((p) => queueMatch(p.id));
     const total = groups.reduce((n, g) => n + g.tracks.length, 0);
     toast(made.length > 1 ? `Перенесено плейлистов: ${made.length}, треков: ${total}` : `Перенесено: ${tracksWord(total)}`);
@@ -661,7 +661,7 @@ export function importPage(preselect = 'yandex') {
   const render = () => {
     clear(body);
     const src = sourceById(current);
-    const byLink = current === 'yandex' || current === 'spotify';
+    const byLink = current === 'yandex' || current === 'spotify' || current === 'zvuk';
     const linkInput = h('input', { class: 'input', type: 'url', placeholder: 'Ссылка на плейлист', autocapitalize: 'off', autocomplete: 'off' });
     const textArea = h('textarea', { class: 'input textarea', placeholder: 'Кино — Группа крови\nБаста — Сансара\n…', rows: '8' });
     const status = h('div', { class: 'import-status', hidden: true });
@@ -674,7 +674,10 @@ export function importPage(preselect = 'yandex') {
       status.hidden = false;
       status.textContent = 'Переношу…';
       try {
-        if (link || detectLink(text)) {
+        if (current === 'zvuk' && (link || detectZvukLink(text))) {
+          const r = await importZvukLink(link || text, (ms) => (status.textContent = `Звук попросил подождать — продолжу через ${Math.ceil(ms / 1000)} с`));
+          finish([{ name: r.name, tracks: r.tracks, origin: r.origin }], 'zvuk');
+        } else if (link || detectLink(text)) {
           const r = await importFromLink(link || text);
           finish([{ name: r.name, tracks: r.tracks }], r.service || current);
         } else {
@@ -718,7 +721,71 @@ export function importPage(preselect = 'yandex') {
       textArea,
       h('div', { class: 'row-start' }, go, h('button', { class: 'btn btn-ghost', onclick: () => fileInput.click() }, icon('folder', 20), 'Файл CSV/TXT')),
       status,
+      current === 'zvuk' ? zvukAllCard() : null,
       fileInput
+    );
+  };
+
+  // "All my playlists": sign in to Zvuk once, everything comes over in the background
+  let allRunning = false;
+  const zvukAllCard = () => {
+    const logged = zvuk.isLoggedIn();
+    const st = h('div', { class: 'import-status', hidden: !allRunning });
+    const btn = h('button', { class: 'btn btn-primary', disabled: allRunning }, allRunning ? 'Переношу…' : logged ? 'Перенести всё из Звука' : 'Войти в Звук и перенести всё');
+    btn.onclick = async () => {
+      if (allRunning) return;
+      if (!zvuk.isLoggedIn() && !(await accounts.connect('zvuk'))) return;
+      allRunning = true;
+      btn.disabled = true;
+      btn.textContent = 'Переношу…';
+      st.hidden = false;
+      st.classList.remove('error');
+      const skip = new Set(pl.playlistsFrom('zvuk').map((p) => p.origin).filter(Boolean));
+      let made = 0;
+      let tracks = 0;
+      try {
+        await importAllMine({
+          skip,
+          onStep: (text) => (st.textContent = text),
+          onList: (g) => {
+            const p = pl.createPlaylist(g.name, g.tracks, 'zvuk', { origin: g.origin });
+            queueMatch(p.id);
+            made++;
+            tracks += g.tracks.length;
+          },
+        });
+        st.textContent = made ? `Готово: плейлистов ${made}, треков ${tracks}. Ищу их в MP3 и Яндекс Музыке.` : 'Всё уже перенесено — новых плейлистов в Звуке нет.';
+        toast(made ? `Перенесено плейлистов: ${made}` : 'Новых плейлистов нет');
+      } catch (e) {
+        logError('zvuk:all', e);
+        st.classList.add('error');
+        st.textContent = (made ? `Успел перенести ${made}. ` : '') + (e.message || String(e)) + ' Нажми ещё раз позже — уже перенесённое не повторится.';
+      } finally {
+        allRunning = false;
+        btn.disabled = false;
+        btn.textContent = zvuk.isLoggedIn() ? 'Перенести всё из Звука' : 'Войти в Звук и перенести всё';
+      }
+    };
+    return h(
+      'div',
+      { class: 'card-box import-all' },
+      h('div', { class: 'import-all-title' }, 'Все плейлисты разом'),
+      h('div', { class: 'muted small' }, logged ? 'Ты вошёл в Звук. Перенесу все твои плейлисты и «Мне нравится» — по одному, чтобы Звук не ругался.' : 'Войди в Звук прямо в приложении (Сбер ID или телефон) — перенесу все твои плейлисты и «Мне нравится».'),
+      btn,
+      st,
+      logged
+        ? h(
+            'button',
+            {
+              class: 'btn btn-text small',
+              onclick: async () => {
+                await accounts.disconnect('zvuk');
+                render();
+              },
+            },
+            'Выйти из Звука'
+          )
+        : null
     );
   };
   render();

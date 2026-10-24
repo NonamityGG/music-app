@@ -1,10 +1,10 @@
-// Signing in to the music services from inside the app (Zvuk with Sber ID or a
-// phone number, Yandex Music with Yandex ID) and out again.
+// Signing in to the music services from inside the app and out again: Yandex
+// Music with Yandex ID (to play), Zvuk with Sber ID or a phone number (only to
+// bring playlists over).
 
 import * as zvuk from './zvuk.js';
 import * as ya from './yandex.js';
 import * as web from './serviceweb.js';
-import { NAMES } from './online.js';
 import { logError, save, load } from './settings.js';
 import { toast } from './util.js';
 
@@ -58,7 +58,7 @@ export async function disconnect(service) {
     logError('logout:' + service, e);
   }
   changed(service);
-  toast(`${NAMES[service]}: ты вышел из аккаунта`);
+  toast(`${service === 'yandex' ? 'Яндекс Музыка' : 'Звук'}: ты вышел из аккаунта`);
 }
 
 export function loggedIn(service) {

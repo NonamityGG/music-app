@@ -22,7 +22,7 @@ export function coverOf(t) {
 export function cover(src, cls = 'cover', fallbackIcon = 'note') {
   const box = h('div', { class: cls + ' cover-box' });
   if (src) {
-    const img = h('img', { src, loading: 'lazy', alt: '', referrerpolicy: 'no-referrer' });
+    const img = h('img', { src, loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', draggable: 'false' });
     img.onerror = () => {
       img.remove();
       box.appendChild(icon(fallbackIcon, 22, 'cover-icon'));
@@ -123,6 +123,27 @@ export function section(title, action, ...body) {
   return h('section', { class: 'section' }, h('div', { class: 'section-head' }, h('h2', null, title), action || null), ...body);
 }
 
+// Placeholder shapes that shimmer while a page loads, so the layout doesn't jump.
+export function skeleton(kind = 'list') {
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
+    rows.push(
+      h(
+        'div',
+        { class: 'sk-row', style: { '--i': i } },
+        h('div', { class: 'sk sk-cover' }),
+        h('div', { class: 'sk-lines' }, h('div', { class: 'sk sk-line', style: { width: 55 + ((i * 17) % 35) + '%' } }), h('div', { class: 'sk sk-line short', style: { width: 30 + ((i * 23) % 25) + '%' } }))
+      )
+    );
+  }
+  return h(
+    'div',
+    { class: 'skeleton', 'aria-busy': 'true', 'aria-label': 'Загрузка' },
+    kind === 'hero' ? h('div', { class: 'sk-hero' }, h('div', { class: 'sk sk-hero-cover' }), h('div', { class: 'sk sk-line wide' }), h('div', { class: 'sk sk-line mid' })) : null,
+    rows
+  );
+}
+
 export function spinner(text) {
   return h('div', { class: 'loading' }, h('div', { class: 'spin' }), text ? h('div', { class: 'loading-text' }, text) : null);
 }
@@ -187,7 +208,7 @@ export function closeSheet() {
   const el = openSheetEl;
   openSheetEl = null;
   el.classList.remove('open');
-  setTimeout(() => el.remove(), 220);
+  setTimeout(() => el.remove(), 380);
   return true;
 }
 
@@ -218,12 +239,58 @@ export function sheet(title, content) {
         )
       )
     : content;
-  const panel = h('div', { class: 'sheet-panel' }, h('div', { class: 'sheet-grip' }), title ? h('div', { class: 'sheet-title' }, title) : null, body);
+  const grip = h('div', { class: 'sheet-handle' }, h('div', { class: 'sheet-grip' }), title ? h('div', { class: 'sheet-title' }, title) : null);
+  const panel = h('div', { class: 'sheet-panel' }, grip, body);
   const el = h('div', { class: 'sheet' }, h('div', { class: 'sheet-backdrop', onclick: closeSheet }), panel);
   document.body.appendChild(el);
   openSheetEl = el;
-  requestAnimationFrame(() => el.classList.add('open'));
+  dragToClose(grip, panel, () => closeSheet(), el);
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
   return el;
+}
+
+// Pull a panel down to close it (sheets, the full player). `handle` is where the
+// pull may start; small moves stay taps.
+export function dragToClose(handle, panel, onClose, host = panel, { threshold = 110, ignore = '' } = {}) {
+  let d = null;
+  handle.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (ignore && e.target.closest && e.target.closest(ignore)) return;
+    d = { y0: e.clientY, t0: performance.now(), dy: 0, moved: false, id: e.pointerId };
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    const dy = e.clientY - d.y0;
+    if (!d.moved) {
+      if (dy < 8) return;
+      d.moved = true;
+      try {
+        handle.setPointerCapture(d.id);
+      } catch {}
+      host.classList.add('dragging');
+    }
+    d.dy = Math.max(0, dy);
+    panel.style.transform = `translateY(${d.dy}px)`;
+  });
+  const end = (e) => {
+    if (!d || (e && e.pointerId !== d.id)) return;
+    const { moved, dy, t0 } = d;
+    d = null;
+    if (!moved) return;
+    host.classList.remove('dragging');
+    const v = dy / Math.max(1, performance.now() - t0);
+    panel.style.transform = '';
+    if (dy > threshold || v > 0.7) onClose();
+    // a pull is not a tap
+    const swallow = (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    handle.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => handle.removeEventListener('click', swallow, { capture: true }), 350);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
 }
 
 // Text input dialog built on the sheet.

@@ -19,6 +19,8 @@ const plain = new Audio();
 const fx = new Audio();
 plain.preload = 'auto';
 fx.preload = 'auto';
+// lets the analyser read streams from hosts that allow it (see checkCors)
+fx.crossOrigin = 'anonymous';
 let audio = plain;
 let fxBroken = false; // once the analyser path fails, this session plays everything directly
 let attachFailed = false; // the phone refused the analyser altogether
@@ -94,13 +96,13 @@ async function localSource(track) {
 async function refFor(track) {
   const own = online.refOf(track);
   if (own && online.usable(own.p)) return own;
+  if (!online.isLoggedIn()) throw new online.OfflineError();
   if (track.src === 'ext' && track.match === 'none') return null;
   const z = await findOnline(track);
   if (track.src === 'ext') pl.rememberMatch(track.key, z ? onlinePatch(track, z) : { match: 'none' });
   if (!z) return null;
   if (track.src === 'ext') {
-    if (z.src === 'yandex') track.yid = z.yid;
-    else track.zid = z.zid;
+    track.yid = z.yid;
     track.cover = track.cover || z.cover;
   }
   return online.refOf(z);
@@ -116,7 +118,7 @@ async function resolve(track) {
     if (settings.autoFallback) {
       const m = await findOnline(track).catch(() => null);
       const ref = m && online.refOf(m);
-      if (ref) return { url: await online.streamFor(ref), via: 'zvuk-fallback', match: m, ref };
+      if (ref) return { url: await online.streamFor(ref), via: 'online-fallback', match: m, ref };
     }
     throw new Error('Файла больше нет в медиатеке');
   }
@@ -127,7 +129,7 @@ async function resolve(track) {
   }
   const ref = await refFor(track);
   if (!ref) throw new Error('Этого трека нет ни в твоих MP3, ни онлайн');
-  return { url: await online.streamFor(ref), via: 'zvuk', ref };
+  return { url: await online.streamFor(ref), via: 'online', ref };
 }
 
 // ---------- getting the next tracks ready ----------
@@ -145,11 +147,11 @@ function takePrepared(track) {
   if (!p) return null;
   if (p.blob) {
     ahead.delete(track.key);
-    return { url: URL.createObjectURL(p.blob), via: 'zvuk', ref: p.ref, preloaded: true };
+    return { url: URL.createObjectURL(p.blob), via: 'online', ref: p.ref, preloaded: true };
   }
   if (p.url && Date.now() - p.urlAt < LINK_TTL) {
     ahead.delete(track.key);
-    return { url: p.url, via: 'zvuk', ref: p.ref };
+    return { url: p.url, via: 'online', ref: p.ref };
   }
   return null;
 }
@@ -202,7 +204,7 @@ async function prepareAhead() {
         p.urlAt = Date.now();
       }
     } catch (e) {
-      if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate' || e.kind === 'check') break;
+      if (e.kind === 'bot' || e.kind === 'network' || e.kind === 'rate' || e.kind === 'nologin') break;
       continue;
     }
     if (seq !== loadSeq) return;
@@ -230,6 +232,46 @@ function wantFx() {
   return settings.wavesReactive !== false && settings.wavesStyle !== 'off' && !fxBroken && !trackBypass && graph.available();
 }
 
+// ---------- streaming straight from the music host ----------
+// If the host allows other sites to read its files (CORS), the analysed element
+// plays the stream directly: seeking and buffering work like in any browser. The
+// app's proxy below is only the fallback, and it can't seek into parts of the
+// file it hasn't loaded yet, so seeking there is handled separately (seek()).
+
+const corsHosts = new Map(); // host family -> true | false
+const hostKey = (url) => {
+  try {
+    return new URL(url).host.split('.').slice(-3).join('.');
+  } catch {
+    return '';
+  }
+};
+const corsKnownOk = (url) => corsHosts.get(hostKey(url)) === true;
+
+async function checkCors(url) {
+  const key = hostKey(url);
+  if (!key) return false;
+  if (corsHosts.has(key)) return corsHosts.get(key);
+  // the browser's own fetch (Capacitor replaces window.fetch with a native one
+  // that ignores CORS, which would make the check meaningless)
+  const raw = window.CapacitorWebFetch;
+  if (typeof raw !== 'function') {
+    corsHosts.set(key, false);
+    return false;
+  }
+  let ok = false;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const r = await raw(url, { signal: ctrl.signal, cache: 'no-store' });
+    ok = r.ok || r.status === 206;
+  } catch {}
+  ctrl.abort(); // only the answer's headers were needed
+  clearTimeout(timer);
+  corsHosts.set(key, ok);
+  return ok;
+}
+
 // Routes a remote stream through the app's own origin (Capacitor's native proxy),
 // so the analyser is allowed to read it.
 function proxied(url) {
@@ -248,7 +290,7 @@ function setSource(url) {
     if (url.startsWith('blob:')) el = fx;
     else if (Capacitor.isNativePlatform() && /^https?:/.test(url)) {
       el = fx;
-      src = proxied(url);
+      src = corsKnownOk(url) ? url : proxied(url);
     }
   }
   if (el === fx && !graph.attach(fx)) {
@@ -377,6 +419,11 @@ async function load_(index, autoplay = true, auto = false) {
     state.via = src.via;
     curRef = src.ref || null;
     track.unavailable = false;
+    if (wantFx() && Capacitor.isNativePlatform() && /^https?:/.test(src.url)) {
+      await checkCors(src.url); // once per host, then cached
+      if (seq !== loadSeq) return;
+    }
+    dropFullCopy();
     setSource(src.url);
     if (autoplay) await audio.play().catch((e) => handlePlayError(e, seq));
     failStreak = 0;
@@ -387,9 +434,9 @@ async function load_(index, autoplay = true, auto = false) {
     if (seq !== loadSeq) return;
     if ((e.kind === 'bot' || e.kind === 'rate') && waitOut(track, index, auto, seq)) return;
     failStreak++;
-    track.unavailable = true;
+    track.unavailable = e.kind !== 'nologin';
     state.error = e.message || String(e);
-    logError('play', e);
+    if (e.kind !== 'nologin') logError('play', e);
     emit('unavailable', { track, error: e });
     if (failStreak < 5 && state.queue.length > 1 && hasNext()) {
       const known = track.src === 'ext' && track.match === 'none';
@@ -510,10 +557,70 @@ export function prev() {
   playAt(state.index > 0 ? state.index - 1 : state.repeat === 'all' ? state.queue.length - 1 : 0);
 }
 
+// ---------- seeking a stream that goes through the proxy ----------
+
+let fullCopy = null; // { key, url, loading } — the whole current track, downloaded in the background
+
+function dropFullCopy() {
+  if (fullCopy && fullCopy.url) URL.revokeObjectURL(fullCopy.url);
+  fullCopy = null;
+}
+
+const viaProxyNow = () => audio === fx && String(audio.src).includes('_capacitor_http_interceptor_');
+
+function isBuffered(t) {
+  const b = audio.buffered;
+  for (let i = 0; i < b.length; i++) if (t >= b.start(i) - 0.5 && t <= b.end(i) - 0.5) return true;
+  return false;
+}
+
+// Starts downloading the whole track while it plays, so a jump far ahead can
+// switch to the downloaded copy.
+function startFullCopy() {
+  const track = current();
+  if (!track || !viaProxyNow() || (fullCopy && fullCopy.key === track.key)) return;
+  const copy = { key: track.key, url: '', loading: true };
+  fullCopy = copy;
+  const url = directUrl;
+  fetch(proxied(url))
+    .then((r) => (r.ok ? r.blob() : null))
+    .then((blob) => {
+      if (fullCopy !== copy || !blob || blob.size < 50000) return;
+      copy.url = URL.createObjectURL(blob);
+    })
+    .catch((e) => logError('stream-copy', e))
+    .finally(() => (copy.loading = false));
+}
+
+function moveTo(url, at, wasPlaying) {
+  setSource(url);
+  seekWhenReady(at);
+  if (wasPlaying) audio.play().catch((e) => logError('seek', e));
+  emit('state');
+}
+
 export function seek(sec) {
   if (!isFinite(sec)) return;
+  const t = Math.max(0, Math.min(sec, duration() || sec));
+  if (viaProxyNow() && !isBuffered(t)) {
+    // the proxy can't jump into the part of the file it hasn't loaded yet
+    const wasPlaying = !audio.paused;
+    if (fullCopy && fullCopy.key === (current() && current().key) && fullCopy.url) {
+      const blobUrl = fullCopy.url;
+      fullCopy = null;
+      setObjectUrl(blobUrl);
+      moveTo(blobUrl, t, wasPlaying);
+    } else {
+      // play this track straight from the host; the waves move on their own until the next one
+      trackBypass = true;
+      fxReason = 'перемотка, пока трек загружается';
+      moveTo(directUrl, t, wasPlaying);
+    }
+    pushPosition();
+    return;
+  }
   try {
-    audio.currentTime = Math.max(0, Math.min(sec, duration() || sec));
+    audio.currentTime = t;
   } catch {}
   pushPosition();
 }
@@ -594,6 +701,7 @@ for (const el of [plain, fx]) {
       setPlaying(true);
       pushPosition();
       schedulePreload(800);
+      setTimeout(startFullCopy, 1500);
     })
   );
   el.addEventListener('pause', mine(() => setPlaying(false)));
