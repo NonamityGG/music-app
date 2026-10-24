@@ -22,7 +22,7 @@ export function coverOf(t) {
 export function cover(src, cls = 'cover', fallbackIcon = 'note') {
   const box = h('div', { class: cls + ' cover-box' });
   if (src) {
-    const img = h('img', { src, loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', draggable: 'false' });
+    const img = h('img', { src, loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', draggable: 'false', decoding: 'async' });
     img.onerror = () => {
       img.remove();
       box.appendChild(icon(fallbackIcon, 22, 'cover-icon'));
@@ -244,17 +244,18 @@ export function sheet(title, content) {
   const el = h('div', { class: 'sheet' }, h('div', { class: 'sheet-backdrop', onclick: closeSheet }), panel);
   document.body.appendChild(el);
   openSheetEl = el;
-  dragToClose(grip, panel, () => closeSheet(), el);
+  // on a wide screen dialogs float in the middle and close with a tap outside
+  dragToClose(grip, panel, () => closeSheet(), el, { enabled: () => !window.matchMedia('(min-width: 700px)').matches });
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('open')));
   return el;
 }
 
 // Pull a panel down to close it (sheets, the full player). `handle` is where the
 // pull may start; small moves stay taps.
-export function dragToClose(handle, panel, onClose, host = panel, { threshold = 110, ignore = '' } = {}) {
+export function dragToClose(handle, panel, onClose, host = panel, { threshold = 110, ignore = '', enabled = () => true } = {}) {
   let d = null;
   handle.addEventListener('pointerdown', (e) => {
-    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || !enabled()) return;
     if (ignore && e.target.closest && e.target.closest(ignore)) return;
     d = { y0: e.clientY, t0: performance.now(), dy: 0, moved: false, id: e.pointerId };
   });

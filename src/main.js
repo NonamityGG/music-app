@@ -13,6 +13,7 @@ import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, onLikeChange, searchInApp, openExternal } from './pages.js';
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose } from './components.js';
 import { applyTheme } from './theme.js';
+import { createLyricsView } from './lyrics-view.js';
 import { onLocalChange } from './local.js';
 import { resumeMatching, rematchLocal } from './matcher.js';
 import { requestPersistence } from './db.js';
@@ -31,8 +32,16 @@ applyTheme();
 
 const content = h('main', { class: 'content' });
 const tabIndicator = h('div', { class: 'tab-indicator', 'aria-hidden': 'true' });
-const tabbar = h('nav', { class: 'tabbar' });
+// bottom tab bar on a phone, a sidebar on a wide screen (CSS decides)
+const tabsBox = h('div', { class: 'tabs' });
+const tabbar = h(
+  'nav',
+  { class: 'tabbar' },
+  h('div', { class: 'brand' }, h('div', { class: 'brand-mark' }, h('i'), h('i'), h('i'), h('i')), h('div', { class: 'brand-name' }, 'Резонанс')),
+  tabsBox
+);
 const mini = buildMini();
+const lyricsView = createLyricsView({ onSeek: (t) => player.seek(t), getDuration: () => player.duration() });
 const full = buildFull();
 const bgCanvas = h('canvas', { class: 'waves-bg', 'aria-hidden': 'true' });
 // soft colour clouds behind the glass themes (only shown there)
@@ -56,12 +65,18 @@ waves.addSurface('full', full.canvas, {
   center: () => {
     if (settings.wavesFocus) {
       const r = full.art.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: 0, amp: Math.min(r.width, r.height) * 0.42 };
+      const wide = window.innerWidth >= 700 && window.innerWidth > window.innerHeight;
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: 0, amp: Math.min(r.width, r.height) * 0.42, box: wide ? { x: r.left - 24, w: r.width + 48 } : null };
     }
-    const c = full.art.querySelector('.cover-full');
+    const c = full.art.querySelector('.cover-full:not(.cover-out)');
     if (!c) return null;
     const r = c.getBoundingClientRect();
     const area = full.art.getBoundingClientRect();
+    // on a wide screen the waves stay in the cover's column
+    if (window.innerWidth >= 700 && window.innerWidth > window.innerHeight) {
+      const pad = 24;
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, amp: Math.min(area.height / 2, area.width * 0.42), box: { x: area.left - pad, w: area.width + pad * 2 } };
+    }
     // the waves use the whole art area, the cover floats on top of them
     return { x: r.left + r.width / 2, y: r.top + r.height / 2, r: r.width / 2, amp: Math.max(r.height / 2, area.height / 2) };
   },
@@ -76,13 +91,12 @@ const tabButtons = {};
 for (const t of TABS) {
   const b = h('button', { class: 'tab', onclick: () => nav.switchTab(t.name, { reset: nav.activeTab() === t.name }) }, icon(t.icon, 24), h('span', null, t.label));
   tabButtons[t.name] = b;
-  tabbar.appendChild(b);
+  tabsBox.appendChild(b);
 }
-tabbar.appendChild(tabIndicator);
+tabsBox.appendChild(tabIndicator);
 nav.onTab((name) => {
   for (const [n, b] of Object.entries(tabButtons)) b.classList.toggle('active', n === name);
-  const i = TABS.findIndex((t) => t.name === name);
-  tabIndicator.style.transform = `translateX(${i * 100}%)`;
+  tabsBox.style.setProperty('--tab-i', String(TABS.findIndex((t) => t.name === name)));
 });
 nav.initNav(content, Object.fromEntries(TABS.map((t) => [t.name, t.view])), 'feed');
 
@@ -265,6 +279,7 @@ function buildFull() {
   const bgB = h('div', { class: 'full-bg' });
   const bg = h('div', { class: 'full-bgs' }, bgA, bgB);
   const art = h('div', { class: 'full-art' });
+  const thumb = h('div', { class: 'meta-thumb' });
   const title = h('div', { class: 'full-title' });
   const artist = h('button', { class: 'full-artist' });
   const via = h('div', { class: 'full-via' });
@@ -276,9 +291,10 @@ function buildFull() {
   const repeatBtn = h('button', { class: 'icon-btn', 'aria-label': 'Повтор', onclick: () => player.cycleRepeat() });
   const playBtn = h('button', { class: 'play-big', 'aria-label': 'Пауза/играть', onclick: () => player.toggle() });
   const canvas = h('canvas', { class: 'waves-full', 'aria-hidden': 'true' });
+  const lyricsBtn = h('button', { class: 'fb-btn', 'aria-pressed': 'false', onclick: () => setLyrics(!settings.lyricsOn) }, icon('lyrics', 24), h('span', null, 'Текст'));
   const el = h(
     'div',
-    { class: 'full' + (settings.wavesFocus ? ' focus' : ''), hidden: true },
+    { class: 'full' + (settings.wavesFocus ? ' focus' : '') + (settings.lyricsOn ? ' lyrics-on' : ''), hidden: true },
     bg,
     canvas,
     h(
@@ -292,7 +308,8 @@ function buildFull() {
         h('button', { class: 'icon-btn', 'aria-label': 'Ещё', onclick: () => player.current() && trackMenu(player.current()) }, icon('more', 26))
       ),
       art,
-      h('div', { class: 'full-meta' }, h('div', { class: 'full-meta-text' }, title, artist, via), likeBtn),
+      lyricsView.el,
+      h('div', { class: 'full-meta' }, thumb, h('div', { class: 'full-meta-text' }, title, artist, via), likeBtn),
       h('div', { class: 'seek-wrap' }, wave.el, h('div', { class: 'seek-times' }, tCur, tDur)),
       h(
         'div',
@@ -306,9 +323,9 @@ function buildFull() {
       h(
         'div',
         { class: 'full-bottom' },
-        h('button', { class: 'btn btn-text', onclick: () => showQueue() }, icon('queue', 22), 'Очередь'),
-        h('button', { class: 'btn btn-text', onclick: () => showWaves() }, icon('wave', 22), 'Волны'),
-        h('button', { class: 'btn btn-text', onclick: () => player.current() && otherPlatformsSheet(player.current()) }, icon('link', 22), 'Площадки')
+        lyricsBtn,
+        h('button', { class: 'fb-btn', onclick: () => showWaves() }, icon('wave', 24), h('span', null, 'Волны')),
+        h('button', { class: 'fb-btn', onclick: () => showQueue() }, icon('queue', 24), h('span', null, 'Очередь'))
       )
     )
   );
@@ -332,7 +349,7 @@ function buildFull() {
     else if (t.artist) searchInApp(t.artist);
   };
   // pull the player down to close it
-  dragToClose(el, el, () => closeFull(), el, { threshold: 140, ignore: '.wave, .controls, .full-bottom, .full-meta button, .sheet' });
+  dragToClose(el, el, () => closeFull(), el, { threshold: 140, ignore: '.wave, .controls, .full-bottom, .full-meta button, .sheet, .lyrics' });
   // tap the cover: waves take the whole stage, tap again to bring the cover back
   art.addEventListener('click', () => {
     saveSettings({ wavesFocus: !settings.wavesFocus });
@@ -340,7 +357,7 @@ function buildFull() {
     waves.resize('full');
     waves.kick();
   });
-  return { el, bg, bgLayers: [bgA, bgB], canvas, art, title, artist, via, likeBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
+  return { el, bg, bgLayers: [bgA, bgB], canvas, art, thumb, title, artist, via, likeBtn, lyricsBtn, wave, tCur, tDur, shuffleBtn, repeatBtn, playBtn };
 }
 
 const VIA_LABEL = {
@@ -360,6 +377,8 @@ function swapCover(src) {
     old.classList.add('cover-out');
     setTimeout(() => old.remove(), 420);
     next.classList.add('cover-in');
+    // the entrance must not hold the cover's look afterwards (tap-to-hide animates it)
+    next.addEventListener('animationend', () => next.classList.remove('cover-in'), { once: true });
   }
   full.art.appendChild(next);
 }
@@ -385,10 +404,14 @@ function paintFull() {
     fullKey = key;
     swapCover(c);
     swapBackground(c);
+    clear(full.thumb).appendChild(cover(c, 'cover'));
     full.title.textContent = t.title;
     full.artist.textContent = t.artist || '';
     if (changedTrack && !first) replay(full.el.querySelector('.full-meta-text'), 'swap');
   }
+  if (settings.lyricsOn && !full.el.hidden) lyricsView.show(t);
+  full.lyricsBtn.classList.toggle('active', !!settings.lyricsOn);
+  full.lyricsBtn.setAttribute('aria-pressed', settings.lyricsOn ? 'true' : 'false');
   full.wave.setShape(t.key);
   full.wave.el.classList.toggle('busy', player.state.loading);
   const waitLeft = player.state.waitingUntil ? Math.ceil((player.state.waitingUntil - Date.now()) / 1000) : 0;
@@ -422,13 +445,15 @@ function paintFull() {
 
 let lastSec = -1;
 let lastDurSec = -1;
+let lastMini = '';
 function paintTime() {
   const d = player.duration();
   const p = player.position();
   const frac = d ? Math.min(1, p / d) : 0;
   const beat = player.state.playing ? waves.levels().beat : 0;
-  mini.bar.style.transform = `scaleX(${frac.toFixed(4)})`;
-  mini.bar.style.setProperty('--beat', beat.toFixed(3));
+  // the line thickens a touch on each beat
+  const mt = `scale(${frac.toFixed(4)}, ${(1 + beat * 0.9).toFixed(2)})`;
+  if (mt !== lastMini) mini.bar.style.transform = lastMini = mt;
   if (full.el.hidden) return;
   if (!full.wave.dragging) {
     full.wave.setFrac(frac);
@@ -444,7 +469,30 @@ function paintTime() {
     full.tDur.textContent = fmtTime(d);
   }
   full.wave.pulse(beat);
+  if (settings.lyricsOn) lyricsView.tick(p);
 }
+
+// Words of the song: in place of the cover on a phone, beside it on a wide screen.
+function setLyrics(on) {
+  saveSettings({ lyricsOn: on });
+  full.el.classList.toggle('lyrics-on', on);
+  if (on) {
+    lyricsView.show(player.current());
+    lastSec = -1;
+    paintTime();
+    setTimeout(() => lyricsView.relayout(), 420);
+  } else lyricsView.hide();
+  paintFull();
+  setTimeout(() => waves.resize('full'), 450);
+}
+
+window.addEventListener('resize', () => {
+  clearTimeout(setLyrics.t);
+  setLyrics.t = setTimeout(() => {
+    lyricsView.relayout();
+    waves.resize('full');
+  }, 200);
+});
 
 let loopId = 0;
 const loopWanted = () => !!player.current() && !document.hidden && player.state.playing;

@@ -196,6 +196,7 @@ function asyncBody(el, loader, kind = 'hero') {
     try {
       const content = await loader();
       clear(body).appendChild(content);
+      adoptHero(body);
       nav.freshen(el);
     } catch (e) {
       logError('page', e);
@@ -209,11 +210,24 @@ function asyncBody(el, loader, kind = 'hero') {
 function hero(imgSrc, title, sub, round = false, fallbackIcon = null) {
   return h(
     'div',
-    { class: 'hero' },
+    { class: 'hero' + (round ? ' hero-round' : '') },
     cover(imgSrc, 'cover cover-hero' + (round ? ' round' : '') + (fallbackIcon === 'heart' ? ' liked-cover' : ''), fallbackIcon || (round ? 'user' : 'note')),
-    h('div', { class: 'hero-title' }, title),
-    sub ? h('div', { class: 'hero-sub' }, sub) : null
+    h('div', { class: 'hero-text' }, h('div', { class: 'hero-title' }, title), sub ? h('div', { class: 'hero-sub' }, sub) : null)
   );
+}
+
+// The buttons and tags right under a hero go inside it, so on a wide screen they
+// sit next to the cover (like an album page on a tablet) and under it on a phone.
+function adoptHero(container) {
+  const heroEl = container.querySelector('.hero');
+  const text = heroEl && heroEl.querySelector('.hero-text');
+  if (!text) return;
+  let n = heroEl.nextElementSibling;
+  while (n && (n.classList.contains('center-row') || n.classList.contains('source-tag') || n.classList.contains('match-progress'))) {
+    const next = n.nextElementSibling;
+    text.appendChild(n);
+    n = next;
+  }
 }
 
 // ---------- artist ----------
@@ -274,7 +288,7 @@ export function releasePage(id) {
     return h(
       'div',
       null,
-      h('div', { class: 'hero' }, cover(r.cover, 'cover cover-hero'), h('div', { class: 'hero-title' }, r.title), artistLinks),
+      h('div', { class: 'hero' }, cover(r.cover, 'cover cover-hero'), h('div', { class: 'hero-text' }, h('div', { class: 'hero-title' }, r.title), artistLinks)),
       h('div', { class: 'center-row' }, playButtons(async () => r.tracks)),
       h(
         'div',
@@ -457,6 +471,7 @@ export function customPlaylistPage(id) {
           })
         : emptyState('queue', 'Плейлист пустой', (p.source || 'mine') === 'mine' ? 'Добавляй треки и свои MP3 через меню «⋮» у любого трека.' : '')
     );
+    adoptHero(body);
     el.scrollTop = scroll;
     if (pending && !prog) queueMatch(id);
   };
@@ -631,7 +646,7 @@ const HOWTO = {
 export function importPage(preselect = 'zvuk') {
   const choices = SOURCES.filter((s) => ['zvuk', 'yandex', 'vk', 'spotify', 'other'].includes(s.id));
   let current = choices.some((c) => c.id === preselect) ? preselect : 'zvuk';
-  const el = nav.page({ title: 'Перенести плейлист', back: true });
+  const el = nav.page({ title: 'Перенести плейлист', back: true, narrow: true });
   const body = nav.pageBody(el);
   const fileInput = h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', hidden: true });
 

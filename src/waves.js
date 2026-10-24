@@ -90,6 +90,7 @@ export function resize(name = active) {
     s.w = w;
     s.h = h;
     s.dpr = dpr;
+    s.sm = null;
     gradCache.key = '';
   }
 }
@@ -250,17 +251,32 @@ function gradients(s, colors) {
 function frameFor(s, t) {
   const pal = PALETTES.find((p) => p.id === cfg.palette) || PALETTES[0];
   // measuring the layout every frame can stutter; refresh the position a few times a second
-  if (s.opts.center && (t * 1000 - centerAt > 250 || !centerCache)) {
+  if (s.opts.center && (t * 1000 - centerAt > 120 || !centerCache)) {
     centerCache = s.opts.center();
     centerAt = t * 1000;
   }
   const c = s.opts.center ? centerCache : null;
-  const cx = c ? c.x * s.dpr : s.w / 2;
-  const cy = c ? c.y * s.dpr : s.opts.place === 'low' ? s.h * 0.79 : s.h / 2;
-  const amp = c && c.amp ? c.amp * s.dpr : Math.min(s.w, s.h) * (s.opts.ampScale || 0.3);
+  const tx = c ? c.x * s.dpr : s.w / 2;
+  const ty = c ? c.y * s.dpr : s.opts.place === 'low' ? s.h * 0.79 : s.h / 2;
+  const tamp = c && c.amp ? c.amp * s.dpr : Math.min(s.w, s.h) * (s.opts.ampScale || 0.3);
+  const tr = c ? c.r * s.dpr : 0;
+  // glide to a new size/place (cover hidden or shown, rotation) instead of jumping
+  const sm = s.sm || (s.sm = { x: tx, y: ty, amp: tamp, r: tr, t });
+  const k = 1 - Math.exp(-Math.max(0, Math.min(0.1, t - sm.t)) / 0.14);
+  sm.t = t;
+  sm.x += (tx - sm.x) * k;
+  sm.y += (ty - sm.y) * k;
+  sm.amp += (tamp - sm.amp) * k;
+  sm.r += (tr - sm.r) * k;
+  const cx = sm.x;
+  const cy = sm.y;
+  const amp = sm.amp;
   // glowing 'lighter' blending washes out to white on a light background
   const blend = cfg.light ? 'source-over' : 'lighter';
-  return { ctx: s.ctx, w: s.w, h: s.h, cx, cy, amp, dpr: s.dpr, t, colors: pal.colors, g: gradients(s, pal.colors), full: !!s.opts.full, rx: c ? c.r * s.dpr : 0, blend };
+  // the waves may be kept to part of the canvas (the cover's column on a wide screen)
+  const box = c && c.box ? { x: Math.round(c.box.x * s.dpr), w: Math.round(c.box.w * s.dpr) } : null;
+  const g = gradients(box ? { ctx: s.ctx, w: box.w, h: s.h } : s, pal.colors);
+  return { ctx: s.ctx, w: s.w, h: s.h, cx, cy, amp, dpr: s.dpr, t, colors: pal.colors, g, full: !!s.opts.full, rx: sm.r, blend, box };
 }
 
 function draw(t, dt) {
@@ -271,7 +287,17 @@ function draw(t, dt) {
   f.ctx.clearRect(0, 0, f.w, f.h);
   if (cfg.style === 'off') return;
   f.amp *= 1 + beatPulse * 0.22;
+  if (f.box) {
+    f.ctx.save();
+    f.ctx.beginPath();
+    f.ctx.rect(f.box.x, 0, f.box.w, f.h);
+    f.ctx.clip();
+    f.ctx.translate(f.box.x, 0);
+    f.cx -= f.box.x;
+    f.w = f.box.w;
+  }
   (DRAW[cfg.style] || DRAW.neon)(f, bands, wave);
+  if (f.box) f.ctx.restore();
 }
 
 // Index into bands for a mirrored layout: 0 at the center, 1 at the edges.

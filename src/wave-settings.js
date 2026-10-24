@@ -34,7 +34,8 @@ export function wavesPicker() {
             },
           },
           cv,
-          h('span', null, st.name)
+          h('span', null, st.name),
+          settings.wavesStyle === st.id ? h('span', { class: 'tile-check', 'aria-hidden': 'true' }, icon('check', 14)) : null
         )
       );
     }
@@ -51,7 +52,8 @@ export function wavesPicker() {
           },
         },
         h('div', { class: 'wave-thumb wave-thumb-off' }, icon('close', 26)),
-        h('span', null, 'Выключить')
+        h('span', null, 'Выключить'),
+        settings.wavesStyle === 'off' ? h('span', { class: 'tile-check', 'aria-hidden': 'true' }, icon('check', 14)) : null
       )
     );
 
@@ -70,7 +72,7 @@ export function wavesPicker() {
               render();
             },
           },
-          h('span', { class: 'palette-swatch', style: { background: `linear-gradient(135deg, ${p.colors.join(', ')})` } }),
+          h('span', { class: 'palette-swatch', style: { background: `linear-gradient(135deg, ${p.colors.join(', ')})` } }, settings.wavesPalette === p.id ? icon('check', 18) : null),
           h('span', null, p.name)
         )
       )

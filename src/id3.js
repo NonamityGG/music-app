@@ -114,8 +114,8 @@ export function parseId3v2(bytes) {
   const v22 = ver === 2;
   const headLen = v22 ? 6 : 10;
   const ids = v22
-    ? { TT2: 'title', TP1: 'artist', TP2: 'albumArtist', TAL: 'album', PIC: 'picture' }
-    : { TIT2: 'title', TPE1: 'artist', TPE2: 'albumArtist', TALB: 'album', APIC: 'picture' };
+    ? { TT2: 'title', TP1: 'artist', TP2: 'albumArtist', TAL: 'album', PIC: 'picture', ULT: 'lyrics' }
+    : { TIT2: 'title', TPE1: 'artist', TPE2: 'albumArtist', TALB: 'album', APIC: 'picture', USLT: 'lyrics' };
 
   while (pos + headLen <= tag.length) {
     const idLen = v22 ? 3 : 4;
@@ -137,7 +137,14 @@ export function parseId3v2(bytes) {
       if (ver === 4 && fflags & 0x02) body = deUnsync(body);
       if (ver === 4 && fflags & 0x01) body = body.subarray(4); // data length indicator
       try {
-        if (field === 'picture') {
+        if (field === 'lyrics') {
+          // encoding, 3-letter language, a description, then the words
+          const enc = body[0];
+          const wide = enc === 1 || enc === 2;
+          const descEnd = findTerminator(body, 4, wide);
+          const text = decodeText(enc, body.subarray(descEnd + (wide ? 2 : 1)));
+          if (text && text.trim() && !tags.lyrics) tags.lyrics = text;
+        } else if (field === 'picture') {
           const pic = parsePicture(body, v22);
           // prefer the front cover (type 3), else the first picture
           if (pic && (!tags.picture || (pic.type === 3 && tags.picture.type !== 3))) tags.picture = pic;
@@ -205,4 +212,17 @@ export async function readTags(file) {
     album: tags.album || '',
     picture: tags.picture || null,
   };
+}
+
+// Lyrics stored in the file itself (USLT), or '' — read only when they are asked for.
+export async function readLyricsTag(file) {
+  try {
+    const head = new Uint8Array(await file.slice(0, 10).arrayBuffer());
+    const size = id3v2Size(head);
+    if (!size) return '';
+    const bytes = new Uint8Array(await file.slice(0, Math.min(size, 20 * 1024 * 1024)).arrayBuffer());
+    return parseId3v2(bytes).lyrics || '';
+  } catch {
+    return '';
+  }
 }

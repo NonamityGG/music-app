@@ -156,7 +156,7 @@ export function page(opts, ...body) {
     h('h1', { class: opts.back ? 'page-title small' : 'page-title' }, opts.title || ''),
     h('div', { class: 'page-actions' }, opts.actions || [])
   );
-  const el = h('div', null, head, h('div', { class: 'page-body' }, ...body));
+  const el = h('div', { class: opts.narrow ? 'narrow' : null }, head, h('div', { class: 'page-body' }, ...body));
   el._cleanup = [];
   return el;
 }

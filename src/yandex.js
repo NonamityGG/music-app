@@ -317,6 +317,39 @@ export async function getRelease(id) {
   return { ...rel, tracks: (r.volumes || []).flat().map(normTrack).filter(Boolean) };
 }
 
+// ---------- lyrics ----------
+// The apps sign lyrics requests: HMAC-SHA256 of "<track id><unix time>".
+const LYRICS_KEY = 'p93jhgh689SBReK6ghtw62';
+
+export async function signLyrics(trackId, ts) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(LYRICS_KEY), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, enc.encode(`${trackId}${ts}`)));
+  let bin = '';
+  for (const b of sig) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+// { text, synced } or null when Yandex has no words for the track.
+export async function lyrics(yid) {
+  const id = strip(yid).split(':')[0];
+  for (const format of ['LRC', 'TEXT']) {
+    const ts = Math.floor(Date.now() / 1000);
+    let info;
+    try {
+      info = await api('GET', `/tracks/${id}/lyrics`, { params: { format, timeStamp: ts, sign: await signLyrics(id, ts) } });
+    } catch (e) {
+      if (e.kind === 'network' || e.kind === 'auth') throw e;
+      continue; // no words in this format
+    }
+    if (!info || !info.downloadUrl) continue;
+    const res = await raw(info.downloadUrl, { text: true });
+    const text = typeof res.data === 'string' ? res.data : '';
+    if (res.status >= 200 && res.status < 300 && text.trim()) return { text, synced: format === 'LRC' };
+  }
+  return null;
+}
+
 export async function setLiked(yid, liked) {
   if (!isLoggedIn() || !uid()) throw new YandexError('auth', 'Чтобы ставить лайки, войди в Яндекс в профиле');
   await api('POST', `/users/${uid()}/likes/tracks/${liked ? 'add-multiple' : 'remove'}`, { form: { 'track-ids': strip(yid) } });

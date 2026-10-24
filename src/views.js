@@ -469,7 +469,7 @@ function themePicker() {
 }
 
 export function profileView() {
-  const el = nav.page({ title: 'Профиль' });
+  const el = nav.page({ title: 'Профиль', narrow: true });
   const body = nav.pageBody(el);
 
   const toggleRow = (label, sub, value, onChange) => {

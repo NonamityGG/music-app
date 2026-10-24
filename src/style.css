@@ -101,7 +101,9 @@
   --aura-3: #2f6bff;
   --aura-strength: 0.55;
   --glass-fill: rgba(255, 255, 255, 0.075);
-  --glass-strong: rgba(30, 18, 60, 0.42);
+  --glass-card: rgba(255, 255, 255, 0.085);
+  --glass-strong: rgba(30, 18, 60, 0.5);
+  --glass-strong-solid: rgba(34, 20, 66, 0.94);
   --glass-edge: rgba(255, 255, 255, 0.16);
   --glass-hi: rgba(255, 255, 255, 0.42);
   --glass-shadow: rgba(8, 2, 24, 0.35);
@@ -123,7 +125,9 @@
   --aura-3: #123f8f;
   --aura-strength: 0.26;
   --glass-fill: rgba(255, 255, 255, 0.06);
-  --glass-strong: rgba(10, 10, 14, 0.5);
+  --glass-card: rgba(255, 255, 255, 0.07);
+  --glass-strong: rgba(14, 14, 18, 0.58);
+  --glass-strong-solid: rgba(18, 17, 23, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.13);
   --glass-hi: rgba(255, 255, 255, 0.34);
   --glass-shadow: rgba(0, 0, 0, 0.5);
@@ -155,7 +159,9 @@
   --aura-3: #9fdcff;
   --aura-strength: 0.75;
   --glass-fill: rgba(255, 255, 255, 0.5);
-  --glass-strong: rgba(255, 255, 255, 0.62);
+  --glass-card: rgba(255, 255, 255, 0.6);
+  --glass-strong: rgba(255, 255, 255, 0.66);
+  --glass-strong-solid: rgba(250, 250, 255, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.85);
   --glass-hi: rgba(255, 255, 255, 0.95);
   --glass-shadow: rgba(70, 50, 140, 0.14);
@@ -679,6 +685,18 @@ body.has-mini .page {
   align-items: center;
   text-align: center;
   padding: 4px 0 0;
+}
+
+.hero-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hero-text > .center-row {
+  align-self: stretch;
 }
 
 .hero-title {
@@ -1354,9 +1372,7 @@ details.more[open] summary {
   transform-origin: left center;
   transform: scaleX(0);
   will-change: transform;
-  /* glows a little on each beat */
-  box-shadow: 0 0 calc(var(--beat, 0) * 10px) var(--lilac);
-  opacity: calc(0.75 + var(--beat, 0) * 0.25);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--lilac) 60%, transparent);
 }
 
 .mini-cover .cover-mini {
@@ -1440,9 +1456,33 @@ details.more[open] summary {
 .full-inner {
   position: relative;
   height: 100%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-areas: 'top' 'art' 'meta' 'seek' 'controls' 'bottom';
   padding: calc(var(--sat) + 6px) 22px calc(var(--sab) + 14px);
+}
+
+.full-top {
+  grid-area: top;
+}
+.full-art {
+  grid-area: art;
+}
+.lyrics {
+  grid-area: art;
+}
+.full-meta {
+  grid-area: meta;
+}
+.seek-wrap {
+  grid-area: seek;
+}
+.controls {
+  grid-area: controls;
+}
+.full-bottom {
+  grid-area: bottom;
 }
 
 .full-top {
@@ -1470,7 +1510,7 @@ details.more[open] summary {
 .cover-full {
   position: relative;
   z-index: 1;
-  transition: opacity 0.25s, transform 0.25s;
+  transition: opacity 0.36s ease, transform 0.55s var(--spring), filter 0.36s ease, box-shadow 0.4s;
   width: min(70%, 36vh);
   aspect-ratio: 1;
   height: auto;
@@ -1480,7 +1520,10 @@ details.more[open] summary {
 
 .full.focus .cover-full {
   opacity: 0;
-  transform: scale(0.92);
+  transform: scale(0.78);
+  filter: blur(8px);
+  box-shadow: none;
+  transition: opacity 0.32s ease, transform 0.45s var(--ease-out), filter 0.32s ease, box-shadow 0.2s;
 }
 
 .full.focus .full-bgs {
@@ -1496,6 +1539,35 @@ details.more[open] summary {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* a small cover next to the title when the words take the cover's place */
+.meta-thumb {
+  flex: none;
+  width: 0;
+  height: 52px;
+  margin-right: -8px;
+  opacity: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  transition: width var(--t-slow) var(--ease-out), opacity var(--t-mid), margin var(--t-slow) var(--ease-out);
+}
+
+.meta-thumb .cover-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+}
+
+.full.lyrics-on .meta-thumb {
+  width: 52px;
+  margin-right: 4px;
+  opacity: 1;
+}
+
+.full.lyrics-on .full-title {
+  font-size: 19px;
+  -webkit-line-clamp: 1;
 }
 
 .full-meta-text {
@@ -1557,7 +1629,6 @@ details.more[open] summary {
   background: linear-gradient(90deg, var(--lilac) var(--fill, 0%), var(--line) var(--fill, 0%));
   transform-origin: center;
   transition: height 0.5s var(--ease-out);
-  will-change: transform;
 }
 
 .wave i.on {
@@ -1569,7 +1640,7 @@ details.more[open] summary {
 }
 
 .wave.reshape i {
-  animation: bar-grow 0.6s var(--ease-out) both;
+  animation: bar-grow 0.6s var(--ease-out) backwards;
 }
 
 .wave.reshape i:nth-child(4n + 1) {
@@ -1648,8 +1719,32 @@ details.more[open] summary {
 
 .full-bottom {
   display: flex;
-  justify-content: space-between;
-  margin: 0 -10px;
+  justify-content: space-around;
+  margin: 4px -6px 0;
+}
+
+.fb-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 84px;
+  padding: 7px 10px 6px;
+  border-radius: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  transition: transform var(--t-mid) var(--spring), background-color var(--t-mid), color var(--t-mid);
+}
+
+.fb-btn:active {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+}
+
+.fb-btn.active {
+  color: var(--lilac);
+  background: color-mix(in srgb, var(--lilac) 15%, transparent);
 }
 
 .full-bottom .btn-text {
@@ -2136,7 +2231,7 @@ body.has-mini .snack {
 .page.fresh .folders > *,
 .page.fresh .theme-grid > *,
 .page.fresh .chips > * {
-  animation: rise 0.34s var(--ease-out) both;
+  animation: rise 0.34s var(--ease-out) backwards;
 }
 
 .page.fresh :is(.page-body, .track-list, .list, .hscroll, .tiles, .folders, .theme-grid, .chips) > :nth-child(2) {
@@ -2311,7 +2406,7 @@ body.has-mini .snack {
 }
 
 .cover-full.cover-in {
-  animation: cover-in 0.5s var(--ease-out) both;
+  animation: cover-in 0.5s var(--ease-out) backwards;
 }
 
 .cover-full.cover-out {
@@ -2346,7 +2441,7 @@ body.has-mini .snack {
 }
 
 .full.open .full-inner > * {
-  animation: rise 0.5s var(--ease-out) both;
+  animation: rise 0.5s var(--ease-out) backwards;
 }
 .full.open .full-inner > :nth-child(2) {
   animation-name: cover-rise;
@@ -2378,7 +2473,7 @@ body.has-mini .snack {
 
 /* sheet contents settle in */
 .sheet.open .sheet-panel > * {
-  animation: rise 0.4s var(--ease-out) both;
+  animation: rise 0.4s var(--ease-out) backwards;
 }
 
 .sheet.open .sheet-panel > :nth-child(2) {
@@ -2563,8 +2658,6 @@ body.has-mini .snack {
   background: var(--glass-fill);
   border: 1px solid var(--glass-edge);
   box-shadow: inset 0 1px 0 var(--glass-hi);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
 }
 
 .tp-dot {
@@ -2665,7 +2758,12 @@ body.has-mini .snack {
 }
 
 /* =====================================================================
-   Liquid Glass: frosted panels over drifting colour clouds
+   Liquid Glass: frosted panels over soft colour clouds.
+   Real blur is expensive when what's behind it moves (the waves draw 60
+   times a second), so only the small floating chrome — tab bar, mini player,
+   the header while scrolled, toasts — blurs for real. Cards and buttons get
+   the look from layered translucent fills and a bright rim, which costs
+   nothing. The clouds stand still.
    ===================================================================== */
 
 .aurora {
@@ -2679,83 +2777,44 @@ body.has-mini .snack {
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  background:
+    radial-gradient(70vmax 60vmax at 0% 0%, color-mix(in srgb, var(--aura-1) calc(var(--aura-strength) * 100%), transparent), transparent 70%),
+    radial-gradient(60vmax 55vmax at 105% 40%, color-mix(in srgb, var(--aura-2) calc(var(--aura-strength) * 85%), transparent), transparent 70%),
+    radial-gradient(75vmax 60vmax at 20% 110%, color-mix(in srgb, var(--aura-3) calc(var(--aura-strength) * 100%), transparent), transparent 70%);
 }
 
 [data-glass] .aurora i {
-  position: absolute;
-  width: 90vmax;
-  height: 90vmax;
-  border-radius: 50%;
-  will-change: transform;
+  display: none;
 }
 
-[data-glass] .aurora i:nth-child(1) {
-  left: -35vmax;
-  top: -30vmax;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-1) calc(var(--aura-strength) * 100%), transparent), transparent);
-  animation: drift-a 26s ease-in-out infinite alternate;
-}
-
-[data-glass] .aurora i:nth-child(2) {
-  right: -40vmax;
-  top: 10vh;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-2) calc(var(--aura-strength) * 90%), transparent), transparent);
-  animation: drift-b 31s ease-in-out infinite alternate;
-}
-
-[data-glass] .aurora i:nth-child(3) {
-  left: -20vmax;
-  bottom: -50vmax;
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--aura-3) calc(var(--aura-strength) * 100%), transparent), transparent);
-  animation: drift-c 37s ease-in-out infinite alternate;
-}
-
-@keyframes drift-a {
-  to {
-    transform: translate(18vmax, 22vmax) scale(1.15);
-  }
-}
-
-@keyframes drift-b {
-  to {
-    transform: translate(-22vmax, 18vmax) scale(0.9);
-  }
-}
-
-@keyframes drift-c {
-  to {
-    transform: translate(24vmax, -16vmax) scale(1.1);
-  }
-}
-
-/* the glass material */
-[data-glass] :is(.card-box, .tile, .folder, .search-bar, .journal, .import-status, .error-box, .seg, .wave-tile, .chip, .btn-ghost, .empty-icon, .tp-card) {
-  background: var(--glass-fill);
+/* cheap glass: a translucent fill with a light sheen and a rim of light */
+[data-glass] :is(.card-box, .tile, .folder, .search-bar, .journal, .import-status, .error-box, .seg, .wave-tile, .chip, .btn-ghost, .empty-icon, .input, .theme-card.active) {
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--glass-hi) 22%, transparent), transparent 45%),
+    var(--glass-card);
   border: 1px solid var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 8px 24px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
-  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), inset 0 -1px 0 color-mix(in srgb, var(--glass-hi) 25%, transparent), 0 6px 18px var(--glass-shadow);
 }
 
 [data-glass] .seg-btn.active {
-  background: var(--glass-strong);
-  box-shadow: inset 0 1px 0 var(--glass-hi);
+  background: var(--glass-strong-solid);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 2px 8px var(--glass-shadow);
 }
 
 [data-glass] .chip-on {
-  background: color-mix(in srgb, var(--lilac) 22%, transparent);
+  background: color-mix(in srgb, var(--lilac) 24%, var(--glass-card));
   border-color: var(--lilac);
 }
 
 [data-glass] .btn-primary {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px color-mix(in srgb, var(--lilac) 35%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 6px 18px color-mix(in srgb, var(--lilac) 30%, transparent);
 }
 
-/* a bright rim on the edge, like light caught in thick glass */
 [data-glass] :is(.card-box, .tile, .folder) {
   position: relative;
 }
 
+/* a bright rim on big panels, like light caught in thick glass (static) */
 [data-glass] :is(.tabbar, .mini, .sheet-panel, .card-box)::after {
   content: '';
   position: absolute;
@@ -2769,6 +2828,12 @@ body.has-mini .snack {
   pointer-events: none;
 }
 
+/* real blur: small, fixed, few */
+[data-glass] :is(.tabbar, .mini, .toast, .snack) {
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
 /* floating tab bar and mini player */
 [data-glass] .tabbar {
   position: absolute;
@@ -2780,9 +2845,7 @@ body.has-mini .snack {
   border: 0;
   border-radius: 30px;
   background: var(--glass-strong);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 36px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(26px) saturate(180%);
-  backdrop-filter: blur(26px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px var(--glass-shadow);
 }
 
 [data-glass] .tab-indicator {
@@ -2804,9 +2867,7 @@ body.has-mini .snack {
   border: 0;
   border-radius: 22px;
   background: var(--glass-strong);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 36px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(26px) saturate(180%);
-  backdrop-filter: blur(26px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px var(--glass-shadow);
 }
 
 [data-glass] .mini-progress {
@@ -2823,8 +2884,7 @@ body.has-mini .snack {
   padding-bottom: calc(var(--tabbar-h) + var(--sab) + 30px);
 }
 
-[data-glass] body.has-mini .page,
-[data-glass] .has-mini .page {
+[data-glass] body.has-mini .page {
   padding-bottom: calc(var(--tabbar-h) + var(--mini-h) + var(--sab) + 40px);
 }
 
@@ -2832,9 +2892,7 @@ body.has-mini .snack {
 [data-glass] .snack {
   bottom: calc(var(--tabbar-h) + var(--sab) + 22px);
   border: 1px solid var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi), 0 12px 30px var(--glass-shadow);
-  -webkit-backdrop-filter: blur(22px) saturate(180%);
-  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 26px var(--glass-shadow);
 }
 
 [data-glass] body.has-mini .toast,
@@ -2849,67 +2907,36 @@ body.has-mini .snack {
 [data-glass] .page-head.scrolled {
   background: var(--glass-strong);
   box-shadow: 0 1px 0 var(--glass-edge);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
 }
 
+/* sheets: nearly opaque glass, no live blur over the moving player behind */
 [data-glass] .sheet-panel {
-  background: var(--glass-strong);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  backdrop-filter: blur(30px) saturate(180%);
+  background:
+    linear-gradient(170deg, color-mix(in srgb, var(--glass-hi) 18%, transparent), transparent 40%),
+    var(--glass-strong-solid);
   box-shadow: inset 0 1px 0 var(--glass-hi), 0 -10px 40px var(--glass-shadow);
 }
 
-[data-glass] .sheet-backdrop {
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-}
-
-/* the full player: glass controls over the blurred cover */
 [data-glass] .full {
   background: var(--ink);
 }
 
-[data-glass] .full-bottom .btn-text,
-[data-glass] .controls .icon-btn:not(.big) {
-  border-radius: 20px;
-}
-
 [data-glass] .play-big {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 12px 36px color-mix(in srgb, var(--lilac) 40%, transparent);
-}
-
-[data-glass] .full-bottom {
-  margin: 0;
-  padding: 4px;
-  border-radius: 24px;
-  background: var(--glass-fill);
-  border: 1px solid var(--glass-edge);
-  box-shadow: inset 0 1px 0 var(--glass-hi);
-  -webkit-backdrop-filter: blur(18px) saturate(170%);
-  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 10px 30px color-mix(in srgb, var(--lilac) 38%, transparent);
 }
 
 [data-glass] .mix-card {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 16px 40px color-mix(in srgb, var(--violet) 30%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 12px 30px color-mix(in srgb, var(--violet) 28%, transparent);
 }
 
 [data-glass] .track::before,
 [data-glass] .list-row::before {
-  background: var(--glass-fill);
+  background: var(--glass-card);
   box-shadow: inset 0 1px 0 var(--glass-hi);
 }
 
-[data-glass] .input {
-  background: var(--glass-fill);
-  border-color: var(--glass-edge);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-glass] .aurora i {
-    animation: none;
-  }
-}
 
 .chips.choice + .howto {
   margin-top: 14px;
@@ -2934,4 +2961,875 @@ body.has-mini .snack {
 .full img,
 .mini img {
   -webkit-user-drag: none;
+}
+
+/* long lists: rows far below the screen aren't laid out until scrolled to */
+.track-list > .track:nth-child(n + 25),
+.queue-list > .track:nth-child(n + 25) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+/* the chosen wave style and palette are unmistakable */
+.wave-tile {
+  position: relative;
+}
+
+.wave-grid .wave-tile.active {
+  border: 1.5px solid var(--lilac);
+  background: color-mix(in srgb, var(--lilac) 14%, var(--ink));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lilac) 22%, transparent), 0 8px 22px color-mix(in srgb, var(--lilac) 22%, transparent);
+  color: var(--text);
+}
+
+.wave-grid .wave-tile.active span {
+  font-weight: 700;
+}
+
+.tile-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--lilac);
+  color: var(--on-accent);
+  animation: icon-pop 0.32s var(--spring);
+}
+
+.palette-row .palette.active {
+  border-color: var(--lilac);
+  background: color-mix(in srgb, var(--lilac) 12%, transparent);
+}
+
+.palette-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.palette-swatch svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+  animation: icon-pop 0.32s var(--spring);
+}
+
+/* =====================================================================
+   1.1.1 — tab bar box, lyrics
+   ===================================================================== */
+
+.brand {
+  display: none;
+}
+
+.tabs {
+  position: relative;
+  flex: 1;
+  display: flex;
+  height: var(--tabbar-h);
+}
+
+.tab-indicator {
+  transform: translateX(calc(var(--tab-i, 0) * 100%));
+}
+
+/* ---------- lyrics ---------- */
+
+.lyrics {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(16px);
+  transition: opacity 0.3s ease, transform 0.45s var(--ease-out), visibility 0s linear 0.3s;
+}
+
+.full.lyrics-on .lyrics {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+  transition: opacity 0.45s ease 0.08s, transform 0.55s var(--ease-out) 0.08s, visibility 0s;
+}
+
+.full-art {
+  transition: opacity 0.35s ease, transform 0.5s var(--ease-out);
+}
+
+.full.lyrics-on .full-art {
+  opacity: 0;
+  transform: scale(0.88);
+  pointer-events: none;
+}
+
+.waves-full {
+  transition: opacity 0.4s ease;
+}
+
+.full.lyrics-on .waves-full {
+  opacity: 0.22;
+}
+
+.ly-scroll {
+  position: relative; /* lines measure their place from here */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: none;
+  padding-right: 8px;
+  -webkit-mask-image: linear-gradient(transparent, #000 13%, #000 80%, transparent);
+  mask-image: linear-gradient(transparent, #000 13%, #000 80%, transparent);
+}
+
+.ly-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ly-pad.top {
+  height: 14vh;
+}
+
+.ly-pad.bottom {
+  height: 38vh;
+}
+
+.ly-line {
+  font-family: var(--body);
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.22;
+  letter-spacing: -0.012em;
+  padding: 9px 0;
+  color: var(--text);
+  opacity: 0.3;
+  transform: scale(0.95);
+  transform-origin: left center;
+  transition: opacity 0.5s ease, transform 0.65s var(--ease-out), text-shadow 0.5s ease;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.ly-line.active {
+  opacity: 1;
+  transform: none;
+  text-shadow: 0 0 26px color-mix(in srgb, var(--text) 28%, transparent);
+}
+
+.lyrics.by-hand .ly-line {
+  opacity: 0.6;
+}
+
+.lyrics.by-hand .ly-line.active {
+  opacity: 1;
+}
+
+.ly-blank {
+  height: 22px;
+  padding: 0;
+}
+
+.ly-pause {
+  display: flex;
+  gap: 9px;
+  padding: 20px 0;
+}
+
+.ly-pause i {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0.55;
+}
+
+.ly-pause.active i {
+  animation: dot-breathe 1.5s ease-in-out infinite;
+}
+
+.ly-pause.active i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.ly-pause.active i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dot-breathe {
+  50% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+}
+
+.ly-note {
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ly-source {
+  margin-top: 30px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lyrics.plain .ly-line {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 3px 0;
+  opacity: 0.92;
+  transform: none;
+  cursor: default;
+  text-shadow: none;
+}
+
+.lyrics.plain .ly-pad.bottom {
+  height: 16vh;
+}
+
+.ly-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.ly-state.loading {
+  animation: breathe 1.4s ease-in-out infinite;
+}
+
+/* =====================================================================
+   Wide screens: tablets and phones on their side.
+   A sidebar instead of the tab bar, roomier pages, album-style heroes,
+   centered dialogs and a two-column player.
+   ===================================================================== */
+
+@media (min-width: 700px) {
+  :root {
+    --side-w: 248px;
+    --gutter: 32px;
+  }
+
+  .tabbar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--side-w);
+    height: auto;
+    flex-direction: column;
+    padding: calc(var(--sat) + 22px) 14px calc(var(--sab) + 18px);
+    border-top: 0;
+    border-right: 1px solid var(--line);
+    background: var(--surface);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px 26px;
+  }
+
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 26px;
+  }
+
+  .brand-mark i {
+    width: 4px;
+    border-radius: 2px;
+    background: linear-gradient(var(--lilac), var(--violet));
+  }
+
+  .brand-mark i:nth-child(1) {
+    height: 40%;
+  }
+  .brand-mark i:nth-child(2) {
+    height: 100%;
+  }
+  .brand-mark i:nth-child(3) {
+    height: 65%;
+  }
+  .brand-mark i:nth-child(4) {
+    height: 30%;
+  }
+
+  .brand-name {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+  }
+
+  .tabs {
+    flex: none;
+    flex-direction: column;
+    gap: 4px;
+    height: auto;
+  }
+
+  .tab {
+    flex: none;
+    height: 48px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 14px;
+  }
+
+  .tab-indicator {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 48px;
+    transform: translateY(calc(var(--tab-i, 0) * 52px));
+  }
+
+  .tab-indicator::before {
+    width: 100%;
+    border-radius: 14px;
+  }
+
+  .content {
+    margin-left: var(--side-w);
+  }
+
+  .waves-bg {
+    left: var(--side-w);
+    width: calc(100% - var(--side-w));
+  }
+
+  .mini {
+    left: calc(var(--side-w) + 20px);
+    right: 20px;
+    bottom: calc(var(--sab) + 16px);
+    height: 68px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: 0 12px 34px var(--shadow);
+  }
+
+  .mini-progress {
+    left: 20px;
+    right: 20px;
+    width: auto;
+    top: auto;
+    bottom: 0;
+  }
+
+  .page {
+    padding-bottom: 40px;
+  }
+
+  body.has-mini .page {
+    padding-bottom: calc(68px + var(--sab) + 48px);
+  }
+
+  .page-head {
+    padding: calc(var(--sat) + 22px) var(--gutter) 12px;
+  }
+
+  .page-head.with-back {
+    padding-left: calc(var(--gutter) - 10px);
+  }
+
+  .page-title {
+    font-size: 34px;
+  }
+
+  .page-title.small {
+    font-size: 20px;
+  }
+
+  .page-body {
+    padding: 0 var(--gutter);
+    max-width: 1240px;
+    box-sizing: content-box;
+  }
+
+  .search-bar {
+    top: calc(var(--sat) + 80px);
+    max-width: 720px;
+  }
+
+  .hscroll {
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter) 6px;
+    scroll-padding: 0 var(--gutter);
+    gap: 18px;
+  }
+
+  .card,
+  .cover-card {
+    width: 172px;
+  }
+
+  .cover-card {
+    height: 172px;
+    border-radius: 12px;
+  }
+
+  .card-artist,
+  .card-artist .cover-card {
+    width: 144px;
+  }
+
+  .card-artist .cover-card {
+    height: 144px;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+
+  .folders {
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
+  }
+
+  .theme-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .mix-card {
+    padding: 28px 28px 24px;
+  }
+
+  .mix-label {
+    font-size: 30px;
+  }
+
+  .mix-sub {
+    max-width: 420px;
+  }
+
+  /* profile and import read better as one calm column */
+  .page.narrow .page-body {
+    max-width: 760px;
+  }
+
+  /* dialogs float in the middle instead of rising from the bottom */
+  .sheet-panel {
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    width: min(560px, calc(100vw - 48px));
+    max-height: min(82vh, 760px);
+    padding-bottom: 10px;
+    border-radius: 26px;
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 40px)) scale(0.96);
+    transition: transform 0.42s var(--spring), opacity 0.25s ease;
+  }
+
+  .sheet.open .sheet-panel {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+
+  .sheet-grip {
+    display: none;
+  }
+
+  .sheet-title {
+    padding-top: 14px;
+  }
+
+  .sheet .wave-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .toast,
+  .snack {
+    left: calc(var(--side-w) + (100vw - var(--side-w)) / 2);
+    right: auto;
+    width: min(460px, calc(100vw - var(--side-w) - 40px));
+    bottom: calc(var(--sab) + 24px);
+    transform: translateX(-50%) translateY(14px) scale(0.96);
+  }
+
+  .toast.show,
+  .snack.show {
+    transform: translateX(-50%);
+  }
+
+  body.has-mini .toast,
+  body.has-mini .snack {
+    bottom: calc(var(--sab) + 100px);
+  }
+
+  .lyrics .ly-line {
+    font-size: 32px;
+  }
+
+  .lyrics.plain .ly-line {
+    font-size: 22px;
+  }
+
+  /* glass: a floating frosted sidebar */
+  [data-glass] .tabbar {
+    left: 12px;
+    right: auto;
+    top: calc(var(--sat) + 12px);
+    bottom: calc(var(--sab) + 12px);
+    width: calc(var(--side-w) - 24px);
+    height: auto;
+    padding: 18px 12px;
+    border-radius: 28px;
+  }
+
+  [data-glass] .tab-indicator {
+    top: 0;
+    height: 48px;
+  }
+
+  [data-glass] .tab-indicator::before {
+    width: 100%;
+    border-radius: 14px;
+  }
+
+  [data-glass] .mini {
+    left: calc(var(--side-w) + 16px);
+    right: 16px;
+    bottom: calc(var(--sab) + 14px);
+    border: 0;
+  }
+
+  [data-glass] .page {
+    padding-bottom: 40px;
+  }
+
+  [data-glass] body.has-mini .page {
+    padding-bottom: calc(68px + var(--sab) + 48px);
+  }
+
+  [data-glass] .toast,
+  [data-glass] .snack {
+    bottom: calc(var(--sab) + 24px);
+  }
+
+  [data-glass] body.has-mini .toast,
+  [data-glass] body.has-mini .snack {
+    bottom: calc(var(--sab) + 100px);
+  }
+}
+
+/* album-style hero once there is room for the cover and the text side by side */
+@media (min-width: 960px), (min-width: 700px) and (orientation: landscape) {
+  /* album-style hero: cover on the left, title and buttons beside it */
+  .hero {
+    flex-direction: row;
+    align-items: flex-end;
+    text-align: left;
+    gap: 30px;
+    padding: 8px 0 6px;
+  }
+
+  .cover-hero {
+    width: 232px;
+    height: 232px;
+    border-radius: 16px;
+    box-shadow: 0 18px 44px var(--shadow);
+  }
+
+  .hero-text {
+    align-items: flex-start;
+    flex: 1;
+    padding-bottom: 4px;
+  }
+
+  .hero-title {
+    margin-top: 0;
+    font-size: 32px;
+    line-height: 1.12;
+  }
+
+  .hero-text > .center-row {
+    justify-content: flex-start;
+    margin: 14px 0 0;
+  }
+
+  .hero-text > .center-row + .center-row {
+    margin-top: 10px;
+  }
+
+  .hero-text > .source-tag {
+    margin: 10px 0 0;
+  }
+
+  .hero-text > .match-progress {
+    align-self: stretch;
+    max-width: 420px;
+  }
+
+  .hero-text > .match-progress .match-text {
+    text-align: left;
+  }
+
+  .sk-hero {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+
+  .sk-hero-cover {
+    width: 232px;
+    height: 232px;
+  }
+
+}
+
+/* tablet held upright: the player is one centered column */
+@media (min-width: 700px) and (orientation: portrait) {
+  .full-inner {
+    padding-left: max(40px, calc((100vw - 640px) / 2));
+    padding-right: max(40px, calc((100vw - 640px) / 2));
+  }
+
+  .cover-full {
+    width: min(78%, 42vh);
+    border-radius: 22px;
+  }
+
+  .full-title {
+    font-size: 28px;
+  }
+}
+
+/* on its side: cover on the left, everything else on the right */
+@media (min-width: 700px) and (orientation: landscape) {
+  .full-inner {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto minmax(0, 1fr);
+    grid-template-areas:
+      'top top'
+      'art .'
+      'art meta'
+      'art seek'
+      'art controls'
+      'art bottom'
+      'art .';
+    column-gap: clamp(28px, 5vw, 72px);
+    padding: calc(var(--sat) + 8px) clamp(28px, 5vw, 64px) calc(var(--sab) + 18px);
+  }
+
+  .full-art {
+    padding: 8px 0;
+  }
+
+  .cover-full {
+    width: min(100%, 64vh);
+    border-radius: 22px;
+  }
+
+  .full-title {
+    font-size: 28px;
+  }
+
+  .lyrics {
+    display: none;
+    grid-area: lyrics;
+  }
+
+  .full.lyrics-on .full-inner {
+    grid-template-columns: minmax(300px, 0.82fr) minmax(0, 1.18fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+    grid-template-areas:
+      'top top'
+      'art lyrics'
+      'meta lyrics'
+      'seek lyrics'
+      'controls lyrics'
+      'bottom lyrics';
+  }
+
+  .full.lyrics-on .lyrics {
+    display: flex;
+    animation: lyrics-in 0.5s var(--ease-out) backwards;
+  }
+
+  .full.lyrics-on .full-art {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .full.lyrics-on .cover-full {
+    width: min(100%, 36vh);
+  }
+
+  .full.lyrics-on .meta-thumb {
+    width: 0;
+    margin-right: -8px;
+    opacity: 0;
+  }
+
+  .full.lyrics-on .full-title {
+    font-size: 22px;
+    -webkit-line-clamp: 2;
+  }
+
+  .full.lyrics-on .waves-full {
+    opacity: 0.6;
+  }
+
+  .ly-pad.top {
+    height: 22vh;
+  }
+
+  @keyframes lyrics-in {
+    from {
+      opacity: 0;
+      transform: translateX(30px);
+    }
+  }
+}
+
+/* a phone on its side: short screen, so everything gets compact */
+@media (min-width: 700px) and (max-height: 520px) {
+  :root {
+    --side-w: 84px;
+    --gutter: 24px;
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0 0 16px;
+  }
+
+  .brand-name,
+  .tab span {
+    display: none;
+  }
+
+  .tabbar {
+    padding: calc(var(--sat) + 14px) 10px calc(var(--sab) + 12px);
+  }
+
+  .tab {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .page-head {
+    padding-top: calc(var(--sat) + 10px);
+  }
+
+  .page-title {
+    font-size: 26px;
+  }
+
+  .search-bar {
+    top: calc(var(--sat) + 60px);
+  }
+
+  .cover-hero,
+  .sk-hero-cover {
+    width: 160px;
+    height: 160px;
+  }
+
+  .hero-title {
+    font-size: 24px;
+  }
+
+  .full-top {
+    margin-bottom: -4px;
+  }
+
+  .full-top .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  .full-top-label {
+    display: none;
+  }
+
+  .cover-full {
+    width: min(100%, 66vh);
+    border-radius: 16px;
+  }
+
+  .full-title {
+    font-size: 20px;
+    -webkit-line-clamp: 1;
+  }
+
+  .full-via {
+    display: none;
+  }
+
+  .wave {
+    height: 36px;
+    margin-top: 8px;
+  }
+
+  .controls {
+    margin: 6px -6px 2px;
+  }
+
+  .icon-btn.big {
+    width: 48px;
+    height: 48px;
+  }
+
+  .play-big {
+    width: 60px;
+    height: 60px;
+  }
+
+  .fb-btn {
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 10px;
+    min-width: 0;
+  }
+
+  .lyrics .ly-line {
+    font-size: 22px;
+    padding: 6px 0;
+  }
+
+  .full.lyrics-on .cover-full {
+    width: min(100%, 30vh);
+  }
+
+  .mini {
+    height: 60px;
+  }
+
+  [data-glass] .tabbar {
+    width: calc(var(--side-w) - 16px);
+    left: 8px;
+    padding: 12px 6px;
+  }
+}
+
+/* words over the cover's colours */
+.full.lyrics-on .full-bg.on {
+  opacity: 0.5;
+  transform: scale(1.15);
 }

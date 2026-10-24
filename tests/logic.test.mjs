@@ -490,3 +490,49 @@ test('Old Zvuk tracks in playlists become songs to match', async () => {
   assert.equal(t[2].match, 'local');
   pl.deletePlaylist(p.id);
 });
+
+// ---------- lyrics ----------
+
+const lyr = await import('../src/lyrics.js');
+
+test('LRC lyrics are parsed with times, offsets and repeated stamps', () => {
+  const r = lyr.parseLrc('[ar:Кино]\n[offset:+500]\n[00:12.50]Белый снег, серый лёд\n[00:16.00][01:10.00]На растрескавшейся земле\n[00:20.30]\n[00:22.10]Одеялом лоскутным на ней');
+  assert.equal(r.synced, true);
+  assert.equal(r.lines.length, 5);
+  assert.equal(r.lines[0].t, 12);
+  assert.equal(r.lines[0].text, 'Белый снег, серый лёд');
+  assert.equal(r.lines[4].t, 69.5, 'repeated line sorted to its place');
+  const p = lyr.parseLrc('Первая строка\n\n\nВторая строка\n');
+  assert.equal(p.synced, false);
+  assert.deepEqual(p.lines.map((l) => l.text), ['Первая строка', '', 'Вторая строка']);
+});
+
+test('Yandex lyrics requests are signed like the apps do', async () => {
+  assert.equal(await ya.signLyrics('1234567', 1700000000), '2tRbULpJWJBXMsc8OvFSM1g9/0PNkx3lj7ZyLXgU9ZM=');
+});
+
+test('LRCLIB: the same song is chosen, synced preferred, wrong length rejected', () => {
+  const t = { title: 'Группа крови', artist: 'Кино', duration: 285 };
+  const res = [
+    { trackName: 'Группа крови (live)', artistName: 'Кино', duration: 400, plainLyrics: 'x' },
+    { trackName: 'Группа крови', artistName: 'Кино', duration: 286, plainLyrics: 'plain' },
+    { trackName: 'Группа крови', artistName: 'Кино', duration: 284, syncedLyrics: '[00:01.00]synced' },
+    { trackName: 'Другая', artistName: 'Кто-то', duration: 285, syncedLyrics: '[00:01.00]no' },
+  ];
+  assert.equal(lyr.pickLrclib(t, res), '[00:01.00]synced');
+  assert.equal(lyr.pickLrclib({ ...t, duration: 200 }, res.slice(1, 3)), null);
+});
+
+const lv = await import('../src/lyrics-view.js');
+
+test('Lyrics view: active line search and pauses', () => {
+  const lines = [{ t: 10, text: 'a' }, { t: 14, text: 'b' }, { t: 20, text: '' }, { t: 35, text: 'c' }];
+  assert.equal(lv.activeIndex(lines, 5), -1);
+  assert.equal(lv.activeIndex(lines, 10), 0);
+  assert.equal(lv.activeIndex(lines, 19.9), 1);
+  assert.equal(lv.activeIndex(lines, 100), 3);
+  const w = lv.withPauses(lines, 200);
+  assert.equal(w[0].pause, true, 'long intro gets dots');
+  assert.ok(w.some((l) => l.pause && l.t === 20), 'long gap gets dots');
+  assert.equal(w.filter((l) => l.text).length, 3);
+});
