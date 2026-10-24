@@ -31,8 +31,9 @@ export function state(service) {
 }
 
 // fetch() inside the service page. Resolves to { status, body, url } (status 0 = failed).
-export function request(service, url, { method = 'GET', headers = {}, body, timeout = 25000 } = {}) {
-  return ServiceWeb.request({ service, url, method, headers, body, timeout });
+// mode: 'fetch' or 'xhr' (some sites only let their own style of request through)
+export function request(service, url, { method = 'GET', headers = {}, body, timeout = 25000, mode = 'fetch' } = {}) {
+  return ServiceWeb.request({ service, url, method, headers, body, timeout, mode });
 }
 
 export function forget(domains) {

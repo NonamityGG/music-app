@@ -210,7 +210,8 @@ function update(t, dt) {
     if (i < 8) b += bands[i];
     else if (i < 32) m += bands[i];
   }
-  const kw = 1 - Math.exp(-dt / 0.02);
+  // the line glides between frames instead of snapping (snapping looks like noise)
+  const kw = 1 - Math.exp(-dt / (cfg.style === 'scope' ? 0.07 : 0.02));
   for (let j = 0; j < WAVE; j++) wave[j] += (waveTarget[j] - wave[j]) * kw;
   energy = e / BANDS;
   bass = b / 8;
@@ -457,14 +458,21 @@ const DRAW = {
       ctx.stroke();
     }
     const path = new Path2D();
-    const gain = amp * (f.full ? 1.9 : 1.3) * (0.7 + energy * 1.4);
-    for (let j = 0; j < WAVE; j++) {
-      const x = (j / (WAVE - 1)) * w;
+    const gain = amp * (f.full ? 0.95 : 0.7) * (0.8 + energy * 0.5);
+    // a smooth curve through the points: quadratic segments between midpoints
+    const pt = (j) => {
       const env = Math.sin(Math.PI * (j / (WAVE - 1)));
-      const y = cy + wv[j] * gain * (0.35 + 0.65 * env);
-      if (j === 0) path.moveTo(x, y);
-      else path.lineTo(x, y);
+      return [(j / (WAVE - 1)) * w, cy + wv[j] * gain * (0.25 + 0.75 * env)];
+    };
+    let [px, py] = pt(0);
+    path.moveTo(px, py);
+    for (let j = 1; j < WAVE; j++) {
+      const [x, y] = pt(j);
+      path.quadraticCurveTo(px, py, (px + x) / 2, (py + y) / 2);
+      px = x;
+      py = y;
     }
+    path.lineTo(px, py);
     ctx.globalCompositeOperation = 'lighter';
     ctx.strokeStyle = f.g.h;
     ctx.lineJoin = 'round';

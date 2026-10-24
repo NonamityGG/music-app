@@ -515,13 +515,7 @@ export function profileView() {
         h(
           'div',
           { class: 'card-box' },
-          wavesPicker(),
-          toggleRow(
-            'Двигаются под музыку',
-            'Волны слышат трек и прыгают в такт. Если при выключенном экране обрывается звук, выключи — волны станут спокойнее, а звук пойдёт напрямую',
-            settings.wavesReactive,
-            (v) => saveSettings({ wavesReactive: v })
-          )
+          wavesPicker()
         )
       )
     );

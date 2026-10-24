@@ -71,6 +71,46 @@ export function state() {
 
 let silentSince = 0;
 
+// The oscilloscope line: smoothed (a raw waveform of a loud track is a wall of
+// spikes), started at the same point of the wave each frame so it stands still
+// instead of jittering, and scaled to the track's own recent loudness.
+const SPAN = 6; // samples between points: 256 points cover ~35 ms
+const SMOOTH = 14; // moving-average width, cuts the hiss and cymbals
+let cum = null;
+let wavePeak = 0.3;
+
+function readWave(wave) {
+  const n = time.length;
+  if (!cum || cum.length !== n + 1) cum = new Float64Array(n + 1);
+  for (let k = 0; k < n; k++) cum[k + 1] = cum[k] + time[k];
+  const avg = (k) => (cum[k + SMOOTH] - cum[k]) / SMOOTH;
+  const room = n - WAVE * SPAN - SMOOTH;
+  let start = 0;
+  let prev = avg(0);
+  for (let k = 1; k < room; k++) {
+    const cur = avg(k);
+    if (prev < 0 && cur >= 0) {
+      start = k;
+      break;
+    }
+    prev = cur;
+  }
+  let peak = 0;
+  for (let j = 0; j < WAVE; j++) {
+    const v = avg(Math.min(n - SMOOTH, start + j * SPAN));
+    wave[j] = v;
+    const a = Math.abs(v);
+    if (a > peak) peak = a;
+  }
+  // follow loudness slowly: quiet parts stay quieter, but nothing overflows
+  wavePeak = peak > wavePeak ? wavePeak + (peak - wavePeak) * 0.3 : wavePeak * 0.992 + peak * 0.008;
+  const scale = 0.85 / Math.max(0.04, wavePeak);
+  for (let j = 0; j < WAVE; j++) {
+    const v = wave[j] * scale;
+    wave[j] = v / (1 + Math.abs(v) * 0.35); // soft limit
+  }
+}
+
 // Fills bands (0..1) and wave (-1..1). Returns { ok, silent }.
 export function read(bands, wave) {
   if (!analyser) return { ok: false, silent: false };
@@ -88,16 +128,7 @@ export function read(bands, wave) {
   }
 
   analyser.getFloatTimeDomainData(time);
-  // oscilloscope trigger: start at a rising zero crossing so the line stands still
-  let start = 0;
-  const half = time.length - WAVE * 4;
-  for (let k = 1; k < half; k++) {
-    if (time[k - 1] < 0 && time[k] >= 0) {
-      start = k;
-      break;
-    }
-  }
-  for (let j = 0; j < WAVE; j++) wave[j] = time[start + j * 4] || 0;
+  readWave(wave);
 
   const now = performance.now();
   if (total === 0) {

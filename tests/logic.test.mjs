@@ -423,3 +423,15 @@ test('Yandex: sign-in, track shapes, stream link signing', async () => {
   assert.equal(online.primaryId(), 'zvuk');
   ya.setYandexTransport(null);
 });
+
+test('Zvuk block response is described for the error journal', async () => {
+  zvuk.resetBotState();
+  zvuk.setTransport(async () => ({ status: 200, type: 'text/html', data: '<!DOCTYPE html><html><head><title>Проверка браузера</title><script>var x=1</script></head><body><p>Подождите   секунду</p></body></html>' }));
+  const err = await zvuk.quickSearch('кино').catch((e) => e);
+  assert.equal(err.kind, 'bot');
+  assert.match(err.detail, /«Проверка браузера»/);
+  assert.match(err.detail, /Подождите секунду/);
+  assert.doesNotMatch(err.detail, /var x/);
+  zvuk.resetBotState();
+  zvuk.setTransport(null);
+});

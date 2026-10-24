@@ -277,6 +277,7 @@ public class ServiceWebPlugin extends Plugin {
     public void request(PluginCall call) {
         String service = call.getString("service", "default");
         int timeout = call.getInt("timeout", 25000);
+        boolean xhr = "xhr".equals(call.getString("mode", "fetch"));
         JSONObject opts = new JSONObject();
         try {
             opts.put("url", call.getString("url"));
@@ -292,13 +293,22 @@ public class ServiceWebPlugin extends Plugin {
         }
         String id = UUID.randomUUID().toString();
         calls.put(id, call);
-        String js =
-            "(function(){var id=" + JSONObject.quote(id) + ";var o=" + opts.toString() + ";" +
-            "var c=typeof AbortController!=='undefined'?new AbortController():null;" +
-            "var t=setTimeout(function(){if(c)c.abort();},o.timeout);" +
-            "fetch(o.url,{method:o.method,headers:o.headers,body:o.body,credentials:'include',signal:c?c.signal:undefined})" +
-            ".then(function(r){return r.text().then(function(x){clearTimeout(t);RezonansBridge.onResult(id,JSON.stringify({status:r.status,body:x,url:r.url}));});})" +
-            ".catch(function(e){clearTimeout(t);RezonansBridge.onResult(id,JSON.stringify({status:0,error:String(e)}));});})();";
+        String head = "(function(){var id=" + JSONObject.quote(id) + ";var o=" + opts.toString() + ";" +
+            "function done(v){try{RezonansBridge.onResult(id,JSON.stringify(v));}catch(e){}}";
+        String js = xhr
+            ? head +
+              "try{var x=new XMLHttpRequest();x.open(o.method,o.url,true);x.withCredentials=true;x.timeout=o.timeout;" +
+              "for(var k in o.headers){try{x.setRequestHeader(k,o.headers[k]);}catch(e){}}" +
+              "x.onload=function(){done({status:x.status,body:x.responseText,url:x.responseURL,type:x.getResponseHeader('content-type')||''});};" +
+              "x.onerror=function(){done({status:0,error:'xhr error'});};" +
+              "x.ontimeout=function(){done({status:0,error:'timeout'});};" +
+              "x.send(o.body===undefined?null:o.body);}catch(e){done({status:0,error:String(e)});}})();"
+            : head +
+              "var c=typeof AbortController!=='undefined'?new AbortController():null;" +
+              "var t=setTimeout(function(){if(c)c.abort();},o.timeout);" +
+              "fetch(o.url,{method:o.method,headers:o.headers,body:o.body,credentials:'include',signal:c?c.signal:undefined})" +
+              ".then(function(r){return r.text().then(function(x){clearTimeout(t);done({status:r.status,body:x,url:r.url,type:r.headers.get('content-type')||''});});})" +
+              ".catch(function(e){clearTimeout(t);done({status:0,error:String(e)});});})();";
         main.post(() -> {
             Holder h = holder(service);
             Runnable go = () -> h.web.evaluateJavascript(js, null);

@@ -41,7 +41,7 @@ async function likedOf(service, force) {
   if (!online.SERVICES[service].isLoggedIn()) return new Set();
   if (!likedSets.has(service) || force) {
     try {
-      const ids = await online.likedTrackIds(service);
+      const ids = await online.likedTrackIds(service, force);
       likedSets.set(service, new Set(ids.map((id) => PREFIX[service] + id)));
     } catch (e) {
       logError('liked', e);
@@ -62,6 +62,11 @@ export function isLikedSync(t) {
   const set = s && likedSets.get(s);
   return !!(set && set.has(online.likeKey(t)));
 }
+const likeListeners = new Set();
+export function onLikeChange(fn) {
+  likeListeners.add(fn);
+  return () => likeListeners.delete(fn);
+}
 export async function toggleLike(t) {
   const s = online.serviceOf(t);
   if (!s) return false;
@@ -72,6 +77,7 @@ export async function toggleLike(t) {
     await online.setLiked(t, !liked);
     if (liked) set.delete(key);
     else set.add(key);
+    for (const fn of likeListeners) fn(t);
     toast(liked ? 'Убрано из «Мне нравится»' : 'Добавлено в «Мне нравится»');
     return !liked;
   } catch (e) {

@@ -31,7 +31,17 @@ export const primaryName = () => NAMES[primaryId()];
 
 export const quickSearch = (q, n) => primary().quickSearch(q, n);
 export const getTracks = (ids, service) => (service ? SERVICES[service] : primary()).getTracks(ids);
-export const likedTrackIds = (service) => (service ? SERVICES[service] : primary()).likedTrackIds();
+// Liked ids are asked for by the feed, the menus and the player; one request per
+// few minutes is enough.
+const likedCache = new Map(); // service -> { at, ids }
+export async function likedTrackIds(service, fresh = false) {
+  const svc = service || primaryId();
+  const c = likedCache.get(svc);
+  if (!fresh && c && Date.now() - c.at < 5 * 60 * 1000) return c.ids;
+  const ids = await SERVICES[svc].likedTrackIds();
+  likedCache.set(svc, { at: Date.now(), ids });
+  return ids;
+}
 export const collectionArtistIds = () => primary().collectionArtistIds();
 export const userPlaylists = (service) => (service ? SERVICES[service] : primary()).userPlaylists();
 export const playlistTracks = (id) => forId(id).playlistTracks(id);
@@ -71,6 +81,7 @@ export function likeKey(track) {
 }
 
 export function setLiked(track, liked) {
+  likedCache.delete(track.src === 'yandex' ? 'yandex' : 'zvuk');
   return track.src === 'yandex' ? ya.setLiked(track.yid, liked) : zvuk.setLiked(track.zid, liked);
 }
 

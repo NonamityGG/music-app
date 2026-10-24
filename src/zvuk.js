@@ -58,11 +58,22 @@ export function resetBotState() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function slot() {
-  for (;;) {
-    const wait = pacing.gap - (Date.now() - lastStart);
-    if (inFlight < pacing.parallel && wait <= 0) break;
-    await sleep(Math.max(25, wait));
+// urgent: a stream link for the track that should play now goes ahead of
+// background work (feed, matching, preloading)
+let urgentWaiting = 0;
+async function slot(urgent = false) {
+  // inside zvuk.com everything goes one by one, like a person clicking around
+  const parallel = viaWeb() ? 1 : pacing.parallel;
+  const gap = viaWeb() ? Math.max(pacing.gap, 300) : pacing.gap;
+  if (urgent) urgentWaiting++;
+  try {
+    for (;;) {
+      const wait = gap - (Date.now() - lastStart);
+      if (inFlight < parallel && wait <= 0 && (urgent || urgentWaiting === 0)) break;
+      await sleep(Math.max(25, wait));
+    }
+  } finally {
+    if (urgent) urgentWaiting--;
   }
   inFlight++;
   lastStart = Date.now();
@@ -73,7 +84,8 @@ async function slot() {
 const HOME = 'https://zvuk.com/';
 const viaWeb = () => !transport && web.available() && settings.zvukWeb !== false;
 let pageReady = null;
-let needCheck = false;
+let webMode = 'fetch'; // 'fetch' | 'xhr': the request style zvuk.com currently lets through
+let lastBlockLog = 0;
 
 function ensurePage() {
   if (!pageReady) {
@@ -85,53 +97,56 @@ function ensurePage() {
   return pageReady;
 }
 
-function checkError() {
-  return new ZvukError('check', 'Звук просит подтвердить, что ты не робот. Это нужно сделать один раз.', 418);
+// What exactly Zvuk answered when it refused: goes to the error journal so the
+// next screenshot shows it.
+function noteBlock(e, req, mode) {
+  if (Date.now() - lastBlockLog < 90000) return;
+  lastBlockLog = Date.now();
+  const path = req.url.replace(/^https:\/\/zvuk\.com/, '') + (req.data && req.data.operationName ? ' ' + req.data.operationName : '');
+  logError('zvuk:block', new Error(`${mode} ${path} → ${e.status || '?'} ${e.detail || ''}`.trim()));
 }
 
-export const checkNeeded = () => needCheck;
-
-// Shows zvuk.com so the user can pass Zvuk's "not a robot" check.
-export async function passCheck() {
-  await web.askUser('zvuk', HOME, 'Пройди проверку и нажми «Готово»');
-  needCheck = false;
-  pageReady = null;
-  resetBotState();
-}
-
+// Requests made from inside zvuk.com. When Zvuk refuses one: try the other
+// request style, then reload the page so the site re-checks the browser, and only
+// then wait a while before asking again.
 async function httpWeb(req) {
-  if (needCheck) throw checkError();
+  if (botBlocked()) throw botError(418);
   await ensurePage();
-  await slot();
-  try {
-    return await httpOnce(req);
-  } catch (e) {
-    if (e.kind !== 'bot') throw e;
-  } finally {
-    inFlight--;
-  }
-  // the site wants to look at the browser again: reload it so its own check runs, then retry
-  pageReady = null;
-  await ensurePage();
-  await sleep(1500);
-  await slot();
-  try {
-    return await httpOnce(req);
-  } catch (e) {
-    if (e.kind === 'bot') {
-      needCheck = true;
-      throw checkError();
+  const order = webMode === 'xhr' ? ['xhr', 'fetch'] : ['fetch', 'xhr'];
+  let last = null;
+  for (let i = 0; i < 3; i++) {
+    const mode = i < 2 ? order[i] : webMode;
+    if (i === 2) {
+      pageReady = null;
+      await ensurePage();
+      await sleep(1500);
     }
-    throw e;
-  } finally {
-    inFlight--;
+    await slot(req.urgent);
+    try {
+      const body = await httpOnce({ ...req, mode });
+      if (i === 1) webMode = mode;
+      return body;
+    } catch (e) {
+      if (e.kind !== 'bot') throw e;
+      last = e;
+      noteBlock(e, req, mode);
+    } finally {
+      inFlight--;
+    }
   }
+  const now = Date.now();
+  blockTimes = blockTimes.filter((t) => now - t < 10 * 60 * 1000);
+  blockTimes.push(now);
+  botUntil = now + BACKOFF[Math.min(blockTimes.length - 1, BACKOFF.length - 1)];
+  const err = botError(last && last.status);
+  err.detail = last && last.detail;
+  throw err;
 }
 
 async function http(req) {
   if (viaWeb()) return httpWeb(req);
   if (botBlocked()) throw botError(418);
-  await slot();
+  await slot(req.urgent);
   try {
     return await httpOnce(req);
   } catch (e) {
@@ -141,7 +156,7 @@ async function http(req) {
   }
   // blocked: one calm retry, then back off
   await sleep(pacing.botRetryMs);
-  await slot();
+  await slot(req.urgent);
   try {
     return await httpOnce(req);
   } catch (e) {
@@ -150,7 +165,10 @@ async function http(req) {
       blockTimes = blockTimes.filter((t) => now - t < 10 * 60 * 1000);
       blockTimes.push(now);
       botUntil = now + BACKOFF[Math.min(blockTimes.length - 1, BACKOFF.length - 1)];
-      throw botError(e.status); // message with the actual wait
+      noteBlock(e, req, 'native');
+      const err = botError(e.status); // message with the actual wait
+      err.detail = e.detail;
+      throw err;
     }
     throw e;
   } finally {
@@ -158,7 +176,7 @@ async function http(req) {
   }
 }
 
-async function httpOnce({ method, url, params, data, token }) {
+async function httpOnce({ method, url, params, data, token, mode = 'fetch' }) {
   const headers = { ...HEADERS };
   if (token) headers['X-Auth-Token'] = token;
   if (data) headers['Content-Type'] = 'application/json';
@@ -174,13 +192,13 @@ async function httpOnce({ method, url, params, data, token }) {
       const h = { Accept: HEADERS.Accept };
       if (token) h['X-Auth-Token'] = token;
       if (data) h['Content-Type'] = 'application/json';
-      const r = await web.request('zvuk', u.toString(), { method, headers: h, body: data ? JSON.stringify(data) : undefined });
+      const r = await web.request('zvuk', u.toString(), { method, headers: h, body: data ? JSON.stringify(data) : undefined, mode, timeout: 20000 });
       if (!r || !r.status) throw new Error((r && r.error) || 'no response');
       let parsed = r.body;
       try {
         parsed = JSON.parse(r.body);
       } catch {}
-      res = { status: r.status, data: parsed };
+      res = { status: r.status, data: parsed, type: r.type || '' };
     } else if (Capacitor.isNativePlatform()) {
       res = await CapacitorHttp.request({
         method,
@@ -212,10 +230,10 @@ async function httpOnce({ method, url, params, data, token }) {
   }
 
   let body = res.data;
-  if (res.status === 418) throw botError(418);
+  if (res.status === 418) throw blocked(res);
   if (typeof body === 'string') {
     const head = body.slice(0, 400).toLowerCase();
-    if (head.includes('<html') || head.includes('bot activity')) throw botError(res.status);
+    if (head.includes('<html') || head.includes('bot activity') || head.includes('<!doctype')) throw blocked(res);
     if (body.trim() === '') body = {};
     else {
       try {
@@ -233,6 +251,20 @@ async function httpOnce({ method, url, params, data, token }) {
   return body;
 }
 
+function blocked(res) {
+  const e = botError(res.status);
+  const text = typeof res.data === 'string' ? res.data : JSON.stringify(res.data || '');
+  const title = (text.match(/<title[^>]*>([^<]*)/i) || [])[1];
+  const plain = text
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  e.detail = [res.type, title ? `«${title.trim()}»` : '', plain.slice(0, 120)].filter(Boolean).join(' ');
+  return e;
+}
+
 function botError(status) {
   const sec = Math.ceil(botRemaining() / 1000);
   return new ZvukError('bot', sec ? `Звук ненадолго закрыл доступ. Повторю сам через ${sec} с` : 'Звук ненадолго закрыл доступ. Повторю сам чуть позже', status);
@@ -246,7 +278,6 @@ export const isLoggedIn = () => !!settings.token;
 export async function loginViaWeb() {
   await web.askUser('zvuk', HOME, 'Войди в Звук и нажми «Готово»');
   pageReady = null;
-  needCheck = false;
   resetBotState();
   const body = await http({ method: 'GET', url: TINY + '/profile' });
   const r = (body && body.result) || {};
@@ -306,9 +337,9 @@ async function gql(op, query, variables = {}) {
   });
 }
 
-async function tiny(path, params) {
+async function tiny(path, params, urgent = false) {
   return withToken(async (token) => {
-    const body = await http({ method: 'GET', url: TINY + path, params, token });
+    const body = await http({ method: 'GET', url: TINY + path, params, token, urgent });
     return body && body.result !== undefined ? body.result : body;
   });
 }
@@ -428,12 +459,12 @@ export async function streamUrl(trackId) {
   let lastErr;
   for (const quality of qualities) {
     try {
-      const r = await tiny('/track/stream', { id: trackId, quality });
+      const r = await tiny('/track/stream', { id: trackId, quality }, true);
       const url = r && (r.stream || r.url);
       if (url) return url;
     } catch (e) {
       lastErr = e;
-      if (e.kind === 'network' || e.kind === 'bot' || e.kind === 'rate' || e.kind === 'check') throw e;
+      if (e.kind === 'network' || e.kind === 'bot' || e.kind === 'rate') throw e;
     }
   }
   if (lastErr && lastErr.kind === 'auth') {

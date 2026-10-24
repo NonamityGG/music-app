@@ -8,7 +8,7 @@ import * as online from './online.js';
 import * as graph from './audio-graph.js';
 import { localBlob, localTracks } from './local.js';
 import { bestMatch } from './match.js';
-import { settings, logError, load, save } from './settings.js';
+import { settings, saveSettings, logError, load, save } from './settings.js';
 import { shuffle as shuffled } from './util.js';
 import * as pl from './playlists.js';
 import { findOnline, onlinePatch } from './matcher.js';
@@ -21,6 +21,8 @@ plain.preload = 'auto';
 fx.preload = 'auto';
 let audio = plain;
 let fxBroken = false; // once the analyser path fails, this session plays everything directly
+let attachFailed = false; // the phone refused the analyser altogether
+let trackBypass = false; // this track only plays directly (e.g. the analyser heard nothing)
 let fxReason = '';
 let directUrl = ''; // the real source of the current track
 let curRef = null; // { p, id } of the online stream that is playing (the track itself or its replacement)
@@ -225,7 +227,7 @@ async function prepareAhead() {
 // ---------- which element plays the source ----------
 
 function wantFx() {
-  return settings.wavesReactive !== false && settings.wavesStyle !== 'off' && !fxBroken && graph.available();
+  return settings.wavesReactive !== false && settings.wavesStyle !== 'off' && !fxBroken && !trackBypass && graph.available();
 }
 
 // Routes a remote stream through the app's own origin (Capacitor's native proxy),
@@ -251,6 +253,7 @@ function setSource(url) {
   }
   if (el === fx && !graph.attach(fx)) {
     fxBroken = true;
+    attachFailed = true;
     fxReason = 'телефон не дал подключиться к звуку';
     el = plain;
     src = url;
@@ -278,23 +281,26 @@ function seekWhenReady(at) {
 }
 
 // True when the waves can use the real sound of the current track.
-export const analysing = () => audio === fx && !fxBroken && graph.state() === 'running';
+export const analysing = () => audio === fx && graph.state() === 'running';
 
 // One line for the settings screen: do the waves hear the music right now, and if not, why.
 export function waveStatus() {
   if (settings.wavesStyle === 'off') return 'Волны выключены';
-  if (settings.wavesReactive === false) return 'Спокойный режим: «Двигаются под музыку» выключено';
+  if (settings.wavesReactive === false) return 'Простой режим: волны двигаются сами, звук идёт напрямую';
   if (!current() || !state.playing) return 'Включи трек — здесь будет видно, слышат ли волны музыку';
   if (analysing()) return 'Волны слышат музыку';
-  if (fxBroken) return 'Простой режим: ' + (fxReason || 'анализатор недоступен');
+  if (fxBroken || trackBypass) return 'Простой режим: ' + (fxReason || 'анализатор недоступен');
   if (audio === plain) return 'Простой режим для этого трека';
   return 'Подключаю волны к звуку… (' + graph.state() + ')';
 }
 
-// Moves the current track to the direct element, e.g. when the analyser path goes silent.
-export function bypassAnalyser(reason) {
-  if (audio !== fx || fxBroken) return;
-  fxBroken = true;
+// Moves the current track to the direct element, e.g. when the analyser path goes
+// silent. scope 'track': only this track; 'session': until the app restarts or the
+// user switches the waves back to listening.
+export function bypassAnalyser(reason, scope = 'track') {
+  if (audio !== fx) return;
+  if (scope === 'session') fxBroken = true;
+  else trackBypass = true;
   fxReason = reason;
   logError('waves', new Error(reason));
   const at = audio.currentTime;
@@ -302,6 +308,46 @@ export function bypassAnalyser(reason) {
   setSource(directUrl);
   seekWhenReady(at);
   if (wasPlaying) audio.play().catch((e) => logError('bypass', e));
+}
+
+// The waves report that the analyser hears nothing. Only give up on it when the
+// track is really moving forward (not buffering, not a quiet intro after a seek).
+let silentMark = null;
+export function reportSilence() {
+  if (audio !== fx || audio.paused || audio.seeking || audio.readyState < 3) {
+    silentMark = null;
+    return;
+  }
+  const now = Date.now();
+  const pos = audio.currentTime;
+  if (!silentMark || now - silentMark.at > 12000 || pos < silentMark.pos) {
+    silentMark = { at: now, pos };
+    return;
+  }
+  if (pos - silentMark.pos >= 4) {
+    silentMark = null;
+    bypassAnalyser('анализатор не услышал этот трек');
+  }
+}
+
+// The switch "Слышат музыку / Простой режим". Applies to the playing track at once.
+export function setWaveMode(reactive) {
+  saveSettings({ wavesReactive: reactive });
+  if (reactive) {
+    if (!attachFailed) fxBroken = false;
+    trackBypass = false;
+    fxReason = '';
+  }
+  if (!directUrl || !current()) return;
+  const want = wantFx();
+  if (want === (audio === fx)) return;
+  const routable = directUrl.startsWith('blob:') || (Capacitor.isNativePlatform() && /^https?:/.test(directUrl));
+  if (want && !routable) return;
+  const at = audio.currentTime;
+  const wasPlaying = !audio.paused;
+  setSource(directUrl);
+  seekWhenReady(at);
+  if (wasPlaying) audio.play().catch((e) => logError('wave-mode', e));
 }
 
 // ---------- playback ----------
@@ -316,6 +362,8 @@ async function load_(index, autoplay = true, auto = false) {
   state.via = '';
   streamAttempts = 0;
   curRef = null;
+  trackBypass = false;
+  silentMark = null;
   emit('track', track);
   updateMetadata(track);
   audio.pause();
@@ -337,14 +385,6 @@ async function load_(index, autoplay = true, auto = false) {
     if (src.via.endsWith('fallback')) emit('fallback', { track, via: src.via, match: src.match });
   } catch (e) {
     if (seq !== loadSeq) return;
-    if (e.kind === 'check') {
-      state.via = 'check';
-      track.unavailable = false;
-      setPlaying(false);
-      emit('needCheck', { track });
-      emit('state');
-      return;
-    }
     if ((e.kind === 'bot' || e.kind === 'rate') && waitOut(track, index, auto, seq)) return;
     failStreak++;
     track.unavailable = true;
@@ -444,6 +484,7 @@ export function resume() {
   if (!audio.getAttribute('src')) return load_(state.index);
   if (audio === fx) graph.resume();
   audio.play().catch((e) => {
+    if (e && e.name === 'AbortError') return; // a quick pause right after play: nothing broke
     logError('resume', e);
     load_(state.index); // stream URL may have expired
   });
@@ -635,7 +676,7 @@ setInterval(() => {
     return;
   }
   graph.resume();
-  if (++ctxStalls >= 2) bypassAnalyser('Звуковой движок остановился, волны переключены в простой режим');
+  if (++ctxStalls >= 2) bypassAnalyser('звуковой движок телефона остановился', 'session');
 }, 2500);
 document.addEventListener('visibilitychange', () => {
   if (audio === fx) graph.resume();
@@ -662,8 +703,18 @@ async function updateMetadata(track) {
   MediaSession.setMetadata({ title: track.title, artist: track.artist || '', album: track.album || '', artwork }).catch(() => {});
 }
 
-export function initMediaSession() {
+// The heart in the notification (added to the plugin by tools/patch-plugins.mjs).
+let likeShown = '';
+export function setNotificationLike(enabled, liked) {
+  const k = `${enabled}:${liked}`;
+  if (k === likeShown) return;
+  likeShown = k;
+  if (Capacitor.isNativePlatform()) MediaSession.setLikeState({ enabled, liked }).catch(() => {});
+}
+
+export function initMediaSession({ onLike } = {}) {
   const on = (action, fn) => MediaSession.setActionHandler({ action }, fn).catch(() => {});
+  if (onLike) on('like', () => onLike());
   on('play', () => resume());
   on('pause', () => pause());
   on('nexttrack', () => next());
