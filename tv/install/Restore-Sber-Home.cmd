@@ -15,7 +15,7 @@ $pkg = 'app.rezonans.tv'
 if (-not (Test-Path $adb)) { Write-Host '  Сначала нужен adb: запусти Install-Rezonans-OS.cmd хотя бы раз.' -ForegroundColor Red; exit 1 }
 $ipFile = Join-Path $work 'tv-ip.txt'
 $last = if (Test-Path $ipFile) { (Get-Content $ipFile -Raw).Trim() } else { '' }
-$ip = (Read-Host "  IP-адрес приставки [Enter — $last]").Trim()
+$ip = (Read-Host "  адрес приставки [Enter — $last]").Trim()
 if (-not $ip) { $ip = $last }
 $target = if ($ip -match ':\d+$') { $ip } else { "${ip}:5555" }
 & $adb connect $target | Out-Null

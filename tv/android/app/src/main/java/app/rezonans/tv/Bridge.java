@@ -128,6 +128,26 @@ final class Bridge {
         return start(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
     }
 
+    // ---------- setting up on the TV itself, without a computer ----------
+
+    /** Asks for the sound (the waves hear what the TV plays): the system's own question. */
+    @JavascriptInterface
+    public boolean requestMic() {
+        if (Build.VERSION.SDK_INT < 23) return false;
+        a.ui.post(() -> a.requestPermissions(new String[] {Manifest.permission.RECORD_AUDIO}, 7));
+        return true;
+    }
+
+    @JavascriptInterface
+    public boolean openNotificationAccess() {
+        return start(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
+    }
+
+    @JavascriptInterface
+    public boolean openHomeSettings() {
+        return start(new Intent(Settings.ACTION_HOME_SETTINGS)) || start(new Intent("android.settings.MANAGE_DEFAULT_APPS_SETTINGS"));
+    }
+
     private boolean start(Intent i) {
         try {
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

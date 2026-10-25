@@ -59,33 +59,62 @@ Say ('  ' + $apk.Name) 'Green'
 
 # ---------- the box ----------
 Step '3. Приставка'
+Say '  Включи отладку на телевизоре (один раз):'
+Say '    Настройки → Об устройстве → 7 раз нажми «Номер сборки» (появится «Вы стали разработчиком»),'
+Say '    потом Настройки → «Для разработчиков» → включи «Отладка по Wi-Fi».'
+Say '  В «Отладка по Wi-Fi» написан адрес вида 192.168.1.45:37099 — введи его целиком.'
+Say '  (Если включал ADB через Sber Studio — хватит просто IP из Настройки → Сеть.)'
 $ipFile = Join-Path $work 'tv-ip.txt'
 $last = ''
 if (Test-Path $ipFile) { $last = (Get-Content $ipFile -Raw).Trim() }
-Say '  IP-адрес приставки: на SberBox — Настройки → Сеть (например 192.168.1.45).'
-$prompt = '  Введи IP-адрес'
+$prompt = '  Адрес'
 if ($last) { $prompt += " [Enter — $last]" }
 $ip = (Read-Host $prompt).Trim()
 if (-not $ip) { $ip = $last }
 if (-not $ip) { Fail 'Без адреса приставки не получится.' }
+$ip = $ip -replace '\s', ''
 Set-Content -Path $ipFile -Value $ip -Encoding ASCII
 $target = if ($ip -match ':\d+$') { $ip } else { "${ip}:5555" }
 
 & $adb start-server | Out-Null
-Say "  Подключаюсь к $target…"
-$ok = $false
-for ($try = 1; $try -le 20; $try++) {
-  $r = (& $adb connect $target 2>&1 | Out-String).Trim()
-  $state = (& $adb -s $target get-state 2>&1 | Out-String).Trim()
-  if ($state -eq 'device') { $ok = $true; break }
-  if ($r -match 'unauthorized' -or $state -match 'unauthorized') {
-    Say '  На экране телевизора появился вопрос про отладку — выбери «Разрешить» (лучше «Всегда»).' 'Yellow'
-  } elseif ($try -eq 1) {
-    Say "  Пока не отвечает ($r). Пробую ещё…" 'Yellow'
+
+function TryConnect([int]$tries) {
+  for ($try = 1; $try -le $tries; $try++) {
+    $r = (& $adb connect $target 2>&1 | Out-String).Trim()
+    $state = (& $adb -s $target get-state 2>&1 | Out-String).Trim()
+    if ($state -eq 'device') { return $true }
+    if ($r -match 'unauthorized' -or $state -match 'unauthorized') {
+      Say '  На экране телевизора вопрос про отладку — выбери «Разрешить» (лучше «Всегда с этого компьютера»).' 'Yellow'
+    } elseif ($try -eq 1) {
+      Say "  Пока не отвечает ($r)…" 'Yellow'
+    }
+    Start-Sleep -Seconds 3
   }
-  Start-Sleep -Seconds 3
+  return $false
 }
-if (-not $ok) { Fail 'Приставка не ответила. Проверь, что отладка по сети включена, адрес верный и VPN на компьютере выключен.' }
+
+Say "  Подключаюсь к $target…"
+$ok = TryConnect 4
+if (-not $ok) {
+  # Android 11+: the computer has to be paired once with a code from the TV
+  Write-Host ''
+  Say '  Нужно один раз связать компьютер с телевизором по коду.' 'Yellow'
+  Say '  На телевизоре в «Отладка по Wi-Fi» выбери «Подключить устройство с помощью кода» (или «…по коду подключения»).'
+  Say '  Там будут адрес с портом и шестизначный код.'
+  $pairAddr = (Read-Host '  Адрес и порт из этого окна (например 192.168.1.45:41234)').Trim() -replace '\s', ''
+  $code = (Read-Host '  Код').Trim() -replace '\s', ''
+  if ($pairAddr -and $code) {
+    $pr = (& $adb pair $pairAddr $code 2>&1 | Out-String).Trim()
+    Say "  $pr"
+    if ($pr -notmatch 'Successfully') { Fail 'Связать не получилось: проверь адрес и код (код меняется, если окно закрыть).' }
+    # after pairing the TV is usually found by itself
+    Start-Sleep -Seconds 2
+    $found = (& $adb devices 2>&1 | Out-String) -split "`n" | Where-Object { $_ -match '^\S+\s+device\s*$' } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+    if ($found) { $target = $found }
+    $ok = TryConnect 10
+  }
+}
+if (-not $ok) { Fail 'Приставка не ответила. Проверь, что «Отладка по Wi-Fi» включена, адрес верный (с портом), компьютер и телевизор в одной сети и VPN выключен.' }
 $model = (& $adb -s $target shell getprop ro.product.model | Out-String).Trim()
 Say "  Подключено: $model" 'Green'
 

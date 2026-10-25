@@ -184,11 +184,19 @@ const SAVER = [
 
 function items() {
   const guardSub = !info.guard
-    ? 'Сначала включи службу «Резонанс OS — кнопка «Домой»» (это делает установщик)'
+    ? 'Сначала включи службу в разделе «Подготовка» выше (или установщиком с компьютера)'
     : S.guard
       ? `«Домой» ведёт в Резонанс OS${info.stockLabel ? `, а не в «${info.stockLabel}»` : ''}`
       : 'Выключено: «Домой» ведёт на экран приставки';
-  const list = [
+  const list = [];
+  // what the installer would give, asked for right here (when it's missing)
+  const setup = [];
+  if (info.mic === false) setup.push({ act: 'mic', name: 'Разрешить звук для волн', sub: 'Телевизор спросит — выбери «Разрешить»' });
+  if (info.notif === false) setup.push({ act: 'notif', name: 'Доступ к «Сейчас играет»', sub: 'В списке включи «Резонанс OS — что сейчас играет»' });
+  if (info.guard === false) setup.push({ act: 'guardOn', name: 'Кнопка «Домой» → Резонанс OS', sub: 'Специальные возможности → «Резонанс OS — кнопка «Домой»» → включить' });
+  if (info.home === false) setup.push({ act: 'homeApp', name: 'Сделать главным экраном', sub: 'Если приставка даёт выбрать главный экран — выбери Резонанс OS' });
+  if (setup.length && info.app) list.push({ sec: 'Подготовка' }, ...setup);
+  list.push(
     { sec: 'Оформление' },
     { key: 'bg', name: 'Фон', choices: look.BACKGROUNDS },
     { key: 'palette', name: 'Цвета', choices: look.PALETTES.map((p) => [p.id, p.name, p.colors[0]]) },
@@ -224,8 +232,8 @@ function items() {
       ],
     },
     { sec: 'Кнопка «Домой»' },
-    { key: 'guard', name: 'Возвращать Резонанс OS', sub: guardSub, bool: true },
-  ];
+    { key: 'guard', name: 'Возвращать Резонанс OS', sub: guardSub, bool: true }
+  );
   if (info.stock) list.push({ act: 'stock', name: `Открыть «${info.stockLabel || 'экран приставки'}»`, sub: 'На 5 минут, потом «Домой» снова ведёт сюда' });
   list.push({ act: 'tvSettings', name: 'Настройки телевизора' }, { act: 'reload', name: 'Перезапустить Резонанс OS' });
   list.push({ sec: 'О системе' });

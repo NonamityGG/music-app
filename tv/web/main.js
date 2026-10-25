@@ -80,6 +80,7 @@ on('visible', (v) => {
   look.setWaveState({ visible });
   if (visible) {
     refreshInfo();
+    settings.refresh();
     home.setNet(tv.network());
     home.tick();
     resetIdle();
@@ -280,7 +281,22 @@ settings.onAct = (act) => {
   } else if (act === 'tvSettings') tool('tvSettings');
   else if (act === 'stock') tool('stock');
   else if (act === 'reload') location.reload();
+  else if (act === 'mic') {
+    if (!tv.requestMic()) toast('Эта приставка не спрашивает разрешения — его даст установщик с компьютера');
+  } else if (act === 'notif') {
+    if (!tv.openNotificationAccess()) toast('На этой приставке нет такой настройки — её включит установщик с компьютера');
+  } else if (act === 'guardOn') {
+    if (!tv.openAccessibility()) toast('На этой приставке нет специальных возможностей — их включит установщик с компьютера');
+  } else if (act === 'homeApp') {
+    if (!tv.openHomeSettings()) toast('Эта приставка не даёт выбрать главный экран — помогут служба «Домой» или установщик');
+  }
 };
+
+// back from the system's question or settings: show what changed
+on('perm', () => {
+  refreshInfo();
+  settings.refresh();
+});
 
 // ---------- moving a favourite ----------
 
