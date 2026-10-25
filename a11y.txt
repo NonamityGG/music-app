@@ -1,0 +1,3 @@
+     Enabled services:{{app.rezonans.tv/app.rezonans.tv.HomeGuard}}
+     Binding services:{}
+     Crashed services:{}]

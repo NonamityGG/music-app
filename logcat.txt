@@ -1,0 +1,27 @@
+--------- beginning of main
+--------- beginning of system
+10-25 16:13:46.710  2853  2853 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+10-25 16:13:49.789  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:13:55.840  2853  2853 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+10-25 16:13:56.983  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:14:34.916  2853  3047 I RezTV   : page: Назад (закрываю menu)
+10-25 16:14:40.998  2853  3047 I RezTV   : page: Назад (закрываю menu)
+10-25 16:14:51.960  2853  3047 I RezTV   : page: OK: settings
+10-25 16:14:59.276  2853  3047 I RezTV   : page: Назад (закрываю settings)
+10-25 16:15:05.107  2853  3047 I RezTV   : page: OK: allApps
+10-25 16:15:09.335  2853  3047 I RezTV   : page: Назад (закрываю grid)
+10-25 16:15:14.686  2853  3047 I RezTV   : page: OK: YouTube
+10-25 16:15:15.179  2853  2853 I RezTV   : в окне: com.google.android.youtube.tv/android.widget.FrameLayout
+10-25 16:15:19.639  2853  2853 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+10-25 16:15:19.764  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:15:26.821  2853  2853 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+10-25 16:15:27.138  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:15:33.364  2853  2853 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+10-25 16:15:34.106  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:15:43.987  2853  3047 I RezTV   : page: OK: saver
+10-25 16:15:53.602  2853  2853 I RezTV   : заставка системы: app.rezonans.tv/app.rezonans.tv.Dream
+10-25 16:15:55.786  2853  2853 I RezTV   : в окне: com.android.systemui/android.widget.FrameLayout
+10-25 16:15:56.027  2853  2853 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+10-25 16:15:56.451  2853  2853 I RezTV   : заставка Резонанс OS поверх приложений
+10-25 16:15:56.956  2853  3047 I RezTV   : заставка: заставка открыта
+10-25 16:16:11.886  2853  2853 I RezTV   : заставка системы: com.google.android.backdrop/.Backdrop

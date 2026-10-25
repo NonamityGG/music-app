@@ -1,0 +1,20 @@
+com.google.android.backdrop/.Backdrop
+Starting: Intent { cmp=app.rezonans.tv/.MainActivity (has extras) }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+app.rezonans.tv/app.rezonans.tv.Dream
+Starting: Intent { cmp=com.android.systemui/.Somnambulator }
+DREAM MANAGER (dumpsys dreams)
+mCurrentDreamToken=android.os.Binder@663505b
+mCurrentDreamName=ComponentInfo{app.rezonans.tv/app.rezonans.tv.Dream}
+mCurrentDreamUserId=0
+mCurrentDreamIsTest=false
+mCurrentDreamCanDoze=false
+mCurrentDreamIsDozing=false
+mCurrentDreamIsWaking=false
+mCurrentDreamDozeScreenState=UNKNOWN
+mCurrentDreamDozeScreenBrightness=-1
+getDozeComponent()=null
+Dreamland:
+Starting: Intent { cmp=app.rezonans.tv/.MainActivity (has extras) }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+com.google.android.backdrop/.Backdrop

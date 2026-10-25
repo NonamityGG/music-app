@@ -1,0 +1,30 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 174876 Realtime: 174876
+
+** MEMINFO in pid 2853 [app.rezonans.tv] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    18062    18044        0       31    18840    33448    20164     2799
+  Dalvik Heap     1968     1948        0       79     2656     4992     2496     2496
+ Dalvik Other      846      708        0        0     1464                           
+        Stack      796      796        0        0      800                           
+       Ashmem     2232      160        0        0     4312                           
+    Other dev      176      152       24        0      340                           
+     .so mmap     1833      188       16        1    29644                           
+    .jar mmap      914        0        0        0    20388                           
+    .apk mmap    25643      208    11160        0    63332                           
+    .dex mmap     1965       12     1628        0     2492                           
+    .oat mmap      594        0        0        0    13236                           
+    .art mmap     1117      820        0       83    11476                           
+   Other mmap      431       40      112        0     1576                           
+      Unknown     6666     6660        0        0     6884                           
+        TOTAL    63437    29736    12940      194    63437    38440    22660     5295
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:     2768                          14132
+         Native Heap:    18044                          18840
+                Code:    13220                         129432
+               Stack:      796                            800
