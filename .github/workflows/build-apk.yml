@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - 'desktop/**'
       - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 permissions:
