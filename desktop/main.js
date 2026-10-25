@@ -995,8 +995,21 @@ if (!app.requestSingleInstanceLock()) {
       if (cmd === 'toggle') togglePanel('bar');
       else if (cmd === 'close') hidePanel();
     });
+    // The island takes the mouse only while the pointer is on it. While it does,
+    // the cursor is watched here: when a window stops letting the mouse through,
+    // Windows sends it a "mouse left" at once, so the page can't trust that.
+    let islandPoll = 0;
     ipcMain.on('island-mouse', (e, on) => {
-      if (island && !island.isDestroyed()) island.setIgnoreMouseEvents(!on, { forward: true });
+      if (!island || island.isDestroyed()) return;
+      island.setIgnoreMouseEvents(!on, { forward: true });
+      clearInterval(islandPoll);
+      if (!on) return;
+      islandPoll = setInterval(() => {
+        if (!island || island.isDestroyed()) return clearInterval(islandPoll);
+        const p = screen.getCursorScreenPoint();
+        const b = island.getBounds();
+        island.webContents.send('island', { cursor: { x: p.x - b.x, y: p.y - b.y } });
+      }, 120);
     });
     ipcMain.on('action', (e, name) => {
       if (name === 'quit') app.quit();

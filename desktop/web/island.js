@@ -176,9 +176,8 @@ document.addEventListener('mousemove', (e) => {
   if (dragging) return;
   setOver(inside(e.clientX, e.clientY));
 });
-document.addEventListener('mouseleave', () => {
-  if (!dragging) setOver(false);
-});
+// (no 'mouseleave' here: Windows sends one the moment the island stops letting
+// the mouse through; where the cursor really is comes from the main process)
 
 // a new song: show it for a moment
 function peek() {
@@ -192,6 +191,10 @@ function peek() {
 
 window.rez.onIsland((m) => {
   if (!m) return;
+  if (m.cursor) {
+    if (!dragging) setOver(inside(m.cursor.x, m.cursor.y));
+    return;
+  }
   if ('force' in m) {
     forced = !!m.force;
     setOpen(forced || over);
