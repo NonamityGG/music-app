@@ -34,11 +34,12 @@ key KEYCODE_DPAD_DOWN 1.5
 shot 3-apps-row
 key KEYCODE_DPAD_DOWN 1.5
 shot 4-tools-row
-# long press OK on a card: the app's menu
+# the app's menu (Menu key; on a remote without it — hold OK)
 key KEYCODE_DPAD_UP 0.8
-adb shell input keyevent --longpress KEYCODE_DPAD_CENTER
-sleep 1.5
+key KEYCODE_MENU 1.5
 shot 5-menu
+key KEYCODE_DPAD_DOWN 0.8
+shot 5b-menu-down
 key KEYCODE_BACK 1
 # settings (the tools row: all apps, saver, settings)
 key KEYCODE_DPAD_DOWN 0.8
@@ -85,5 +86,5 @@ key KEYCODE_DPAD_CENTER 3
 shot 12-saver
 key KEYCODE_DPAD_UP 1.5
 adb shell dumpsys meminfo $PKG | head -30 > "$OUT/meminfo.txt"
-adb logcat -d -s RezTV:V chromium:I AndroidRuntime:E > "$OUT/logcat.txt"
+adb logcat -d -s RezTV:V AndroidRuntime:E > "$OUT/logcat.txt"
 echo done

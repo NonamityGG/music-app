@@ -550,6 +550,11 @@ svg {
   opacity: 0.2;
 }
 
+/* nothing plays: the waves wait out of sight (no row of sleeping dots) */
+.quiet #waves {
+  opacity: 0;
+}
+
 .track {
   display: flex;
   padding: 1.6rem 8rem 5.6rem;

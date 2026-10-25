@@ -126,6 +126,7 @@ const CODES = { 38: 'up', 40: 'down', 37: 'left', 39: 'right', 13: 'ok', 23: 'ok
 const keyOf = (e) => KEYS[e.key] || CODES[e.keyCode] || null;
 
 let okAt = 0;
+let okRepeats = 0;
 let longDone = false;
 let lastMove = 0;
 let moving = null; // a favourite being moved: its package
@@ -151,10 +152,15 @@ document.addEventListener(
     if (k === 'ok') {
       if (!e.repeat || !okAt) {
         okAt = performance.now();
+        okRepeats = 0;
         longDone = false;
-      } else if (!longDone && performance.now() - okAt > 600) {
-        longDone = true;
-        long();
+      } else {
+        okRepeats++;
+        // a remote repeats a held key only after ~0.4 s: a few repeats are a long press
+        if (!longDone && (performance.now() - okAt > 600 || okRepeats >= 4)) {
+          longDone = true;
+          long();
+        }
       }
       return;
     }
@@ -184,8 +190,11 @@ document.addEventListener(
   true
 );
 
+const label = (c) => (c ? (c._app ? c._app.label : c._tool || c._act || (c._item && (c._item.key || c._item.act)) || c.className) : '—');
+
 function ok() {
   const c = nav.current();
+  tv.log('OK: ' + label(c) + (layers.top() ? ' (поверх: ' + layers.top().el.id + ')' : ''));
   if (moving) return endMove();
   const t = layers.top();
   if (t) return t.ok && t.ok(c);
@@ -203,6 +212,7 @@ function long() {
 }
 
 function back() {
+  tv.log('Назад' + (layers.top() ? ' (закрываю ' + layers.top().el.id + ')' : ''));
   if (moving) return endMove();
   const t = layers.top();
   if (t) return t.back ? t.back() : layers.pop(t);

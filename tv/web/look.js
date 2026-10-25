@@ -27,6 +27,7 @@ let place = { y: 0.5, amp: 0.22 };
 
 export function setWaveState(patch) {
   Object.assign(state, patch);
+  document.body.classList.toggle('quiet', !state.music && !state.saver);
   waves.kick();
 }
 
