@@ -23,10 +23,20 @@ adb shell settings put secure accessibility_enabled 1
 adb shell cmd package set-home-activity $PKG/.MainActivity > "$OUT/home.txt" 2>&1
 adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME >> "$OUT/home.txt" 2>&1
 
+adb shell dumpsys accessibility | grep -i -A2 "rezonans" | head -8 > "$OUT/a11y.txt"
+# the installer opens Резонанс OS at the end
+adb shell am start -n $PKG/.MainActivity
+sleep 6
 adb logcat -c
+# go to the box's own home, then press Home: Резонанс OS must come back
+STOCK0=$(adb shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME | grep -v "$PKG" | grep "/" | head -1 | tr -d '\r ')
+adb shell am start -n "$STOCK0"
+sleep 3
+shot 0-stock-before-home
 key KEYCODE_HOME 1
-sleep 9
+sleep 6
 shot 1-home
+adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" > "$OUT/top-after-first-home.txt"
 key KEYCODE_DPAD_RIGHT
 key KEYCODE_DPAD_RIGHT 1.5
 shot 2-focus-right

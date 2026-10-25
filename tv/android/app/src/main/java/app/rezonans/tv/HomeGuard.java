@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 import java.util.List;
@@ -49,19 +50,13 @@ public class HomeGuard extends AccessibilityService {
         return stock;
     }
 
-    @Override
-    public void onAccessibilityEvent(AccessibilityEvent e) {
-        if (e == null || e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-        CharSequence pkg = e.getPackageName();
-        CharSequence cls = e.getClassName();
-        if (pkg == null || cls == null) return;
-        if (!Prefs.guard(this) || Prefs.paused(this)) return;
-        ComponentName home = stockHome(this);
-        if (home == null || !home.getPackageName().contentEquals(pkg)) return;
-        // only the home screen itself, not other screens of the same app
-        if (!home.getClassName().contentEquals(cls)) return;
+    private boolean active() {
+        return Prefs.guard(this) && !Prefs.paused(this);
+    }
+
+    private boolean openOurs() {
         long now = SystemClock.elapsedRealtime();
-        if (now - lastJump < 800) return;
+        if (now - lastJump < 500) return true;
         lastJump = now;
         Intent i = new Intent(this, MainActivity.class)
             .setAction(Intent.ACTION_MAIN)
@@ -69,8 +64,40 @@ public class HomeGuard extends AccessibilityService {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         try {
             startActivity(i);
+            return true;
         } catch (Exception ignored) {
+            return false;
         }
+    }
+
+    @Override
+    protected void onServiceConnected() {
+        super.onServiceConnected();
+        // right after the box starts, its own home is already up: replace it
+        if (active() && SystemClock.elapsedRealtime() < 180000 && (MainActivity.current == null || !MainActivity.current.isVisible())) openOurs();
+    }
+
+    /** The Home button itself: straight to Резонанс OS, without the box's home flashing first. */
+    @Override
+    protected boolean onKeyEvent(KeyEvent e) {
+        if (e.getKeyCode() != KeyEvent.KEYCODE_HOME || !active()) return false;
+        if (e.getAction() == KeyEvent.ACTION_DOWN) return true;
+        if (e.getAction() == KeyEvent.ACTION_UP) return openOurs();
+        return false;
+    }
+
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent e) {
+        if (e == null || e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        CharSequence pkg = e.getPackageName();
+        CharSequence cls = e.getClassName();
+        if (pkg == null || cls == null) return;
+        if (!active()) return;
+        ComponentName home = stockHome(this);
+        if (home == null || !home.getPackageName().contentEquals(pkg)) return;
+        // only the home screen itself, not other screens of the same app
+        if (!home.getClassName().contentEquals(cls)) return;
+        openOurs();
     }
 
     @Override
