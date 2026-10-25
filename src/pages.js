@@ -16,6 +16,7 @@ import { AppLauncher } from '@capacitor/app-launcher';
 import { PLATFORMS, platformUrl } from './platforms.js';
 import { SOURCES, sourceById, importFromLink, parseTextList, parseExportFile, detectLink, ImportError } from './importers.js';
 import { matchProgress, onMatchProgress, queueMatch, rematchLocal } from './matcher.js';
+import { likeInYandex, looksLiked, transferable } from './liketransfer.js';
 import {
   trackList,
   section,
@@ -31,6 +32,7 @@ import {
   sheet,
   askText,
   confirmSheet,
+  closeSheet,
   refreshLocalCovers,
   skeleton,
 } from './components.js';
@@ -88,6 +90,60 @@ export async function toggleLike(t) {
     toast(e.message);
     return liked;
   }
+}
+
+// ---------- likes from another service into Yandex Music ----------
+
+export async function likeTransfer(id) {
+  const p = pl.getPlaylist(id);
+  if (!p) return;
+  if (!online.isLoggedIn()) {
+    toast('Сначала войди в Яндекс Музыку в профиле', 3500);
+    return;
+  }
+  const ok = await confirmSheet(
+    'В «Мне нравится» Яндекса',
+    `Песни из «${p.name}» (${tracksWord(p.tracks.length)}) найдутся в Яндекс Музыке и добавятся в «Мне нравится» — в том же порядке. Уже добавленные останутся как есть.`,
+    'Перенести',
+    'primary'
+  );
+  if (!ok) return;
+  const text = h('div', { class: 'lt-text' }, 'Начинаю…');
+  const fill = h('i', { style: { width: '0%' } });
+  const box = h('div', { class: 'sheet-form lt-box' }, text, h('div', { class: 'match-bar' }, fill));
+  sheet('Перенос лайков', box);
+  try {
+    const r = await likeInYandex(id, (step, done, total) => {
+      text.textContent = total ? `${step}: ${done} из ${total}` : step + '…';
+      fill.style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
+    });
+    likedIds(true).catch(() => {});
+    for (const fn of likeListeners) fn(null);
+    clear(box).append(
+      h('div', { class: 'lt-done' }, icon('heart', 28), h('div', null, r.added ? `Добавлено в «Мне нравится»: ${r.added}` : 'Новых лайков нет — всё уже было')),
+      h('div', { class: 'muted small' }, [r.already ? `Уже были: ${r.already}` : '', r.missing.length ? `Не нашлось в Яндекс Музыке: ${r.missing.length}` : ''].filter(Boolean).join(' · ')),
+      r.missing.length
+        ? h('div', { class: 'lt-missing' }, r.missing.slice(0, 40).map((t) => h('div', { class: 'lt-miss' }, h('b', null, t.title), t.artist ? ' — ' + t.artist : '')))
+        : null,
+      h('div', { class: 'row-end' }, h('button', { class: 'btn btn-primary', onclick: () => closeSheet() }, 'Готово'))
+    );
+  } catch (e) {
+    logError('like-transfer', e);
+    clear(box).append(h('div', null, e.message || 'Не получилось'), h('div', { class: 'row-end' }, h('button', { class: 'btn btn-ghost', onclick: () => closeSheet() }, 'Закрыть')));
+  }
+}
+
+// Which list to bring over (from the profile or the library).
+export function likeTransferPicker() {
+  const lists = transferable();
+  if (!lists.length) {
+    sheet('Перенос лайков', h('div', { class: 'sheet-form' }, h('div', { class: 'muted' }, 'Сначала перенеси плейлист с другой площадки: Медиатека → «Перенести плейлист». Например «Мне нравится» из Звука или любимые треки из Spotify.')));
+    return;
+  }
+  sheet(
+    'Какие песни лайкнуть в Яндексе?',
+    lists.map((p) => ({ icon: looksLiked(p) ? 'heart' : 'queue', label: `${p.name} · ${tracksWord(p.tracks.length)}`, onClick: () => setTimeout(() => likeTransfer(p.id), 400) }))
+  );
 }
 
 // ---------- other platforms ----------
@@ -403,6 +459,9 @@ export function customPlaylistPage(id) {
             if (name) pl.renamePlaylist(id, name);
           },
         },
+        p.source && p.source !== 'mine' && online.isLoggedIn()
+          ? { icon: 'heart', label: 'Лайкнуть все в Яндекс Музыке', onClick: () => setTimeout(() => likeTransfer(id), 400) }
+          : null,
         p.source && p.source !== 'mine'
           ? {
               icon: 'refresh',
@@ -444,6 +503,9 @@ export function customPlaylistPage(id) {
         'div',
         { class: 'center-row' },
         (p.source || 'mine') === 'mine' ? h('button', { class: 'btn btn-ghost', onclick: () => searchInApp('') }, icon('add', 20), 'Добавить треки') : null,
+        (p.source || 'mine') !== 'mine' && looksLiked(p) && online.isLoggedIn()
+          ? h('button', { class: 'btn btn-ghost', onclick: () => likeTransfer(id) }, icon('heart', 20), 'В «Мне нравится» Яндекса')
+          : null,
         missing
           ? h(
               'button',

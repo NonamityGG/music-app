@@ -37,6 +37,7 @@ import {
   localPage,
   mixPage,
   servicePlaylistPage,
+  likeTransferPicker,
   folderPage,
   importPage,
   openExternal,
@@ -480,7 +481,8 @@ function transferAccounts(rerender) {
     { class: 'card-box' },
     row('zvuk', 'Звук', '#8a5cff', 'Сбер ID или телефон'),
     row('spotify', 'Spotify', '#1ed760', 'нужен открывающийся сайт Spotify'),
-    h('div', { class: 'muted small' }, 'Отсюда только переносятся плейлисты: Медиатека → «Перенести плейлист». Играет всё из твоих MP3 и Яндекс Музыки.')
+    h('div', { class: 'muted small' }, 'Отсюда только переносятся плейлисты: Медиатека → «Перенести плейлист». Играет всё из твоих MP3 и Яндекс Музыки.'),
+    h('button', { class: 'btn btn-ghost lt-entry', onclick: () => likeTransferPicker() }, icon('heart', 20), 'Перенести лайки в Яндекс Музыку')
   );
 }
 

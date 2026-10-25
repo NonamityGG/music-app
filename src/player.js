@@ -72,6 +72,8 @@ function emit(type, data) {
 
 export const current = () => state.queue[state.index] || null;
 export const position = () => audio.currentTime || 0;
+// what you hear is this much behind position() (only through the analyser)
+export const outputLatency = () => (isFx(audio) ? graph.latency() : 0);
 
 // The length to show. A stream's own estimate can be far off (some MP3s report
 // twice their length until fully loaded), so for online tracks the catalogue's

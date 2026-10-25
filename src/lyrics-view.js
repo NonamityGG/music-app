@@ -5,6 +5,26 @@
 
 import { h, clear } from './util.js';
 import { lyricsFor } from './lyrics.js';
+import { load, save } from './settings.js';
+
+// A per-song correction for words that run ahead or behind (another recording's
+// timings, a slow service): "Отстаёт" shows them earlier, "Спешит" later.
+const SHIFT_KEY = 'lyricsShift';
+const SHIFT_STEP = 0.5;
+function shiftOf(key) {
+  return (load(SHIFT_KEY, {})[key] || {}).s || 0;
+}
+function saveShift(key, s) {
+  const all = load(SHIFT_KEY, {});
+  if (s) all[key] = { s, at: Date.now() };
+  else delete all[key];
+  const keys = Object.keys(all);
+  if (keys.length > 300) {
+    keys.sort((a, b) => all[a].at - all[b].at);
+    for (const k of keys.slice(0, keys.length - 300)) delete all[k];
+  }
+  save(SHIFT_KEY, all);
+}
 
 const LEAD = 0.25; // light a line a moment early, like the original players
 const HAND_PAUSE = 3500; // ms of following-off after the user scrolls
@@ -45,7 +65,35 @@ export function withPauses(lines, duration = 0) {
 export function createLyricsView({ onSeek, getDuration }) {
   const scroller = h('div', { class: 'ly-scroll' });
   const state = h('div', { class: 'ly-state', hidden: true });
-  const el = h('div', { class: 'lyrics', 'aria-live': 'off' }, scroller, state);
+  const shiftVal = h('span', { class: 'ly-shift-val' });
+  const shiftBtn = (label, aria, d) => {
+    const b = h('button', { class: 'ly-shift-btn', 'aria-label': aria }, label);
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setShift(Math.round((shift + d) * 10) / 10);
+    });
+    return b;
+  };
+  const shiftBar = h(
+    'div',
+    { class: 'ly-shift', hidden: true },
+    shiftBtn('Спешит', 'Текст спешит: показывать позже', -SHIFT_STEP),
+    shiftVal,
+    shiftBtn('Отстаёт', 'Текст отстаёт: показывать раньше', SHIFT_STEP)
+  );
+  const el = h('div', { class: 'lyrics', 'aria-live': 'off' }, scroller, state, shiftBar);
+  let shift = 0;
+  let lastPos = 0;
+  function paintShift() {
+    shiftVal.textContent = shift ? `${shift > 0 ? 'раньше на' : 'позже на'} ${String(Math.abs(shift)).replace('.', ',')} с` : 'Синхронизация';
+    shiftBar.classList.toggle('changed', !!shift);
+  }
+  function setShift(v) {
+    shift = Math.max(-10, Math.min(10, v));
+    if (key) saveShift(key, shift);
+    paintShift();
+    tick(lastPos);
+  }
 
   let key = '';
   let data = null; // { synced, lines, source }
@@ -119,6 +167,9 @@ export function createLyricsView({ onSeek, getDuration }) {
     if (k === key) return;
     key = k;
     data = null;
+    shift = shiftOf(k);
+    paintShift();
+    shiftBar.hidden = true;
     render();
     setState('Ищу текст…', true);
     el.classList.add('is-loading');
@@ -133,6 +184,7 @@ export function createLyricsView({ onSeek, getDuration }) {
         }
         setState('');
         render();
+        shiftBar.hidden = !d.synced;
         tick.last = -1;
       })
       .catch(() => {
@@ -145,7 +197,9 @@ export function createLyricsView({ onSeek, getDuration }) {
 
   // Called every frame with the playback position.
   function tick(pos) {
+    lastPos = pos;
     if (!wanted || !data || !data.synced || !rows.length) return;
+    pos += shift;
     let i = -1;
     for (let k = rows.length - 1; k >= 0; k--) {
       if (rows[k]._t != null && rows[k]._t <= pos + LEAD) {

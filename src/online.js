@@ -99,6 +99,11 @@ export function likeKey(track) {
   return track && track.yid ? 'y:' + track.yid : '';
 }
 
+// after many likes at once: the next question about likes asks Yandex again
+export function forgetLiked() {
+  likedCache = null;
+}
+
 export function setLiked(track, liked) {
   likedCache = null;
   return ya.setLiked(track.yid, liked);

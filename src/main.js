@@ -569,7 +569,7 @@ function paintTime() {
   }
   full.wave.pulse(beat);
   full.wave.draw();
-  if (settings.lyricsOn) lyricsView.tick(p);
+  if (settings.lyricsOn) lyricsView.tick(p - player.outputLatency());
 }
 
 // Words of the song: in place of the cover on a phone, beside it on a wide screen.

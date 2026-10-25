@@ -76,6 +76,14 @@ export function state() {
   return ctx ? ctx.state : 'none';
 }
 
+// How far what you hear lags behind the element's clock when it plays through
+// the analyser (the audio context's own buffers), in seconds.
+export function latency() {
+  if (!ctx) return 0;
+  const l = (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  return l > 0 && l < 1 ? l : 0;
+}
+
 let silentSince = 0;
 
 // The oscilloscope line: smoothed (a raw waveform of a loud track is a wall of

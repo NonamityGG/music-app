@@ -407,6 +407,14 @@ export async function lyrics(yid) {
   return null;
 }
 
+// Several likes at once (oldest first: the last one ends up on top of the list).
+export async function likeMany(yids) {
+  if (!isLoggedIn() || !uid()) throw new YandexError('auth', 'Чтобы ставить лайки, войди в Яндекс в профиле');
+  const ids = yids.map((y) => strip(y)).filter(Boolean);
+  if (!ids.length) return;
+  await api('POST', `/users/${uid()}/likes/tracks/add-multiple`, { form: { 'track-ids': ids.join(',') } });
+}
+
 export async function setLiked(yid, liked) {
   if (!isLoggedIn() || !uid()) throw new YandexError('auth', 'Чтобы ставить лайки, войди в Яндекс в профиле');
   await api('POST', `/users/${uid()}/likes/tracks/${liked ? 'add-multiple' : 'remove'}`, { form: { 'track-ids': strip(yid) } });

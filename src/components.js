@@ -427,7 +427,7 @@ export function askText(title, initial = '', okLabel = 'Готово') {
   });
 }
 
-export function confirmSheet(title, text, okLabel = 'Удалить') {
+export function confirmSheet(title, text, okLabel = 'Удалить', kind = 'danger') {
   return new Promise((resolve) => {
     const done = (v) => {
       closeSheet();
@@ -443,7 +443,7 @@ export function confirmSheet(title, text, okLabel = 'Удалить') {
           'div',
           { class: 'row-end' },
           h('button', { class: 'btn btn-ghost', onclick: () => done(false) }, 'Отмена'),
-          h('button', { class: 'btn btn-danger', onclick: () => done(true) }, okLabel)
+          h('button', { class: 'btn btn-' + kind, onclick: () => done(true) }, okLabel)
         )
       )
     );

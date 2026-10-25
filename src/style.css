@@ -4012,3 +4012,90 @@ html[data-fullscreen] .statusline {
 .statusline.sl-low .sl-fill {
   fill: var(--danger);
 }
+
+/* lyrics running ahead or behind: a per-song correction (lyrics-view.js) */
+.ly-shift {
+  position: absolute;
+  right: 0;
+  bottom: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px;
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+
+.ly-shift:hover,
+.ly-shift:active,
+.ly-shift.changed {
+  opacity: 1;
+}
+
+.ly-shift-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 13px;
+  font-weight: 600;
+  color: var(--lilac);
+}
+
+.ly-shift-btn:active {
+  background: var(--press);
+}
+
+.ly-shift-val {
+  padding: 0 6px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* likes brought over into Yandex Music (pages.js likeTransfer) */
+.lt-text {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.lt-done {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.lt-done svg {
+  color: var(--lilac);
+}
+
+.lt-missing {
+  max-height: 34vh;
+  overflow-y: auto;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--raised);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lt-miss {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.lt-miss b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.lt-entry {
+  align-self: flex-start;
+}

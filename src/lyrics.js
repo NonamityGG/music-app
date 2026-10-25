@@ -78,7 +78,9 @@ export function parseLrc(raw) {
 
 // ---------- cache ----------
 
-let cache = load('lyrics', {});
+// "lyrics2": results from before the stricter matching (1.1.7) are not reused
+const CACHE = 'lyrics2';
+let cache = load(CACHE, {});
 
 function remember(key, value) {
   cache[key] = { at: Date.now(), v: value };
@@ -87,7 +89,7 @@ function remember(key, value) {
     keys.sort((a, b) => cache[a].at - cache[b].at);
     for (const k of keys.slice(0, keys.length - KEEP)) delete cache[k];
   }
-  save('lyrics', cache);
+  save(CACHE, cache);
 }
 
 function recalled(key) {
@@ -120,6 +122,18 @@ async function fromYandex(track) {
   return r ? { text: r.text, source: 'Яндекс Музыка' } : null;
 }
 
+// Synced words are only trusted for the very same recording: a version that is a
+// few seconds longer or shorter (another intro, a radio edit) runs ahead or
+// behind the whole time. Such a version gives its words without timings.
+const SYNC_SLACK = 3; // seconds of length difference still taken as the same recording
+
+const unstamped = (lrc) =>
+  String(lrc || '')
+    .split('\n')
+    .map((l) => l.replace(/^(\s*\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\])+/, '').replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, '').trim())
+    .filter((l, i, arr) => l || (i > 0 && arr[i - 1]))
+    .join('\n');
+
 // Picks the LRCLIB result for the same song: close in length, synced if possible.
 export function pickLrclib(track, results) {
   if (!Array.isArray(results) || !results.length) return null;
@@ -139,12 +153,22 @@ export function pickLrclib(track, results) {
     return Math.abs((a.duration || 0) - d) - Math.abs((b.duration || 0) - d);
   });
   const r = same[0] || best;
-  if (track.duration && r.duration && Math.abs(r.duration - track.duration) > 12) return null;
+  const diff = track.duration && r.duration ? Math.abs(r.duration - track.duration) : 0;
+  if (diff > 12) return null;
+  if (diff > SYNC_SLACK) return r.plainLyrics || unstamped(r.syncedLyrics) || null;
   return r.syncedLyrics || r.plainLyrics;
 }
 
 async function fromLrclib(track) {
   if (!track.title) return null;
+  // the exact recording first: LRCLIB matches it by length
+  if (track.duration) {
+    const g = await getText(LRCLIB + '/get', { track_name: track.title, artist_name: track.artist || '', duration: Math.round(track.duration) });
+    if (g.status === 200 && g.data && typeof g.data === 'object') {
+      const text = pickLrclib(track, [g.data]);
+      if (text) return { text, source: 'LRCLIB' };
+    }
+  }
   let res = await getText(LRCLIB + '/search', { track_name: track.title, artist_name: track.artist || '' });
   let text = res.status === 200 ? pickLrclib(track, res.data) : null;
   if (!text) {
@@ -170,7 +194,11 @@ export async function lyricsFor(track) {
     }
     if (found) break;
   }
-  const value = found ? { ...parseLrc(found.text), source: found.source } : null;
+  let value = found ? { ...parseLrc(found.text), source: found.source } : null;
+  // timings that run past the end of the track belong to another recording
+  if (value && value.synced && track.duration && value.lines.length && value.lines[value.lines.length - 1].t > track.duration + 4) {
+    value = { ...parseLrc(unstamped(found.text)), source: found.source };
+  }
   if (value && !value.lines.length) {
     remember(key, null);
     return null;

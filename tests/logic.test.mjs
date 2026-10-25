@@ -652,3 +652,54 @@ test('transferred tracks found in Yandex can be liked', async () => {
   saveSettings({ yaToken: '', yaUid: '' });
   assert.equal(online.serviceOf({ src: 'yandex', yid: '9', key: 'y:9' }), '', 'signed out');
 });
+
+test('LRCLIB: another recording of the song gives words without timings', () => {
+  const t = { title: 'После той зимы', artist: 'есть что сказать', duration: 193 };
+  const synced = '[00:05.00]После той зимы мы не встретимся точно\n[00:09.00]После тишины идёт многоточие';
+  const r = lyr.pickLrclib(t, [{ trackName: 'После той зимы', artistName: 'есть что сказать', duration: 201, syncedLyrics: synced }]);
+  assert.ok(r && !/\[\d/.test(r), 'timings removed for a version 8 s longer');
+  assert.equal(lyr.parseLrc(r).synced, false);
+  assert.equal(lyr.pickLrclib(t, [{ trackName: 'После той зимы', artistName: 'есть что сказать', duration: 194, syncedLyrics: synced }]), synced);
+});
+
+test('Likes from Звук go to Yandex «Мне нравится» in the same order', async () => {
+  const pl = await import('../src/playlists.js');
+  const lt = await import('../src/liketransfer.js');
+  saveSettings({ yaToken: 'T', yaUid: '77' });
+  const ext = (title, artist, extra = {}) => ({ key: 'e:' + title, src: 'ext', title, artist, artists: [{ name: artist }], duration: 200, ...extra });
+  const p = pl.createPlaylist('Мне нравится (Звук)', [
+    ext('Первая', 'Кино', { match: 'online', yid: '11' }),
+    ext('Вторая', 'Земфира'), // not searched yet
+    ext('Третья', 'Сплин', { match: 'none' }), // not found earlier
+    ext('Четвёртая', 'Ария', { match: 'local', lid: 'L1' }), // plays from an MP3
+    ext('Пятая', 'ДДТ', { match: 'online', yid: '15' }), // already liked
+  ], 'zvuk', { origin: 'zvuk:liked' });
+  const added = [];
+  ya.setYandexTransport(async (req) => {
+    const u = new URL(req.url);
+    if (u.pathname === '/users/77/likes/tracks') return { status: 200, data: { result: { library: { tracks: [{ id: '15' }] } } } };
+    if (u.pathname === '/search') {
+      const q = u.searchParams.get('text');
+      const hit = q.includes('Вторая') ? { id: 12, title: 'Вторая', artists: [{ id: 2, name: 'Земфира' }], albums: [{ id: 1 }], durationMs: 200000 } : q.includes('Четвёртая') ? { id: 14, title: 'Четвёртая', artists: [{ id: 4, name: 'Ария' }], albums: [{ id: 1 }], durationMs: 200000 } : null;
+      return { status: 200, data: { result: { tracks: { results: hit ? [hit] : [] } } } };
+    }
+    if (u.pathname === '/users/77/likes/tracks/add-multiple') {
+      added.push(new URLSearchParams(req.data).get('track-ids'));
+      return { status: 200, data: { result: 'ok' } };
+    }
+    return { status: 404, data: {} };
+  });
+  assert.ok(lt.looksLiked(p));
+  const r = await lt.likeInYandex(p.id);
+  assert.deepEqual(added, ['14,12,11'], 'last song first, the liked one skipped');
+  assert.equal(r.added, 3);
+  assert.equal(r.already, 1);
+  assert.deepEqual(r.missing.map((t) => t.title), ['Третья']);
+  const after = pl.getPlaylist(p.id).tracks;
+  assert.equal(after[3].match, 'local', 'the MP3 song keeps playing from the file');
+  assert.equal(after[3].yid, '14');
+  assert.equal(after[1].yid, '12');
+  pl.deletePlaylist(p.id);
+  ya.setYandexTransport(null);
+  saveSettings({ yaToken: '', yaUid: '' });
+});
