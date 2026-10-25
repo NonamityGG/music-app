@@ -47,37 +47,49 @@ export function applyTheme() {
   setAttrs(currentTheme());
 }
 
-// Switches behind a quick veil in the new background colour: the veil fades in,
-// the colours change while the screen is covered (that repaint is the heavy
-// part), and the veil fades out. Only opacity animates, so it stays smooth.
+// Switches with a circle of the new theme spreading from where you tapped. The
+// browser snapshots the screen as it is, the colours change underneath while
+// that picture stays put (the heavy repaint happens out of sight), then the new
+// look is revealed through a growing circle — no flash, no veil.
+// Without view transitions (old WebView) it simply switches.
 let switching = false;
-export function setTheme(id) {
+export function setTheme(id, from, after) {
   const t = themeById(id);
   saveSettings({ theme: t.id });
-  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced || switching) {
+  const apply = () => {
     setAttrs(t);
-    return;
-  }
+    if (after) after();
+  };
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced || switching || !document.startViewTransition) return apply();
   switching = true;
-  const veil = document.createElement('div');
-  veil.className = 'theme-veil';
-  veil.style.background = t.bg; // the screen washes into the new theme's colour
-  document.body.appendChild(veil);
-  requestAnimationFrame(() => {
-    veil.classList.add('in');
-    setTimeout(() => {
-      setAttrs(t);
-      // give the new colours two frames to paint under the veil
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          veil.classList.remove('in');
-          setTimeout(() => {
-            veil.remove();
-            switching = false;
-          }, 320);
-        })
+  const w = window.innerWidth;
+  const hgt = window.innerHeight;
+  const x = from && from.x != null ? from.x : w / 2;
+  const y = from && from.y != null ? from.y : hgt / 2;
+  const r = Math.ceil(Math.hypot(Math.max(x, w - x), Math.max(y, hgt - y)));
+  const root = document.documentElement;
+  root.classList.add('vt-theme');
+  let vt;
+  try {
+    vt = document.startViewTransition(apply);
+  } catch {
+    root.classList.remove('vt-theme');
+    switching = false;
+    return apply();
+  }
+  vt.ready
+    .then(() => {
+      root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 560, easing: 'cubic-bezier(.45,0,.2,1)', pseudoElement: '::view-transition-new(root)' }
       );
-    }, 170);
-  });
+    })
+    .catch(() => {});
+  vt.finished
+    .catch(() => {})
+    .then(() => {
+      root.classList.remove('vt-theme');
+      switching = false;
+    });
 }

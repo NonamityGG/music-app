@@ -12,7 +12,8 @@
       "enabled": true
     },
     "SystemBars": {
-      "style": "DARK"
+      "style": "DARK",
+      "initialViewportFitValueHint": "cover"
     }
   }
 }

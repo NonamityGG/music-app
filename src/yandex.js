@@ -327,6 +327,53 @@ export async function stationTracks(station, lastId = '') {
   return ((r && r.sequence) || []).map((x) => normTrack(x && x.track)).filter(Boolean);
 }
 
+// "Моя волна": the stream Yandex picks from everything the user has listened to,
+// liked and skipped — the most precise recommendations there are. Each request
+// gives a few tracks; asking again after the last one continues the stream.
+export async function myWave(count = 50) {
+  const out = [];
+  const seen = new Set();
+  let last = '';
+  for (let i = 0; i < 12 && out.length < count; i++) {
+    const batch = await stationTracks('user:onyourwave', last);
+    if (!batch.length) break;
+    let fresh = 0;
+    for (const t of batch) {
+      if (seen.has(t.key)) continue;
+      seen.add(t.key);
+      out.push(t);
+      fresh++;
+    }
+    last = batch[batch.length - 1].yid;
+    if (!fresh) break;
+  }
+  return out.slice(0, count);
+}
+
+// Playlists Yandex makes for the user: Плейлист дня, Дежавю, Премьера, Тайник…
+const PERSONAL_TITLES = { playlistOfTheDay: 'Плейлист дня', neverHeard: 'Дежавю', recentTracks: 'Премьера', missedLikes: 'Тайник' };
+const PERSONAL_SKIP = /kids|podcast|origin|rewind/i;
+export async function personalPlaylists() {
+  const r = await api('GET', '/landing3', { params: { blocks: 'personalplaylists' } });
+  const out = [];
+  for (const b of (r && r.blocks) || []) {
+    for (const e of b.entities || []) {
+      const d = (e && e.data) || {};
+      const pl = d.data || d.playlist;
+      if (!pl || pl.uid == null || pl.kind == null) continue;
+      if (PERSONAL_SKIP.test(d.type || '') || PERSONAL_SKIP.test(pl.generatedPlaylistType || '')) continue;
+      out.push({
+        id: `y:${pl.uid}:${pl.kind}`,
+        type: d.type || pl.generatedPlaylistType || '',
+        title: pl.title || PERSONAL_TITLES[d.type] || 'Плейлист',
+        cover: cover((pl.cover && (pl.cover.uri || (pl.cover.itemsUri && pl.cover.itemsUri[0]))) || pl.ogImage),
+        trackCount: pl.trackCount || 0,
+      });
+    }
+  }
+  return out;
+}
+
 // ---------- lyrics ----------
 // The apps sign lyrics requests: HMAC-SHA256 of "<track id><unix time>".
 const LYRICS_KEY = 'p93jhgh689SBReK6ghtw62';

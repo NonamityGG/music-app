@@ -47,6 +47,14 @@ export async function playlistTracks(id) {
   need();
   return ya.playlistTracks(id);
 }
+export async function myWave(n) {
+  need();
+  return ya.myWave(n);
+}
+export async function personalPlaylists() {
+  need();
+  return ya.personalPlaylists();
+}
 export async function getRelease(id) {
   need();
   return ya.getRelease(id);
@@ -81,9 +89,10 @@ export const usable = (p) => p === 'yandex' && ya.isLoggedIn();
 
 export const streamFor = (ref) => ya.streamUrl(ref.id);
 
-// Track's own service, if the user can like it there.
+// Where the user can like the track: Yandex Music tracks, and tracks brought
+// over from other services once they are found there (they play from Yandex).
 export function serviceOf(track) {
-  return track && track.src === 'yandex' && ya.isLoggedIn() ? 'yandex' : '';
+  return track && track.yid && (track.src === 'yandex' || track.src === 'ext') && ya.isLoggedIn() ? 'yandex' : '';
 }
 
 export function likeKey(track) {

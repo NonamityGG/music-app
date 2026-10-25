@@ -1,7 +1,9 @@
-// Recommendation feed. Built from the artists you listen to: liked tracks and
-// artists in Yandex Music, your own playlists, your MP3s and artists you pick by
-// hand.
-// For them it gathers new releases, similar artists and a mix of their songs.
+// Recommendation feed. The mix comes first of all from Yandex's own "Моя волна"
+// (picked from the user's whole listening history), topped up with songs of
+// similar artists; Yandex's personal playlists (Плейлист дня, Дежавю…) are shown
+// as they are. New releases and similar artists come from the artists you listen
+// to: liked tracks and artists in Yandex Music (recent likes count more), your
+// own playlists, your MP3s and artists you pick by hand.
 
 import * as online from './online.js';
 import { load, save, logError } from './settings.js';
@@ -38,7 +40,8 @@ export function cachedFeed() {
 }
 
 export function feedIsStale(f) {
-  return !f || Date.now() - (f.at || 0) > TTL || (f.svc && f.svc !== online.primaryId());
+  // feeds built before 1.1.5 have no "Моя волна" yet: rebuild them once
+  return !f || Date.now() - (f.at || 0) > TTL || (f.svc && f.svc !== online.primaryId()) || (!f.empty && !f.mixFrom);
 }
 
 function releaseTime(r) {
@@ -115,7 +118,11 @@ export async function buildFeed(onStep = () => {}) {
       const liked = await online.likedTrackIds();
       for (const id of liked) knownKeys.add('y:' + id);
       const tracks = await online.getTracks(liked.slice(0, 300));
-      for (const t of tracks) for (const a of t.artists) add(a, 1);
+      // the list starts with the latest likes: what you like now weighs more
+      tracks.forEach((t, i) => {
+        const w = 1 + 2 * Math.max(0, 1 - i / 120);
+        for (const a of t.artists) add(a, w);
+      });
     } catch (e) {
       logError('feed:liked', e);
     }
@@ -138,9 +145,29 @@ export async function buildFeed(onStep = () => {}) {
     logError('feed:local', e);
   }
 
+  // Yandex's own picks for this user
+  let wave = [];
+  let personal = [];
+  try {
+    onStep('Слушаю твою волну');
+    wave = await online.myWave(50);
+  } catch (e) {
+    logError('feed:wave', e);
+  }
+  try {
+    personal = await online.personalPlaylists();
+  } catch (e) {
+    logError('feed:personal', e);
+  }
+
   const top = [...seeds.values()].sort((a, b) => b.w - a.w).slice(0, 14);
   if (!top.length) {
-    const empty = { at: Date.now(), svc, empty: true, seeds: [], releases: [], related: [], mix: [] };
+    if (wave.length) {
+      const feed = { at: Date.now(), svc, seeds: [], releases: [], related: [], mix: wave.slice(0, 60), mixFrom: 'wave', personal };
+      save('feed', feed);
+      return feed;
+    }
+    const empty = { at: Date.now(), svc, empty: true, seeds: [], releases: [], related: [], mix: [], personal };
     save('feed', empty);
     return empty;
   }
@@ -186,7 +213,20 @@ export async function buildFeed(onStep = () => {}) {
   }
   const fromSeeds = seedInfo.flatMap((a) => a.tracks.slice(0, 3));
   const pool = uniqBy([...fromRelated, ...fromSeeds], (t) => t.key).filter((t) => !knownKeys.has(t.key));
-  const mix = spreadByArtist(pool).slice(0, 60);
+  // the wave keeps Yandex's order (it is deliberate); a few songs of similar
+  // artists are woven in, and they fill up the rest when the wave is short
+  const extra = spreadByArtist(pool);
+  let mix;
+  if (wave.length >= 12) {
+    mix = [];
+    let k = 0;
+    wave.forEach((t, i) => {
+      mix.push(t);
+      if (i % 5 === 4 && k < extra.length) mix.push(extra[k++]);
+    });
+    mix = mix.concat(extra.slice(k));
+  } else mix = wave.concat(extra);
+  mix = uniqBy(mix, (t) => t.key).slice(0, 60);
 
   const feed = {
     at: Date.now(),
@@ -195,6 +235,8 @@ export async function buildFeed(onStep = () => {}) {
     releases,
     related: related.map(({ id, name, image }) => ({ id, name, image })),
     mix,
+    mixFrom: wave.length >= 12 ? 'wave' : 'related',
+    personal,
   };
   save('feed', feed);
   return feed;

@@ -583,3 +583,72 @@ test('Yandex station tracks for endless music', async () => {
   ya.setYandexTransport(null);
   saveSettings({ yaToken: '', yaUid: '' });
 });
+
+test('Yandex "Моя волна" pages through the stream', async () => {
+  saveSettings({ yaToken: 'T', yaUid: '77' });
+  const queues = [];
+  let n = 0;
+  ya.setYandexTransport(async (req) => {
+    const u = new URL(req.url);
+    assert.equal(u.pathname, '/rotor/station/user:onyourwave/tracks');
+    queues.push(u.searchParams.get('queue'));
+    const batch = [0, 1, 2].map((i) => {
+      const id = 100 + n * 3 + i;
+      return { type: 'track', track: { id, title: 'Т' + id, artists: [{ id: 1, name: 'А' }], albums: [{ id: 2 }], durationMs: 180000 } };
+    });
+    n++;
+    return { status: 200, data: { result: { sequence: batch } } };
+  });
+  const r = await ya.myWave(7);
+  assert.equal(r.length, 7);
+  assert.deepEqual(r.map((t) => t.key), ['y:100', 'y:101', 'y:102', 'y:103', 'y:104', 'y:105', 'y:106']);
+  assert.deepEqual(queues, [null, '102', '105'], 'each request continues after the last track');
+  ya.setYandexTransport(null);
+  saveSettings({ yaToken: '', yaUid: '' });
+});
+
+test('Yandex personal playlists from the landing', async () => {
+  saveSettings({ yaToken: 'T', yaUid: '77' });
+  ya.setYandexTransport(async (req) => {
+    const u = new URL(req.url);
+    assert.equal(u.pathname, '/landing3');
+    assert.equal(u.searchParams.get('blocks'), 'personalplaylists');
+    return {
+      status: 200,
+      data: {
+        result: {
+          blocks: [
+            {
+              entities: [
+                { data: { type: 'playlistOfTheDay', data: { uid: 503646255, kind: 101, title: 'Плейлист дня', trackCount: 60, cover: { uri: 'avatars.yandex.net/x/%%' } } } },
+                { data: { type: 'neverHeard', data: { uid: 503646255, kind: 102, title: 'Дежавю' } } },
+                { data: { type: 'kidsDaily', data: { uid: 1, kind: 3, title: 'Детям' } } },
+                { data: { type: 'broken' } },
+              ],
+            },
+          ],
+        },
+      },
+    };
+  });
+  const r = await ya.personalPlaylists();
+  assert.equal(r.length, 2);
+  assert.equal(r[0].id, 'y:503646255:101');
+  assert.equal(r[0].title, 'Плейлист дня');
+  assert.equal(r[0].trackCount, 60);
+  assert.ok(r[0].cover.startsWith('https://avatars.yandex.net/x/'));
+  assert.equal(r[1].title, 'Дежавю');
+  ya.setYandexTransport(null);
+  saveSettings({ yaToken: '', yaUid: '' });
+});
+
+test('transferred tracks found in Yandex can be liked', async () => {
+  const online = await import('../src/online.js');
+  saveSettings({ yaToken: 'T', yaUid: '77' });
+  assert.equal(online.serviceOf({ src: 'ext', yid: '5', key: 'x' }), 'yandex');
+  assert.equal(online.serviceOf({ src: 'ext', key: 'x' }), '', 'not found in Yandex yet');
+  assert.equal(online.serviceOf({ src: 'local', key: 'l' }), '');
+  assert.equal(online.serviceOf({ src: 'yandex', yid: '9', key: 'y:9' }), 'yandex');
+  saveSettings({ yaToken: '', yaUid: '' });
+  assert.equal(online.serviceOf({ src: 'yandex', yid: '9', key: 'y:9' }), '', 'signed out');
+});

@@ -44,6 +44,7 @@ const DEFAULTS = {
   gapless: true, // the next track starts the instant the current one ends
   endless: true, // when the queue ends, similar music keeps playing
   intro: true, // launch animation (read by the inline intro in index.html)
+  fullscreen: true, // no system bars; the app shows its own time/network/battery line
 };
 
 export const settings = Object.assign({}, DEFAULTS, load('settings', {}));

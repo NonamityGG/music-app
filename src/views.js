@@ -1,6 +1,6 @@
 // Root screens of the four tabs: Лента, Поиск, Медиатека, Профиль.
 
-import { h, icon, clear, debounce, tracksWord, toast, plural, add } from './util.js';
+import { h, icon, clear, debounce, tracksWord, toast, plural, add, afterIntro } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as ya from './yandex.js';
@@ -14,6 +14,7 @@ import { storageEstimate } from './db.js';
 import { wavesPicker } from './wave-settings.js';
 import { SOURCES } from './importers.js';
 import { THEMES, setTheme, currentTheme } from './theme.js';
+import { setFullscreen } from './screen.js';
 import {
   trackList,
   section,
@@ -35,6 +36,7 @@ import {
   customPlaylistPage,
   localPage,
   mixPage,
+  servicePlaylistPage,
   folderPage,
   importPage,
   openExternal,
@@ -75,7 +77,7 @@ export function feedView() {
           'div',
           { class: 'mix-card' },
           h('div', { class: 'mix-label' }, 'Микс для тебя'),
-          h('div', { class: 'mix-sub' }, `${tracksWord(mix.length)} от похожих артистов и твоих любимых`),
+          h('div', { class: 'mix-sub' }, feed.mixFrom === 'wave' ? `${tracksWord(mix.length)} из твоей «Моей волны» в Яндекс Музыке` : `${tracksWord(mix.length)} от похожих артистов и твоих любимых`),
           h(
             'div',
             { class: 'mix-buttons' },
@@ -87,6 +89,9 @@ export function feedView() {
         h('button', { class: 'btn btn-text', onclick: () => nav.push(mixPage(feed)) }, 'Весь микс')
       );
     }
+    // Yandex's own playlists for this user (Плейлист дня, Дежавю…)
+    if (feed.personal && feed.personal.length)
+      add(body, section('Плейлисты для тебя', null, hscroll(feed.personal.map((p) => releaseCard({ cover: p.cover, title: p.title, artist: p.trackCount ? tracksWord(p.trackCount) : '' }, () => nav.push(servicePlaylistPage(p)))))));
     if (feed.releases && feed.releases.length) {
       add(body, section('Новинки твоих артистов', null, hscroll(feed.releases.map((r) => releaseCard(r, () => nav.push(releasePage(r.id)))))));
     }
@@ -144,7 +149,11 @@ export function feedView() {
   if (cached && !cached.empty) render(cached);
   el._onShow = () => {
     const f = cachedFeed();
-    if (feedIsStale(f)) rebuild();
+    if (!feedIsStale(f)) return;
+    // with something on screen already, refresh once the launch intro is gone;
+    // with nothing yet, start right away (the page would be blank otherwise)
+    if (f && !f.empty) afterIntro(rebuild);
+    else rebuild();
   };
   return el;
 }
@@ -496,10 +505,10 @@ function themePicker() {
           {
             class: 'theme-card' + (t.id === cur ? ' active' : ''),
             'aria-pressed': t.id === cur ? 'true' : 'false',
-            onclick: () => {
+            onclick: (e) => {
               if (t.id === currentTheme().id) return;
-              setTheme(t.id);
-              paint();
+              // the new theme spreads from the tapped card
+              setTheme(t.id, { x: e.clientX, y: e.clientY }, paint);
             },
           },
           preview,
@@ -542,7 +551,8 @@ export function profileView() {
           'div',
           { class: 'card-box intro-box' },
           toggleRow('Заставка при запуске', 'Короткая анимация, когда открываешь приложение', settings.intro !== false, (v) => saveSettings({ intro: v })),
-          replay
+          replay,
+          toggleRow('Полноэкранный режим', 'Без системных полос сверху и снизу — время, сеть и заряд показывает само приложение. Полосы появляются на миг, если провести от края экрана', settings.fullscreen !== false, (v) => setFullscreen(v))
         )
       )
     );

@@ -1337,6 +1337,9 @@ details.more[open] summary {
 
 .mini {
   position: absolute;
+  touch-action: pan-y; /* sideways swipes change the track (main.js) */
+  -webkit-user-select: none;
+  user-select: none;
   left: 0;
   right: 0;
   bottom: calc(var(--tabbar-h) + var(--sab));
@@ -3876,21 +3879,20 @@ body.has-mini .snack {
   height: 100%;
 }
 
-.theme-veil {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.17s ease, background-color 0.17s ease;
+/* theme switch (theme.js): the old screen stays as a still picture while the
+   new one is revealed through a growing circle */
+html.vt-theme::view-transition-old(root),
+html.vt-theme::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
 
-.theme-veil.in {
-  opacity: 1;
+html.vt-theme::view-transition-new(root) {
+  z-index: 2;
 }
 
-.theme-veil:not(.in) {
-  transition-duration: 0.3s;
+html.vt-theme::view-transition-old(root) {
+  z-index: 1;
 }
 
 /* isolate the always-on chrome so its updates don't make the browser re-check the page */
@@ -3932,4 +3934,81 @@ body.has-mini .snack {
 .intro-replay {
   align-self: flex-start;
   margin: -4px 0 -6px -4px;
+}
+
+/* while the launch intro covers the app (see main.js) */
+body.intro-on .content,
+body.intro-on .tabbar,
+body.intro-on .mini {
+  will-change: transform, opacity;
+}
+
+/* nothing fades on its own while the theme switches: the circle does the change */
+html.vt-theme *,
+html.vt-theme *::before,
+html.vt-theme *::after {
+  transition: none !important;
+}
+
+/* ---------- full screen: the app's own status line (screen.js) ---------- */
+
+html[data-fullscreen] {
+  /* the line takes the camera cutout's height, or 28px where there is none */
+  --sat: max(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)), 28px);
+}
+
+.statusline {
+  display: none;
+}
+
+html[data-fullscreen] .statusline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  height: var(--sat);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 max(18px, var(--safe-area-inset-right, env(safe-area-inset-right, 0px))) 0 max(20px, var(--safe-area-inset-left, env(safe-area-inset-left, 0px)));
+  color: var(--text);
+  font: 600 13px/1 var(--body);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.sl-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sl-pct {
+  font-size: 12px;
+  opacity: 0.92;
+}
+
+.sl-net,
+.sl-bat {
+  display: block;
+}
+
+.sl-bolt {
+  fill: var(--ink);
+  display: none;
+}
+
+.statusline.sl-charging .sl-bolt {
+  display: block;
+}
+
+.statusline.sl-charging .sl-fill {
+  fill: var(--ok);
+}
+
+.statusline.sl-low .sl-fill {
+  fill: var(--danger);
 }

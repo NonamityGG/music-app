@@ -99,6 +99,14 @@ export function uniqBy(arr, keyFn) {
   return out;
 }
 
+// Runs fn once the launch intro is gone (right away if there is none), so
+// network replies and big re-renders don't land in the middle of it.
+export function afterIntro(fn) {
+  const i = window.rezIntro;
+  if (i && i.active) window.addEventListener('rez-intro-done', () => setTimeout(fn, 80), { once: true });
+  else fn();
+}
+
 let toastTimer;
 export function toast(text, ms = 2600) {
   let el = document.getElementById('toast');

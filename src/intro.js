@@ -3,11 +3,12 @@
 // app comes forward through it.
 //
 // Runs inline in index.html (tools/build.mjs puts it there), so it is drawn with
-// the very first frame, and only then loads app.js. Every moving part is a Web
-// Animation of transform/opacity: once started the GPU plays it on its own, so
-// the app can do its heavy start-up work underneath without a single dropped
-// frame. The app calls rezIntro.ready() when it is built; the intro leaves when
-// both its own timeline and the app are done (a tap skips ahead).
+// the very first frame, and only then loads app.js. While the app starts up
+// underneath, only a point of light breathes in the middle (the same point the
+// Android splash showed): a phone is busiest in those first seconds and any
+// real motion would stutter. When the app is built (rezIntro.ready()) and the
+// frames come evenly again, the string is plucked and the whole piece plays —
+// transform/opacity only, on the GPU. A tap skips ahead.
 
 (function () {
   var BARS = [0.36, 0.68, 1.0, 0.56, 0.82, 0.44]; // the icon's waveform
@@ -19,6 +20,14 @@
   } catch (e) {}
 
   var api = (window.rezIntro = { active: false, ready: function () {}, play: play });
+
+  // tells Android the page is on screen, so its splash can hand over without a gap
+  function shown() {
+    try {
+      var C = window.Capacitor;
+      if (C && C.isNativePlatform && C.isNativePlatform() && C.nativePromise) C.nativePromise('Screen', 'shown', {}).catch(function () {});
+    } catch (e) {}
+  }
 
   function loadApp() {
     if (document.getElementById('rez-app')) return;
@@ -158,7 +167,7 @@
 
     // --- resonance rings ---
     var rings = [0, 1].map(function () {
-      return el('i-ring', move, { width: T, height: T, left: -T / 2, top: -T / 2, borderRadius: R, opacity: 0 });
+      return el('i-ring', move, { width: T, height: T, left: -T / 2, top: -T / 2, borderRadius: R, opacity: '0' });
     });
 
     // --- the string ---
@@ -205,8 +214,11 @@
     });
 
     document.body.appendChild(root);
+    if (first) shown();
 
-    var HOLD; // when the timeline is done (ms)
+    var HOLD = reduce ? 650 : 2050; // how long the piece plays (ms)
+    var P = Math.min(1, 44 / L); // the waiting point of light: 44px of the string
+    var waiting = [];
     if (reduce) {
       // no motion: the finished mark, shown and later faded
       line.style.display = lineGlow.style.display = sheen.style.display = 'none';
@@ -218,10 +230,19 @@
         pose(o, iconX[o.k], 0, iconH[o.k], 1, 1);
       });
       go(lock, [{ opacity: 0 }, { opacity: 1 }], { duration: 220 });
-      HOLD = 650;
     } else {
-      choreograph();
-      HOLD = 2050;
+      // breathing until the app is ready and the phone has calmed down; the rest
+      // stays out of sight until its own animations take over
+      [glow, tile].concat(letters, bars.map(function (o) {
+        return o.b;
+      })).forEach(function (n) {
+        n.style.opacity = '0';
+      });
+      line.style.transform = 'scaleX(' + P + ')';
+      lineGlow.style.opacity = '0';
+      var breath = { duration: 1100, direction: 'alternate', iterations: Infinity, easing: 'ease-in-out' };
+      waiting.push(line.animate([{ transform: 'scaleX(' + P + ')', opacity: 1 }, { transform: 'scaleX(' + r2(P * 1.4) + ')', opacity: 0.7 }], breath));
+      waiting.push(lineGlow.animate([{ transform: 'scaleX(' + r2(P * 1.1) + ')', opacity: 0.2 }, { transform: 'scaleX(' + r2(P * 1.7) + ')', opacity: 0.85 }], breath));
     }
 
     function pose(o, x, y, h, sc, op) {
@@ -237,11 +258,11 @@
       };
 
       // the string draws itself out from the middle, then hands over to its points
-      go(line, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 380, delay: 80, easing: 'cubic-bezier(.2,.75,.2,1)' });
+      go(line, [{ transform: 'scaleX(' + P + ')' }, { transform: 'scaleX(1)' }], { duration: 400, delay: 30, easing: 'cubic-bezier(.3,.6,.2,1)' });
       go(line, [{ opacity: 1 }, { opacity: 0 }], { duration: 150, delay: ms(0.5), easing: 'linear' });
-      go(lineGlow, [{ transform: 'scaleX(0)', opacity: 0 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.45 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.7 }, { transform: 'scaleX(1.1)', opacity: 0 }], {
+      go(lineGlow, [{ transform: 'scaleX(' + P + ')', opacity: 0.5 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.45 }, { transform: 'scaleX(1)', opacity: 1, offset: 0.7 }, { transform: 'scaleX(1.1)', opacity: 0 }], {
         duration: 720,
-        delay: 80,
+        delay: 30,
         easing: 'ease-out',
       });
 
@@ -369,24 +390,59 @@
     // ---------- leaving ----------
 
     var appReady = !first;
+    var readyAt = appReady ? now() : 0;
     var timeUp = false;
     var leaving = false;
+    var playing = false;
     api.ready = function () {
+      if (appReady) return;
       appReady = true;
+      readyAt = now();
       leave(false);
     };
-    setTimeout(function () {
-      timeUp = true;
-      leave(false);
-    }, HOLD);
     var safety = setTimeout(function () {
       appReady = timeUp = true;
       leave(false);
-    }, 6000);
+    }, 9000);
     root.addEventListener('pointerdown', function () {
       timeUp = true;
       leave(true);
     });
+
+    // start the piece once the app is built and 8 frames in a row came on time
+    // (or 1.5 s after the app was ready, whatever the frames do)
+    if (reduce) startClock();
+    else {
+      var last = 0;
+      var even = 0;
+      var frame = function (t) {
+        if (leaving || playing) return;
+        if (last) even = t - last < 24 ? even + 1 : 0;
+        last = t;
+        if (appReady && (even >= 8 || now() - readyAt > 1500)) {
+          playing = true;
+          waiting.forEach(function (a) {
+            a.cancel();
+          });
+          line.style.opacity = '';
+          lineGlow.style.opacity = '';
+          choreograph();
+          startClock();
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }
+    function startClock() {
+      setTimeout(function () {
+        timeUp = true;
+        leave(false);
+      }, HOLD);
+    }
+    function now() {
+      return window.performance && performance.now ? performance.now() : Date.now();
+    }
 
     function leave(fast) {
       if (leaving || !appReady || !timeUp) return;
@@ -408,12 +464,13 @@
     }
 
     function done() {
-      anims.forEach(function (a) {
+      waiting.concat(anims).forEach(function (a) {
         try {
           a.cancel();
         } catch (e) {}
       });
       anims = [];
+      waiting = [];
       if (root.parentNode) root.parentNode.removeChild(root);
       api.active = false;
       api.ready = function () {};
@@ -426,6 +483,7 @@
   // ---------- start ----------
 
   if (saved.intro === false || !Element.prototype.animate) {
+    shown();
     loadApp();
     return;
   }
@@ -440,6 +498,7 @@
     var r = document.getElementById('intro');
     if (r) r.parentNode.removeChild(r);
     api.active = false;
+    shown();
     loadApp();
     return;
   }

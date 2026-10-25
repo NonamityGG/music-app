@@ -267,6 +267,8 @@ export function dragToClose(handle, panel, onClose, host = panel, { threshold = 
   });
   handle.addEventListener('pointermove', (e) => {
     if (!d || e.pointerId !== d.id) return;
+    // a sideways swipe (hSwipe) took this touch
+    if (handle._hSwipe || (e.target && e.target.closest && e.target.closest('[data-hswipe]'))) return (d = null);
     const dy = e.clientY - d.y0;
     if (!d.moved) {
       if (dy < 8) return;
@@ -298,6 +300,101 @@ export function dragToClose(handle, panel, onClose, host = panel, { threshold = 
   };
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
+}
+
+// Sideways swipe: the targets follow the finger; far or fast enough and they fly
+// off to that side and onSwipe('next' | 'prev') is called (left = next, right =
+// previous), otherwise they spring back. Gives way to a vertical pull.
+export function hSwipe(area, { targets, onSwipe, ignore = '', enabled = () => true, threshold = 72 }) {
+  let d = null;
+  const reset = (els) =>
+    els.forEach((el) => {
+      el.style.transform = '';
+      el.style.opacity = '';
+    });
+  area.addEventListener('pointerdown', (e) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0) || !enabled()) return;
+    if (ignore && e.target.closest && e.target.closest(ignore)) return;
+    d = { x0: e.clientX, y0: e.clientY, t0: performance.now(), dx: 0, on: false, id: e.pointerId, els: [] };
+  });
+  // dragging text or a picture natively would cancel the swipe
+  area.addEventListener('dragstart', (e) => e.preventDefault());
+  area.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+    if (!d.on) {
+      if (area.closest('.dragging') || area.classList.contains('dragging')) return (d = null);
+      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.2) {
+        if (Math.abs(dy) > 12) d = null; // it's a vertical move
+        return;
+      }
+      d.on = true;
+      area._hSwipe = true;
+      area.setAttribute('data-hswipe', '');
+      try {
+        area.setPointerCapture(d.id);
+      } catch {}
+      d.els = targets().filter(Boolean);
+      d.els.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
+    }
+    d.dx = dx;
+    const w = area.clientWidth || 320;
+    // a little resistance, a little tilt
+    const x = dx * 0.92;
+    d.els.forEach((el) => {
+      el.style.transform = `translateX(${x}px) rotate(${(x / w) * 5}deg)`;
+      el.style.opacity = String(1 - Math.min(0.55, (Math.abs(x) / w) * 0.9));
+    });
+  });
+  const end = (e) => {
+    if (!d || (e && e.pointerId !== d.id)) return;
+    const { on, dx, t0, els } = d;
+    d = null;
+    area._hSwipe = false;
+    area.removeAttribute('data-hswipe');
+    if (!on) return;
+    // a swipe is not a tap
+    const swallow = (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
+    area.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => area.removeEventListener('click', swallow, { capture: true }), 350);
+    const w = area.clientWidth || 320;
+    const v = dx / Math.max(1, performance.now() - t0);
+    const go = e && e.type !== 'pointercancel' && (Math.abs(dx) > threshold || (Math.abs(v) > 0.45 && Math.abs(dx) > 24));
+    const from = els.map((el) => ({ transform: el.style.transform || 'none', opacity: el.style.opacity || '1' }));
+    if (go) {
+      const sign = dx < 0 ? -1 : 1;
+      els.forEach((el, i) => {
+        el.animate([from[i], { transform: `translateX(${sign * w * 0.9}px) rotate(${sign * 6}deg)`, opacity: 0 }], {
+          duration: 200,
+          easing: 'cubic-bezier(.4,0,1,1)',
+          fill: 'forwards',
+        });
+      });
+      reset(els);
+      onSwipe(dx < 0 ? 'next' : 'prev');
+    } else {
+      els.forEach((el, i) => el.animate([from[i], { transform: 'none', opacity: 1 }], { duration: 320, easing: 'cubic-bezier(.2,.9,.25,1.15)' }));
+      reset(els);
+    }
+  };
+  area.addEventListener('pointerup', end);
+  area.addEventListener('pointercancel', end);
+}
+
+// Brings in new content from the side a swipe went to (or back, if the track
+// didn't change after all).
+export function slideIn(el, dir, dist = 60) {
+  if (!el) return;
+  const sign = dir === 'next' ? 1 : -1;
+  el.getAnimations().forEach((a) => a.cancel());
+  el.animate([{ transform: `translateX(${sign * dist}px) scale(0.96)`, opacity: 0 }, { transform: 'none', opacity: 1 }], {
+    duration: 380,
+    easing: 'cubic-bezier(.2,.8,.2,1)',
+  });
 }
 
 // Text input dialog built on the sheet.

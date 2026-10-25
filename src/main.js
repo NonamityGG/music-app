@@ -1,7 +1,7 @@
 // App entry: builds the shell (tabs, mini player, full player) and wires events.
 
 import { App } from '@capacitor/app';
-import { h, icon, clear, fmtTime } from './util.js';
+import { h, icon, clear, fmtTime, afterIntro } from './util.js';
 import * as nav from './nav.js';
 import * as player from './player.js';
 import * as online from './online.js';
@@ -11,8 +11,9 @@ import { migrateFromZvuk } from './playlists.js';
 import { toExt as zvukToExt } from './zvuk-import.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, onLikeChange, searchInApp, openExternal } from './pages.js';
-import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose } from './components.js';
+import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose, hSwipe, slideIn } from './components.js';
 import { applyTheme, syncBars } from './theme.js';
+import { initScreen } from './screen.js';
 import { createLyricsView } from './lyrics-view.js';
 import { moreLike } from './endless.js';
 import { onLocalChange } from './local.js';
@@ -30,6 +31,7 @@ const TABS = [
 ];
 
 applyTheme();
+initScreen();
 
 const content = h('main', { class: 'content' });
 const tabIndicator = h('div', { class: 'tab-indicator', 'aria-hidden': 'true' });
@@ -111,8 +113,12 @@ function buildMini() {
   const playBtn = h('button', { class: 'icon-btn', 'aria-label': 'Пауза/играть', onclick: (e) => (e.stopPropagation(), player.toggle()) });
   const nextBtn = h('button', { class: 'icon-btn', 'aria-label': 'Следующий', onclick: (e) => (e.stopPropagation(), player.next()) }, icon('next', 26));
   const bar = h('div', { class: 'mini-progress' });
-  const el = h('div', { class: 'mini', hidden: true, onclick: () => openFull() }, bar, coverBox, h('div', { class: 'mini-text' }, title, sub), playBtn, nextBtn);
-  return { el, coverBox, title, sub, playBtn, bar };
+  const text = h('div', { class: 'mini-text' }, title, sub);
+  const el = h('div', { class: 'mini', hidden: true, onclick: () => openFull() }, bar, coverBox, text, playBtn, nextBtn);
+  // swipe left for the next track, right for the previous one
+  const targets = () => [coverBox, text];
+  hSwipe(el, { targets, ignore: 'button', onSwipe: (dir) => swipeTrack(dir, targets()) });
+  return { el, coverBox, title, sub, playBtn, bar, text };
 }
 
 let miniKey = '';
@@ -131,10 +137,30 @@ function paintMini() {
     clear(mini.coverBox).appendChild(cover(coverOf(t), 'cover cover-mini'));
     mini.title.textContent = t.title;
     mini.sub.textContent = t.artist || '';
-    if (!first) replay(mini.el, 'swap');
+    if (swipeDir) {
+      slideIn(mini.coverBox, swipeDir, 40);
+      slideIn(mini.text, swipeDir, 40);
+    } else if (!first) replay(mini.el, 'swap');
   }
   paintPlayButtons();
   ensureLoop();
+}
+
+// ---------- swiping between tracks ----------
+
+let swipeDir = ''; // the side the next track's cover comes in from
+let swipeTimer = 0;
+function swipeTrack(dir, flown) {
+  const before = player.current() && player.current().key;
+  swipeDir = dir;
+  clearTimeout(swipeTimer);
+  if (dir === 'next') player.next();
+  else player.prev(true);
+  swipeTimer = setTimeout(() => {
+    swipeDir = '';
+    // nowhere to go (start of the list): what flew away comes back
+    if ((player.current() && player.current().key) === before) for (const el of flown) slideIn(el, dir === 'next' ? 'prev' : 'next');
+  }, 700);
 }
 
 // Restarts a one-shot CSS animation class.
@@ -396,6 +422,9 @@ function buildFull() {
   };
   // pull the player down to close it
   dragToClose(el, el, () => closeFull(), el, { threshold: 140, ignore: '.wave, .controls, .full-bottom, .full-meta button, .sheet, .lyrics' });
+  // swipe the cover sideways to change the track
+  const artTargets = () => [art.querySelector('.cover-full:not(.cover-out)'), el.querySelector('.full-meta-text')];
+  hSwipe(art, { targets: artTargets, onSwipe: (dir) => swipeTrack(dir, artTargets()) });
   // tap the cover: waves take the whole stage, tap again to bring the cover back
   art.addEventListener('click', () => {
     saveSettings({ wavesFocus: !settings.wavesFocus });
@@ -416,9 +445,17 @@ let fullKey = '';
 let bgFront = 0;
 
 // A new cover slides in over the old one instead of blinking.
-function swapCover(src) {
+function swapCover(src, dir = '') {
   const old = full.art.querySelector('.cover-full:not(.cover-out)');
   const next = cover(src ? src.replace(/size=\d+x\d+/, 'size=600x600') : '', 'cover cover-full');
+  if (old && dir) {
+    // after a swipe the old cover has already flown off; the new one follows from the other side
+    old.classList.add('cover-out');
+    setTimeout(() => old.remove(), 260);
+    full.art.appendChild(next);
+    slideIn(next, dir, 90);
+    return;
+  }
   if (old) {
     old.classList.add('cover-out');
     setTimeout(() => old.remove(), 420);
@@ -448,13 +485,14 @@ function paintFull() {
     const changedTrack = !fullKey.startsWith(t.key + '|');
     const first = !fullKey;
     fullKey = key;
-    swapCover(c);
+    swapCover(c, changedTrack ? swipeDir : '');
     swapBackground(c);
     waves.burst(700);
     clear(full.thumb).appendChild(cover(c, 'cover'));
     full.title.textContent = t.title;
     full.artist.textContent = t.artist || '';
-    if (changedTrack && !first) replay(full.el.querySelector('.full-meta-text'), 'swap');
+    if (changedTrack && swipeDir) slideIn(full.el.querySelector('.full-meta-text'), swipeDir, 50);
+    else if (changedTrack && !first) replay(full.el.querySelector('.full-meta-text'), 'swap');
   }
   if (settings.lyricsOn && !full.el.hidden) lyricsView.show(t);
   full.lyricsBtn.classList.toggle('active', !!settings.lyricsOn);
@@ -698,6 +736,12 @@ function assemble(e) {
   bgCanvas.animate([{ opacity: 0 }, { opacity: op }], { duration: 1000 * k, delay: 150 * k, easing: 'ease-out', fill: 'backwards' });
 }
 window.addEventListener('rez-intro-out', assemble);
+// the parts that come forward get their own GPU layers while the intro still
+// covers them, so nothing has to be painted at the moment they start moving
+const introOn = (on) => document.body.classList.toggle('intro-on', on);
+if (window.rezIntro && window.rezIntro.active) introOn(true);
+window.addEventListener('rez-intro-in', () => introOn(true));
+window.addEventListener('rez-intro-done', () => introOn(false));
 window.addEventListener('rez-intro-in', () => syncBars()); // replayed from the profile
 const introReady = () => window.rezIntro && window.rezIntro.ready();
 setTimeout(introReady, 3500); // never keep the intro waiting on a slow start
@@ -714,7 +758,7 @@ setTimeout(introReady, 3500); // never keep the intro waiting on a slow start
       migrateFromZvuk(zvukToExt);
       saveSettings({ migrated11: true });
     }
-    resumeMatching();
+    afterIntro(resumeMatching);
     player.setContinuation(moreLike);
     player.initMediaSession({
       onLike: async () => {
@@ -727,7 +771,7 @@ setTimeout(introReady, 3500); // never keep the intro waiting on a slow start
     });
     player.restoreQueue();
     paintMini();
-    if (online.isLoggedIn()) likedIds().then(syncNotificationLike).catch(() => {});
+    if (online.isLoggedIn()) afterIntro(() => likedIds().then(syncNotificationLike).catch(() => {}));
     onAccountsChange(() => {
       resumeMatching();
       if (online.isLoggedIn()) likedIds(true).then(syncNotificationLike).catch(() => {});

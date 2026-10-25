@@ -339,6 +339,8 @@ function bandAt(d) {
   return bands_[Math.min(BANDS - 1, Math.floor(d * BANDS * 0.82))];
 }
 let bands_ = bands;
+// slow, private copies of the levels for the ribbons (see DRAW.ribbons)
+const rib = { lift: 0.2, mid: 0, en: 0, ph1: 0, ph2: 0 };
 
 const DRAW = {
   neon(f, b) {
@@ -370,14 +372,24 @@ const DRAW = {
   },
 
   ribbons(f) {
-    const { ctx, w, cy, amp, dpr, t } = f;
+    const { ctx, w, cy, dpr } = f;
+    const dt = Math.min(0.1, Math.max(0, f.dt || 0.016));
+    // Ribbons are long smooth lines: fed the raw beat they jumped on every kick
+    // and looked frantic. They follow their own slow versions of the levels, and
+    // loudness speeds up the flow instead of shaking the lines.
+    const amp = f.amp / (1 + beatPulse * 0.22);
+    const glide = (cur, target, up, down) => cur + (target - cur) * (1 - Math.exp(-dt / (target > cur ? up : down)));
+    rib.lift = glide(rib.lift, 0.16 + bass * 0.75 + energy * 0.45, 0.22, 0.6);
+    rib.mid = glide(rib.mid, mid, 0.3, 0.7);
+    rib.en = glide(rib.en, energy, 0.35, 0.8);
+    rib.ph1 += dt * (0.9 + rib.en * 0.9);
+    rib.ph2 += dt * (1.4 + rib.en * 1.1);
     const lines = 18;
     const step = 5 * dpr;
     ctx.save();
     ctx.globalCompositeOperation = f.blend;
     ctx.strokeStyle = f.g.h;
     ctx.lineWidth = 1.3 * dpr;
-    const lift = 0.12 + bass * 1.1 + energy * 0.5;
     for (let l = 0; l < lines; l++) {
       const p = l / (lines - 1);
       ctx.globalAlpha = 0.18 + 0.55 * (1 - Math.abs(p - 0.5) * 2);
@@ -385,11 +397,11 @@ const DRAW = {
       for (let x = 0; x <= w + step; x += step) {
         const u = x / w;
         const env = Math.pow(Math.sin(Math.PI * Math.min(1, Math.max(0, u))), 1.3);
-        const a = amp * lift * env;
+        const a = amp * rib.lift * env;
         const y =
           cy +
-          a * (Math.sin(u * 5.5 + t * 1.15 + p * 1.7) * 0.62 + Math.sin(u * 12.5 - t * 1.8 + p * 3.3) * 0.28 * (0.4 + mid * 1.6)) +
-          (p - 0.5) * amp * 0.42 * env * (0.6 + energy);
+          a * (Math.sin(u * 5.5 + rib.ph1 + p * 1.7) * 0.62 + Math.sin(u * 12.5 - rib.ph2 + p * 3.3) * 0.28 * (0.45 + rib.mid * 1.2)) +
+          (p - 0.5) * amp * 0.42 * env * (0.6 + rib.en);
         if (x === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }

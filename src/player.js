@@ -679,9 +679,11 @@ export function next(auto = false) {
   pause();
 }
 
-export function prev() {
+// A swipe always goes to the previous track; the button restarts a track that
+// has played for a while, like every player.
+export function prev(force = false) {
   if (!state.queue.length) return;
-  if (audio.currentTime > 4) {
+  if (!force && audio.currentTime > 4) {
     audio.currentTime = 0;
     return;
   }

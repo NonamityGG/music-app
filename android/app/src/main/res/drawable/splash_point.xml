@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ splash: the point of light the launch intro starts from. A 44dp
+     line in the middle of the screen, drawn out from its centre; the intro page
+     takes over with the same line in the same place. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="288dp"
+            android:height="288dp"
+            android:viewportWidth="288"
+            android:viewportHeight="288">
+            <group
+                android:name="line"
+                android:pivotX="144"
+                android:pivotY="144"
+                android:scaleX="0">
+                <path
+                    android:name="stroke"
+                    android:fillAlpha="0"
+                    android:pathData="M123,143 h42 a1,1 0 0 1 0,2 h-42 a1,1 0 0 1 0,-2 z">
+                    <aapt:attr name="android:fillColor">
+                        <gradient
+                            android:type="linear"
+                            android:startX="122"
+                            android:startY="144"
+                            android:endX="166"
+                            android:endY="144">
+                            <item android:offset="0" android:color="#007C4DFF" />
+                            <item android:offset="0.16" android:color="#FF7C4DFF" />
+                            <item android:offset="0.4" android:color="#FFCBB8FF" />
+                            <item android:offset="0.5" android:color="#FFFFFFFF" />
+                            <item android:offset="0.6" android:color="#FFFFC2EA" />
+                            <item android:offset="0.84" android:color="#FFFF5FBF" />
+                            <item android:offset="1" android:color="#00FF4FB4" />
+                        </gradient>
+                    </aapt:attr>
+                </path>
+            </group>
+        </vector>
+    </aapt:attr>
+    <target android:name="line">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="450"
+                android:startOffset="120"
+                android:interpolator="@android:interpolator/decelerate_cubic"
+                android:propertyName="scaleX"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+    <target android:name="stroke">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="300"
+                android:startOffset="120"
+                android:propertyName="fillAlpha"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+</animated-vector>
