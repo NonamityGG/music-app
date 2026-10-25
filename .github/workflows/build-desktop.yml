@@ -109,6 +109,12 @@ jobs:
           Shot "4-panel-text"
           Start-Sleep -Seconds 10
           Shot "5-after-audio-switch"
+          # Резонанс's own Start menu and Quick settings (opened by the self-test)
+          Start-Sleep -Seconds 5
+          Shot "10-start"
+          Start-Sleep -Seconds 6
+          Shot "11-quick"
+          Start-Sleep -Seconds 4
           # the mouse comes to the island: it should light up and drop down (real
           # mouse input, as from a hand: the island only hears that, not SetCursorPos)
           for ($i = 0; $i -le 12; $i++) {

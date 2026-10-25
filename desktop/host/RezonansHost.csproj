@@ -22,5 +22,7 @@
   <ItemGroup>
     <!-- JavaScriptSerializer for the JSON lines -->
     <Reference Include="System.Web.Extensions" />
+    <!-- app icons for the Start menu, and the font switch -->
+    <Reference Include="System.Drawing" />
   </ItemGroup>
 </Project>

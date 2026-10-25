@@ -35,6 +35,10 @@ const ISL_W = 560;
 const ISL_H = 300;
 const PANEL_W = 420;
 const PANEL_H = 680;
+const START_W = 680;
+const START_H = 760;
+const QUICK_W = 400;
+const QUICK_H = 600;
 const SELFTEST = process.env.REZONANS_SELFTEST === '1';
 
 // ---------- settings and log ----------
@@ -73,6 +77,10 @@ const DEFAULTS = {
   winAccent: true,
   winDark: false,
   winPrevalence: false,
+  winFont: true, // Onest for the whole of Windows
+  shellKeys: true, // the Win key, the Start button and the tray open Резонанс
+  guardGames: true, // sleep the shell (hooks + windows) while CS2 / FACEIT runs
+  startRecent: true, // the recent files on the Start menu
   autostart: true,
   attachMode: 'auto',
   firstRun: true,
@@ -220,7 +228,9 @@ function onHost(m) {
       styleWindows();
       sendOwn();
       applyWinColors();
+      applyShell();
       hostSend({ cmd: 'wallpaperPath' });
+      hostSend({ cmd: 'status' });
       break;
     case 'attached': {
       const w = walls.get(Number(m.id));
@@ -264,6 +274,30 @@ function onHost(m) {
       log('обои Windows: ' + (winWallpaper || 'не нашлись'));
       broadcastSettings();
       break;
+    case 'hotkey':
+      log('горячая: ' + m.key);
+      if (m.key === 'start') toggleStart();
+      else if (m.key === 'quick') toggleQuick();
+      break;
+    case 'apps':
+      appList = Array.isArray(m.list) ? m.list : [];
+      if (startWin && !startWin.isDestroyed()) startWin.webContents.send('apps', appList);
+      break;
+    case 'recent':
+      recentList = Array.isArray(m.list) ? m.list : [];
+      if (startWin && !startWin.isDestroyed()) startWin.webContents.send('recent', recentList);
+      break;
+    case 'status':
+      lastStatus = m;
+      if (quickWin && !quickWin.isDestroyed()) quickWin.webContents.send('status', m);
+      if (bar && !bar.isDestroyed()) bar.webContents.send('status', m);
+      break;
+    case 'fonts':
+      log('шрифт системы: ' + (m.applied ? 'Onest' : 'как было'));
+      break;
+    case 'guard':
+      onGuard(!!m.on);
+      break;
     case 'log':
       log('помощник: ' + m.msg);
       break;
@@ -283,13 +317,65 @@ function sendOwn() {
 
 function allWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel);
+  list.push(bar, island, panel, startWin, quickWin);
   return list.filter((w) => w && !w.isDestroyed());
+}
+
+function toggleStart() {
+  if (startWin && !startWin.isDestroyed() && startWin.isVisible()) return hideStart();
+  showStart();
+}
+function toggleQuick() {
+  if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) return hideQuick();
+  showQuick();
 }
 
 // rounded corners and a quiet border for the panel (Windows 11)
 function styleWindows() {
   if (panel && !panel.isDestroyed()) hostSend({ cmd: 'style', hwnd: hwndOf(panel), corner: 2, border: '#3a2d58', dark: true });
+}
+
+function fontsDir() {
+  return app.isPackaged ? path.join(process.resourcesPath, 'fonts') : path.join(__dirname, 'build', 'fonts');
+}
+
+// the system font and the Win-key / Start / tray takeover; sent on every start
+// because installed fonts and hooks last only for the session
+function applyShell() {
+  if (!hostInfo) return;
+  if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
+  else hostSend({ cmd: 'fontsRestore' });
+  hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
+}
+
+// ---------- anti-cheat: the shell sleeps while CS2 or FACEIT runs ----------
+// The helper watches for those processes and says so; Резонанс then drops the
+// Win-key/Start hooks (what an anti-cheat might take for a cheat) and hides its
+// own windows, so nothing of ours is in the way during a match. It all comes
+// back the moment the game is closed. Chosen in the settings (guardGames).
+let acGuard = false;
+
+function shellKeysWanted() {
+  return !!settings.shellKeys && !(acGuard && settings.guardGames);
+}
+
+function onGuard(on) {
+  if (on === acGuard) return;
+  acGuard = on;
+  if (!settings.guardGames) return; // the user keeps the shell on in games
+  log(on ? 'запущена CS2/FACEIT — оболочка засыпает (безопасно для анти-чита)' : 'CS2/FACEIT закрыта — оболочка снова включена');
+  hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
+  setTopHidden(on, 'guard');
+  for (const w of walls.values()) {
+    if (w.win.isDestroyed()) continue;
+    w.paused = on;
+    w.win.webContents.send('pause', on);
+  }
+  if (on) {
+    hideStart();
+    hideQuick();
+    hidePanel();
+  } else fixTopSoon();
 }
 
 // ---------- what's playing ----------
@@ -320,7 +406,7 @@ function onMedia(m) {
 
 function mediaWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel);
+  list.push(bar, island, panel, quickWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -476,6 +562,24 @@ function onForeground(m) {
   const p = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
   const onMain = Math.abs(p.x - m.mx) < 4 && Math.abs(p.y - m.my) < 4;
   setTopHidden(!m.desktop && m.full && onMain, 'fg');
+  // another window just came to the front: make sure the bar and the island are
+  // still above it, or the logo stops taking clicks (after a snip, after a reboot)
+  assertTop();
+}
+
+// keep the bar and the island clickable: back on top when something else took it.
+// A snipping overlay or Explorer drawing over them after a reboot leaves them
+// below, where clicks never reach them; re-asserting on each foreground change
+// (throttled) brings them back within a moment.
+let lastAssert = 0;
+function assertTop() {
+  if (topHide.size !== 0) return;
+  const now = Date.now();
+  if (now - lastAssert < 350) return;
+  lastAssert = now;
+  for (const w of [bar, island]) {
+    if (w && !w.isDestroyed() && w.isVisible()) w.moveTop();
+  }
 }
 
 // ---------- the bar ----------
@@ -575,6 +679,15 @@ function fixTop() {
     const b = island.getBounds();
     if (Math.abs(b.x - want.x) > 2 || Math.abs(b.y - want.y) > 2) island.setBounds(want);
   }
+  // keep the bar and the island above Explorer, which can draw over them after a
+  // reboot — otherwise the logo stops taking clicks
+  if (topHide.size === 0) {
+    for (const w of [bar, island]) {
+      if (!w || w.isDestroyed()) continue;
+      if (!w.isVisible()) w.showInactive();
+      w.moveTop();
+    }
+  }
 }
 
 let fixTimers = [];
@@ -670,6 +783,8 @@ function createPanel() {
   panel.loadFile(path.join(__dirname, 'app', 'panel.html'));
   panel.on('blur', () => {
     if (dialogOpen || SELFTEST_PANEL) return;
+    // the click that opened it can arrive just after show and steal focus back
+    if (Date.now() - panelShownAt < 400) return;
     hidePanel();
   });
   panel.on('closed', () => {
@@ -726,6 +841,127 @@ function togglePanel(from, tab) {
   showPanel(from, tab);
 }
 
+// ---------- the Start menu and the Quick settings (instead of Windows') ----------
+
+let startWin = null;
+let quickWin = null;
+let appList = []; // the apps, cached between opens
+let recentList = [];
+let lastStatus = {};
+
+function shellPrefs() {
+  return { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false };
+}
+
+function createShellWindow(w, h) {
+  return new BrowserWindow({
+    width: w,
+    height: h,
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    hasShadow: true,
+    roundedCorners: true,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
+    title: 'Резонанс',
+    webPreferences: shellPrefs(),
+  });
+}
+
+function styleShell(win) {
+  if (win && !win.isDestroyed()) hostSend({ cmd: 'style', hwnd: hwndOf(win), corner: 2, border: '#3a2d58', dark: true });
+}
+
+function createStart() {
+  startWin = createShellWindow(START_W, START_H);
+  startWin.loadFile(path.join(__dirname, 'app', 'start.html'));
+  startWin.on('blur', () => {
+    if (SELFTEST_PANEL) return;
+    hideStart();
+  });
+  startWin.on('closed', () => {
+    startWin = null;
+  });
+  startWin.once('ready-to-show', () => { styleShell(startWin); sendOwn(); });
+}
+
+function createQuick() {
+  quickWin = createShellWindow(QUICK_W, QUICK_H);
+  quickWin.loadFile(path.join(__dirname, 'app', 'quick.html'));
+  quickWin.on('blur', () => {
+    if (SELFTEST_PANEL) return;
+    hideQuick();
+  });
+  quickWin.on('closed', () => {
+    quickWin = null;
+  });
+  quickWin.once('ready-to-show', () => { styleShell(quickWin); sendOwn(); });
+}
+
+let startHiddenAt = 0;
+let quickHiddenAt = 0;
+
+function hideStart() {
+  if (!startWin || startWin.isDestroyed() || !startWin.isVisible()) return;
+  startHiddenAt = Date.now();
+  startWin.webContents.send('shell', { open: false });
+  setTimeout(() => startWin && !startWin.isDestroyed() && !startWin._reopen && startWin.hide(), 180);
+}
+function hideQuick() {
+  if (!quickWin || quickWin.isDestroyed() || !quickWin.isVisible()) return;
+  quickHiddenAt = Date.now();
+  quickWin.webContents.send('shell', { open: false });
+  setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && quickWin.hide(), 180);
+}
+
+function showStart() {
+  if (Date.now() - startHiddenAt < 250) return hideStart();
+  if (!startWin || startWin.isDestroyed()) createStart();
+  const d = screen.getPrimaryDisplay();
+  const wa = d.workArea;
+  const h = Math.min(START_H, wa.height - 12);
+  const x = wa.x + 12;
+  const y = wa.y + wa.height - h - 12; // above the taskbar, bottom-left
+  startWin.setBounds({ x, y, width: START_W, height: h });
+  startWin.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
+  startWin.show();
+  startWin.focus();
+  refreshApps();
+  if (island && !island.isDestroyed()) island.moveTop();
+}
+
+function showQuick() {
+  if (Date.now() - quickHiddenAt < 250) return hideQuick();
+  if (!quickWin || quickWin.isDestroyed()) createQuick();
+  const d = screen.getPrimaryDisplay();
+  const wa = d.workArea;
+  const h = Math.min(QUICK_H, wa.height - 12);
+  const x = wa.x + wa.width - QUICK_W - 12; // above the tray, bottom-right
+  const y = wa.y + wa.height - h - 12;
+  quickWin.setBounds({ x, y, width: QUICK_W, height: h });
+  quickWin.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
+  quickWin.show();
+  quickWin.focus();
+  hostSend({ cmd: 'status' });
+  if (island && !island.isDestroyed()) island.moveTop();
+}
+
+let appsAt = 0;
+function refreshApps() {
+  // the list is cached; ask again at most every half minute
+  if (Date.now() - appsAt < 30000 && appList.length) return;
+  appsAt = Date.now();
+  hostSend({ cmd: 'apps' });
+  if (settings.startRecent) hostSend({ cmd: 'recent' });
+}
+
 function info() {
   return {
     version: app.getVersion(),
@@ -733,6 +969,7 @@ function info() {
     raised: hostInfo ? !!hostInfo.raised : null,
     helper: !!hostInfo,
     immersive: hostInfo ? hostInfo.immersive : '',
+    guard: acGuard,
     colors: lastColors,
     colorsSaved: !!winBackup,
     walls: [...walls.values()].map((w) => ({ attached: w.attached, paused: w.paused })),
@@ -845,6 +1082,11 @@ function saveSettingsPatch(patch) {
     else closeIsland();
   }
   if (changed('autostart')) setAutostart(settings.autostart);
+  if (changed('winFont')) {
+    if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
+    else hostSend({ cmd: 'fontsRestore' });
+  }
+  if (changed('shellKeys') || changed('guardGames')) hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
   if (changed('attachMode')) rebuild('другой способ встраивания');
   if (changed('palette') || changed('winAccent') || changed('winDark') || changed('winPrevalence')) applyWinColors();
   if (changed('bg') && settings.bg === 'windows') hostSend({ cmd: 'wallpaperPath' });
@@ -952,6 +1194,20 @@ function selftest() {
   });
   // as if the headphones were plugged in: everything must listen again
   at(43, () => onHost({ type: 'audio', event: 'selftest' }));
+  // the Start menu and the Quick settings (opened here; CI photographs them)
+  at(47, () => {
+    SELFTEST_PANEL = true;
+    showStart();
+  });
+  at(53, () => {
+    if (startWin && !startWin.isDestroyed()) startWin.hide();
+    showQuick();
+  });
+  at(59, () => {
+    SELFTEST_PANEL = false;
+    if (startWin && !startWin.isDestroyed()) startWin.hide();
+    if (quickWin && !quickWin.isDestroyed()) quickWin.hide();
+  });
 }
 
 // ---------- start ----------
@@ -1020,6 +1276,26 @@ if (!app.requestSingleInstanceLock()) {
       else if (name === 'lyricsAgain' && lyricKey) loadLyrics(lyricKey);
     });
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
+    ipcMain.on('shell', (e, cmd, arg) => {
+      if (cmd === 'startClose') hideStart();
+      else if (cmd === 'quickClose') hideQuick();
+      else if (cmd === 'launch') {
+        hostSend({ cmd: 'launch', path: arg && arg.path, args: (arg && arg.args) || '' });
+        hideStart();
+      } else if (cmd === 'appsFolder') {
+        hostSend({ cmd: 'appsFolder' });
+        hideStart();
+      } else if (cmd === 'power') hostSend({ cmd: 'power', action: arg && arg.action });
+      else if (cmd === 'volume') hostSend({ cmd: 'volume', level: arg && arg.level });
+      else if (cmd === 'mute') hostSend({ cmd: 'mute', on: !!(arg && arg.on) });
+      else if (cmd === 'radio') hostSend({ cmd: 'radio', kind: arg && arg.kind, on: !!(arg && arg.on) });
+      else if (cmd === 'status') hostSend({ cmd: 'status' });
+      else if (cmd === 'media') hostSend({ cmd: 'media', action: arg && arg.action, pos: -1 });
+      else if (cmd === 'settings') showPanel('center', arg && arg.tab);
+      else if (cmd === 'openStart') showStart();
+      else if (cmd === 'openQuick') showQuick();
+      else if (cmd === 'openSettingsApp') hostSend({ cmd: 'launch', path: 'ms-settings:', args: '' });
+    });
 
     tray = new Tray(app.isPackaged ? path.join(process.resourcesPath, 'tray.ico') : path.join(__dirname, 'build', 'tray.ico'));
     tray.setToolTip('Резонанс');
@@ -1031,6 +1307,10 @@ if (!app.requestSingleInstanceLock()) {
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
     if (settings.island) createIsland();
+    // Explorer can draw over the bar and the island for a few seconds after a
+    // reboot: keep nudging them back on top, so the logo takes clicks at once
+    fixTopSoon();
+    for (const ms of [2500, 5000, 9000]) setTimeout(fixTop, ms);
     if (SELFTEST) setTimeout(selftest, 3000);
     else if (settings.seen !== app.getVersion()) {
       // a new version: show the new panel once

@@ -26,6 +26,8 @@ await build({
     bar: join(here, 'web', 'bar.js'),
     island: join(here, 'web', 'island.js'),
     panel: join(here, 'web', 'panel.js'),
+    start: join(here, 'web', 'start.js'),
+    quick: join(here, 'web', 'quick.js'),
   },
   bundle: true,
   format: 'iife',
@@ -36,7 +38,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css', 'island.html', 'island.css', 'panel.html', 'panel.css']) copyFileSync(join(here, 'web', f), join(out, f));
+for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css', 'island.html', 'island.css', 'panel.html', 'panel.css', 'start.html', 'start.css', 'quick.html', 'quick.css']) copyFileSync(join(here, 'web', f), join(out, f));
 
 const ranges = {
   cyrillic: 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116',

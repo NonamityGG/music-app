@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+    <title>Резонанс — быстрые настройки</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="quick.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true">
+      <div class="glow"></div>
+      <div class="tint"></div>
+      <canvas id="waves"></canvas>
+    </div>
+
+    <main class="root">
+      <header class="qhead">
+        <div>
+          <span class="clock" id="clock"></span>
+          <span class="date" id="date"></span>
+        </div>
+        <div class="netline" id="netline"></div>
+      </header>
+
+      <section class="np hidden" id="np">
+        <span class="cover" id="cover" aria-hidden="true"></span>
+        <div class="np-body">
+          <div class="np-app" id="npApp"></div>
+          <div class="np-title" id="npTitle">Ничего не играет</div>
+          <div class="np-artist" id="npArtist"></div>
+          <div class="np-ctl">
+            <button id="prev" aria-label="Предыдущий"></button>
+            <button id="play" class="play" aria-label="Играть или пауза"></button>
+            <button id="next" aria-label="Следующий"></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tiles" id="tiles"></section>
+
+      <section class="slider" id="volRow">
+        <button class="sl-ic" id="volIc" aria-label="Звук"></button>
+        <input id="vol" type="range" min="0" max="100" value="50" />
+        <span class="sl-v" id="volVal">50</span>
+      </section>
+
+      <section class="battery hidden" id="batRow">
+        <span class="bat-ic" id="batIc" aria-hidden="true"></span>
+        <span id="batText">Батарея</span>
+      </section>
+
+      <footer class="foot">
+        <button class="chip" id="rezSettings" title="Настройки Резонанса"><span class="mark"><i></i><i></i><i></i><i></i></span><span>Резонанс</span></button>
+        <div class="foot-r">
+          <button class="icn" id="winSettings" title="Настройки Windows" aria-label="Настройки Windows"></button>
+          <button class="icn" id="power" title="Питание" aria-label="Питание"></button>
+        </div>
+      </footer>
+      <div class="pw-menu hidden" id="pwMenu"></div>
+    </main>
+    <script src="quick.js"></script>
+  </body>
+</html>

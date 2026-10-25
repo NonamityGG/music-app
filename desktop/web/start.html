@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+    <title>Резонанс — Пуск</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="start.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true">
+      <div class="glow"></div>
+      <div class="tint"></div>
+      <canvas id="waves"></canvas>
+    </div>
+
+    <main class="root">
+      <header class="top">
+        <div class="brand"><span class="mark"><i></i><i></i><i></i><i></i></span><b>Резонанс</b></div>
+        <div class="now">
+          <span class="clock" id="clock"></span>
+          <span class="date" id="date"></span>
+        </div>
+      </header>
+
+      <div class="search">
+        <span class="s-ic" id="searchIcon" aria-hidden="true"></span>
+        <input id="q" type="text" placeholder="Поиск приложений и файлов" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <div class="scroll" id="scroll">
+        <section class="pinned" id="pinnedSec">
+          <div class="sec-h">Закреплено</div>
+          <div class="grid" id="pinned"></div>
+        </section>
+        <section class="recent" id="recentSec">
+          <div class="sec-h">Недавние файлы</div>
+          <div class="list" id="recent"></div>
+        </section>
+        <section class="all" id="allSec">
+          <div class="sec-h">Все приложения</div>
+          <div class="list" id="apps"></div>
+        </section>
+        <section class="results hidden" id="resultsSec">
+          <div class="list" id="results"></div>
+          <div class="empty hidden" id="empty"></div>
+        </section>
+      </div>
+
+      <footer class="foot">
+        <button class="who" id="who" title="Учётная запись">
+          <span class="ava" id="ava" aria-hidden="true"></span>
+          <span class="uname" id="uname">Пользователь</span>
+        </button>
+        <button class="pw" id="power" aria-label="Питание"></button>
+      </footer>
+      <div class="pw-menu hidden" id="pwMenu"></div>
+    </main>
+    <script src="start.js"></script>
+  </body>
+</html>

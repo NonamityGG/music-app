@@ -23,4 +23,10 @@ contextBridge.exposeInMainWorld('rez', {
   islandMouse: (on) => ipcRenderer.send('island-mouse', !!on),
   action: (name) => ipcRenderer.send('action', name),
   log: (msg) => ipcRenderer.send('log', String(msg)),
+  // the Start menu and the Quick settings
+  shell: (cmd, arg) => ipcRenderer.send('shell', cmd, arg),
+  onShell: on('shell'),
+  onApps: on('apps'),
+  onRecent: on('recent'),
+  onStatus: on('status'),
 });

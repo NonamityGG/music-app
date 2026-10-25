@@ -82,6 +82,7 @@ namespace Rezonans
 
         private static void Cleanup()
         {
+            try { Hooks.Remove(); } catch { }
             try { AppBar.Remove(); } catch { }
             try { Wallpaper.Refresh(); } catch { }
         }
@@ -224,6 +225,49 @@ namespace Rezonans
                     }
                 case "wallpaperPath":
                     Send(new Dictionary<string, object> { { "type", "wallpaperPath" }, { "path", Wallpaper.CurrentPath() } });
+                    break;
+                case "fontsInstall":
+                    Fonts.Install(Str(c, "dir"));
+                    Fonts.Apply();
+                    break;
+                case "fontsApply":
+                    Fonts.Apply();
+                    break;
+                case "fontsRestore":
+                    Fonts.Restore();
+                    break;
+                case "shellHooks":
+                    if (Bool(c, "on") == false) Hooks.Remove();
+                    else Hooks.Install();
+                    break;
+                case "apps":
+                    Send(new Dictionary<string, object> { { "type", "apps" }, { "list", Apps.List() } });
+                    break;
+                case "recent":
+                    Send(new Dictionary<string, object> { { "type", "recent" }, { "list", Apps.Recent() } });
+                    break;
+                case "launch":
+                    Apps.Launch(Str(c, "path"), Str(c, "args"));
+                    break;
+                case "appsFolder":
+                    Apps.Launch("explorer.exe", "shell:AppsFolder");
+                    break;
+                case "power":
+                    Apps.Power(Str(c, "action"));
+                    break;
+                case "status":
+                    Send(Status.Snapshot());
+                    break;
+                case "volume":
+                    Status.SetVolume(Int(c, "level"));
+                    Send(Status.Snapshot());
+                    break;
+                case "mute":
+                    Status.SetMute(Bool(c, "on") == true);
+                    Send(Status.Snapshot());
+                    break;
+                case "radio":
+                    new Thread(() => { Status.SetRadio(Str(c, "kind"), Bool(c, "on") == true); Send(Status.Snapshot()); }) { IsBackground = true }.Start();
                     break;
                 case "quit":
                     return false;
@@ -635,14 +679,44 @@ namespace Rezonans
         {
             var t = new Thread(() =>
             {
+                int n = 0;
                 while (true)
                 {
                     try { Tick(); }
                     catch (Exception e) { Program.Log("окна: " + e.Message); }
+                    try { if (n++ % 3 == 0) CheckGuard(); }
+                    catch (Exception e) { Program.Log("античит-проверка: " + e.Message); }
                     Thread.Sleep(700);
                 }
             }) { IsBackground = true, Name = "fg" };
             t.Start();
+        }
+
+        // An anti-cheat game or client is running: Резонанс should sleep (the main
+        // process drops the Win-key hooks and hides its windows). Matched by
+        // process name so it fires as the anti-cheat starts, not only in-game.
+        private static readonly string[] GuardNames = { "cs2", "csgo", "faceit" };
+        private static bool _guard;
+
+        private static void CheckGuard()
+        {
+            bool found = false;
+            var procs = System.Diagnostics.Process.GetProcesses();
+            foreach (var p in procs)
+            {
+                try
+                {
+                    var nm = p.ProcessName.ToLowerInvariant();
+                    foreach (var g in GuardNames) if (nm.Contains(g)) { found = true; break; }
+                }
+                catch { }
+                finally { p.Dispose(); }
+                if (found) break;
+            }
+            if (found == _guard) return;
+            _guard = found;
+            Program.Send(new Dictionary<string, object> { { "type", "guard" }, { "on", found } });
+            Program.Log(found ? "замечена CS2/FACEIT" : "CS2/FACEIT закрыта");
         }
 
         private static string ClassOf(IntPtr h)
