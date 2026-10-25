@@ -296,8 +296,18 @@ namespace Rezonans
             Native.SetParent(h, parent);
             var p = new Native.POINT { X = screen.Left, Y = screen.Top };
             Native.ScreenToClient(parent, ref p);
-            Native.SetWindowPos(h, after, p.X, p.Y, screen.Right - screen.Left, screen.Bottom - screen.Top,
-                Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW | Native.SWP_FRAMECHANGED);
+            int w = screen.Right - screen.Left, hgt = screen.Bottom - screen.Top;
+            Native.SetWindowPos(h, after, p.X, p.Y, w, hgt, Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW | Native.SWP_FRAMECHANGED);
+            // if the window kept a resize border, its picture would stop short of the
+            // screen edges: grow the window by the border so the picture fills it all
+            if (Native.GetClientRect(h, out var cr) && (cr.Right < w || cr.Bottom < hgt))
+            {
+                var c0 = new Native.POINT();
+                Native.ClientToScreen(h, ref c0);
+                int bl = c0.X - screen.Left, bt = c0.Y - screen.Top;
+                Native.SetWindowPos(h, after, p.X - bl, p.Y - bt, w + (w - cr.Right), hgt + (hgt - cr.Bottom), Native.SWP_NOACTIVATE | Native.SWP_SHOWWINDOW);
+                res["border"] = bl + "," + bt;
+            }
             if (raised && mode != "worker")
             {
                 var ww = RaisedWorker(progman);
@@ -687,6 +697,8 @@ namespace Rezonans
         [DllImport("user32.dll", SetLastError = true)] internal static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] internal static extern bool ScreenToClient(IntPtr h, ref POINT p);
         [DllImport("user32.dll")] internal static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] internal static extern bool GetClientRect(IntPtr h, out RECT r);
+        [DllImport("user32.dll")] internal static extern bool ClientToScreen(IntPtr h, ref POINT p);
         [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] internal static extern bool IsZoomed(IntPtr h);
         [DllImport("user32.dll")] internal static extern bool IsWindow(IntPtr h);

@@ -142,7 +142,7 @@ function onHost(m) {
       break;
     case 'attached': {
       const w = walls.get(Number(m.id));
-      log(`обои на экране ${m.id}: ${m.ok ? 'встали' : 'НЕ встали'} (${m.how || m.mode || ''}${m.error ? ', ' + m.error : ''}, ${m.at || ''})`);
+      log(`обои на экране ${m.id}: ${m.ok ? 'встали' : 'НЕ встали'} (${m.how || m.mode || ''}${m.error ? ', ' + m.error : ''}, ${m.at || ''}${m.border ? ', рамка ' + m.border : ''})`);
       if (!w) break;
       w.attached = !!m.ok;
       if (m.ok) w.win.showInactive();
@@ -210,6 +210,7 @@ function createWall(d) {
     maximizable: false,
     fullscreenable: false,
     hasShadow: false,
+    thickFrame: false, // no resize border: the picture must reach every edge
     backgroundColor: '#0f0b16',
     title: 'Rezonans wallpaper',
     webPreferences: { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false },
