@@ -48,6 +48,9 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         current = this;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // the box's own screen saver doesn't come over Резонанс OS: it has its own.
+        // After a long time without keys the page lets go (keepAwake(false)).
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         immersive();
 
         WebView.setWebContentsDebuggingEnabled(true);

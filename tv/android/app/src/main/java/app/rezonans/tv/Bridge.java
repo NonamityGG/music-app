@@ -298,6 +298,17 @@ final class Bridge {
         });
     }
 
+    // ---------- the screen ----------
+
+    /** On: the box doesn't dim, sleep or start its own screen saver while Резонанс OS is shown. */
+    @JavascriptInterface
+    public void keepAwake(boolean on) {
+        a.ui.post(() -> {
+            if (on) a.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else a.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        });
+    }
+
     // ---------- misc ----------
 
     @JavascriptInterface

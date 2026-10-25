@@ -126,7 +126,7 @@ onChange((patch) => {
   if (has('clockSec')) home.tick();
   if (has('weather')) weather.start(onWeather);
   if (has('city')) weather.refresh();
-  if (has('saver')) resetIdle();
+  if (has('saver', 'sleep')) resetIdle();
 });
 
 // ---------- the remote ----------
@@ -370,7 +370,22 @@ function endMove() {
 // ---------- the screen saver comes after a while without keys ----------
 
 let idleTimer = 0;
+let sleepTimer = 0;
+
+// Резонанс OS holds the screen (the box's own saver stays away) until a long
+// time without keys has passed; then the box sleeps by its own settings
+function awake() {
+  clearTimeout(sleepTimer);
+  tv.keepAwake(true);
+  if (!(S.sleep > 0)) return;
+  sleepTimer = setTimeout(() => {
+    tv.log('долго без кнопок: экран отпущен');
+    tv.keepAwake(false);
+  }, S.sleep * 60000);
+}
+
 function resetIdle() {
+  awake();
   clearTimeout(idleTimer);
   if (!visible || !(S.saver > 0) || skipIntro) return;
   idleTimer = setTimeout(() => {

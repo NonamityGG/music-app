@@ -16,6 +16,7 @@ export const DEFAULTS = {
   saverLook: 'auto', // auto | clock | orb | waves
   saverText: 'soft', // soft | outline | glass
   saverWx: true,
+  sleep: 120, // minutes without keys, then the box sleeps by its own settings; 0 = never
   saverCover: true,
   inset: 0, // % of the screen kept free at the edges (TVs that cut them)
   city: null, // { name, lat, lon } chosen in the settings; null: found by the internet address

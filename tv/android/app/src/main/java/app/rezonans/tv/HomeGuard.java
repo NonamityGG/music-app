@@ -76,12 +76,18 @@ public class HomeGuard extends AccessibilityService {
         if (active() && SystemClock.elapsedRealtime() < 180000 && (MainActivity.current == null || !MainActivity.current.isVisible())) openOurs();
     }
 
+    private String lastPkg = "";
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent e) {
         if (e == null || e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = e.getPackageName();
         CharSequence cls = e.getClassName();
         if (pkg == null || cls == null) return;
+        if (!pkg.toString().equals(lastPkg)) {
+            lastPkg = pkg.toString();
+            android.util.Log.i(MainActivity.TAG, "в окне: " + pkg + "/" + cls);
+        }
         if (!active()) return;
         ComponentName home = stockHome(this);
         if (home == null || !home.getPackageName().contentEquals(pkg)) return;
