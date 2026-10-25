@@ -245,6 +245,17 @@ function items() {
     { key: 'saverCover', name: 'Цвета из обложки', sub: 'Волны и надписи в цветах того, что играет', bool: true },
     { act: 'saverNow', name: 'Показать заставку' },
     {
+      act: 'sysSaver',
+      name: 'Заставка поверх приложений',
+      sub:
+        info.sysSaver === 'ours'
+          ? 'Включено: вместо заставки приставки — эта (и при музыке в Звуке, и на паузе фильма). OK — вернуть заставку приставки'
+          : info.canSaver
+            ? 'Выключено: поверх приложений — заставка приставки. OK — включить эту'
+            : 'Включает установщик с компьютера (нужно разрешение, которое даёт только он)',
+      value: info.sysSaver === 'ours' ? 'Вкл' : 'Выкл',
+    },
+    {
       key: 'sleep',
       name: 'Сон приставки',
       sub: 'Пока на экране Резонанс OS, заставка Сбера не включается. Без нажатий столько времени — приставка засыпает как обычно',
@@ -324,6 +335,7 @@ function buildRow(it) {
     v.appendChild(el('span', '', c[1]));
     v.appendChild(icon('chevron', 'arr r'));
   } else if (it.act) {
+    if (it.value) v.appendChild(el('span', '', it.value));
     v.appendChild(icon('chevron', 'arr r'));
   } else if (it.info) {
     v.appendChild(el('span', '', it.value));

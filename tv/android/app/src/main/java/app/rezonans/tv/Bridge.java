@@ -163,6 +163,11 @@ final class Bridge {
 
     @JavascriptInterface
     public String info() {
+        return info(a);
+    }
+
+    /** About the box and what Резонанс OS may do on it (also for the screen saver). */
+    static String info(Context a) {
         JSONObject o = new JSONObject();
         try {
             PackageManager pm = a.getPackageManager();
@@ -175,7 +180,7 @@ final class Bridge {
                 PackageInfo wv = WebView.getCurrentWebViewPackage();
                 if (wv != null) o.put("webview", wv.packageName + " " + wv.versionName);
             }
-            o.put("home", isDefaultHome());
+            o.put("home", isDefaultHome(a));
             o.put("guard", HomeGuard.enabled(a));
             o.put("guardOn", Prefs.guard(a));
             o.put("notif", MediaHub.listenerEnabled(a));
@@ -196,15 +201,17 @@ final class Bridge {
                 o.put("ramFree", mi.availMem / (1024 * 1024));
                 o.put("lowRam", am.isLowRamDevice());
             }
+            o.put("sysSaver", SystemSaver.isOurs(a) ? "ours" : SystemSaver.current(a));
+            o.put("canSaver", SystemSaver.allowed(a));
             o.put("ip", ip());
-            o.put("net", network());
+            o.put("net", network(a));
         } catch (Exception e) {
             Log.w(MainActivity.TAG, "info: " + e);
         }
         return o.toString();
     }
 
-    private boolean isDefaultHome() {
+    private static boolean isDefaultHome(Context a) {
         Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
         ResolveInfo ri = a.getPackageManager().resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY);
         return ri != null && ri.activityInfo != null && a.getPackageName().equals(ri.activityInfo.packageName);
@@ -212,6 +219,10 @@ final class Bridge {
 
     @JavascriptInterface
     public String network() {
+        return network(a);
+    }
+
+    static String network(Context a) {
         try {
             ConnectivityManager cm = (ConnectivityManager) a.getSystemService(Context.CONNECTIVITY_SERVICE);
             NetworkInfo n = cm != null ? cm.getActiveNetworkInfo() : null;
@@ -254,7 +265,7 @@ final class Bridge {
         Prefs.set(a, "viz", on);
         a.ui.post(() -> {
             if (on && a.isVisible()) Viz.resume(a);
-            else Viz.stop();
+            else Viz.stopFor(a);
         });
     }
 
@@ -299,6 +310,25 @@ final class Bridge {
     }
 
     // ---------- the screen ----------
+
+    /** Our screen saver for the whole box (over apps too), or the box's own back. */
+    @JavascriptInterface
+    public boolean setSystemSaver(boolean on) {
+        if (SystemSaver.set(a, on)) return true;
+        // no permission: the system's own screen saver settings, if the box has them
+        return start(new Intent(Settings.ACTION_DREAM_SETTINGS));
+    }
+
+    /** Shows the screen saver now, the way the box would. */
+    @JavascriptInterface
+    public boolean testSystemSaver() {
+        try {
+            Intent i = new Intent(Intent.ACTION_MAIN).setClassName("com.android.systemui", "com.android.systemui.Somnambulator");
+            return start(i);
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     /** On: the box doesn't dim, sleep or start its own screen saver while Резонанс OS is shown. */
     @JavascriptInterface

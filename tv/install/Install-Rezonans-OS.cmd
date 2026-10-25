@@ -176,11 +176,23 @@ if ($cur -notlike "*$svc*") {
 }
 Shell 'settings put secure accessibility_enabled 1' | Out-Null
 Say '  Кнопка «Домой» → Резонанс OS: включено.'
+# the box's screen saver can be switched to Резонанс OS (over apps too)
+Shell "pm grant $pkg android.permission.WRITE_SECURE_SETTINGS" | Out-Null
+$oldSaver = Shell 'settings get secure screensaver_components'
 
 Step '6. Домашний экран'
 $r = Shell "cmd package set-home-activity $pkg/.MainActivity"
 Say ('  ' + ($(if ($r) { $r } else { 'Резонанс OS — домашний экран.' })))
-Shell "am start -n $pkg/.MainActivity" | Out-Null
+# the app switches the screen saver itself, so it remembers the box's own one
+Shell "am start -n $pkg/.MainActivity --ez sysSaver true" | Out-Null
+Start-Sleep -Seconds 2
+$newSaver = Shell 'settings get secure screensaver_components'
+if ($newSaver -like "*$pkg*") {
+  Say "  Заставка поверх приложений: Резонанс OS (была: $oldSaver)."
+  Say '  Выключить: Настройки Резонанс OS → Заставка → «Заставка поверх приложений».'
+} else {
+  Say "  Заставку приставки поменять не дали ($newSaver) — она останется своя." 'Yellow'
+}
 
 Write-Host ''
 Write-Host '  Готово! Посмотри на телевизор.' -ForegroundColor Green

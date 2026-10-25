@@ -21,6 +21,11 @@ $target = if ($ip -match ':\d+$') { $ip } else { "${ip}:5555" }
 & $adb connect $target | Out-Null
 $state = (& $adb -s $target get-state 2>&1 | Out-String).Trim()
 if ($state -ne 'device') { Write-Host "  Приставка не отвечает ($state)." -ForegroundColor Red; exit 1 }
+# the box's own screen saver back (the app remembers which it was)
+& $adb -s $target shell am start -n "$pkg/.MainActivity" --ez sysSaver false 2>&1 | Out-Null
+Start-Sleep -Seconds 2
+$saver = (& $adb -s $target shell settings get secure screensaver_components 2>&1 | Out-String).Trim()
+if ($saver -like "*$pkg*") { & $adb -s $target shell settings delete secure screensaver_components 2>&1 | Out-Null }
 $svc = "$pkg/$pkg.HomeGuard"
 $cur = (& $adb -s $target shell settings get secure enabled_accessibility_services | Out-String).Trim()
 $rest = ($cur -split ':' | Where-Object { $_ -and $_ -ne $svc -and $_ -ne 'null' }) -join ':'

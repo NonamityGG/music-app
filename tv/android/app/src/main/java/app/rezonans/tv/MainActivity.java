@@ -31,7 +31,7 @@ import org.json.JSONObject;
  * normal site (storage, fetch for the weather). The remote's arrows and OK go
  * to the page as keyboard keys; Back, Menu and Home come as events.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements Page {
 
     static final String TAG = "RezTV";
     static volatile MainActivity current;
@@ -108,8 +108,10 @@ public class MainActivity extends Activity {
         web.loadUrl(AssetServer.BASE + "index.html");
         web.requestFocus();
 
+        Page.All.add(this);
         MediaHub.attach(this);
         watchPackages();
+        fromInstaller(getIntent());
     }
 
     private void immersive() {
@@ -141,15 +143,22 @@ public class MainActivity extends Activity {
         else registerReceiver(packages, f);
     }
 
+    @Override
+    public android.content.Context context() {
+        return this;
+    }
+
     /** Sends an event to the page: window.__rezEmit(name, data). data is JSON. */
-    void emit(final String name, final String json) {
+    @Override
+    public void emit(final String name, final String json) {
         ui.post(() -> {
             if (web == null) return;
             web.evaluateJavascript("window.__rezEmit&&window.__rezEmit(" + JSONObject.quote(name) + "," + (json == null ? "null" : json) + ")", null);
         });
     }
 
-    boolean isVisible() {
+    @Override
+    public boolean isVisible() {
         return visible;
     }
 
@@ -215,9 +224,16 @@ public class MainActivity extends Activity {
         Viz.resume(this);
     }
 
+    // the installer (adb) switches the box's screen saver through here, so the
+    // box's own one is remembered and can be given back
+    private void fromInstaller(Intent i) {
+        if (i != null && i.hasExtra("sysSaver")) SystemSaver.set(this, i.getBooleanExtra("sysSaver", false));
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        fromInstaller(intent);
         // the Home button while Резонанс OS is already in front: back to the top
         if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) emit("key", "\"home\"");
     }
@@ -241,7 +257,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         visible = false;
         emit("visible", "false");
-        Viz.stop();
+        Viz.stopFor(this);
         // an app is in front: the home screen sleeps (no drawing, no timers),
         // so the box's processor and memory are the app's
         final WebView w = web;
@@ -268,7 +284,8 @@ public class MainActivity extends Activity {
             if (packages != null) unregisterReceiver(packages);
         } catch (Exception ignored) {
         }
-        Viz.stop();
+        Viz.stopFor(this);
+        Page.All.remove(this);
         if (current == this) current = null;
         if (web != null) {
             web.removeJavascriptInterface("RezTV");

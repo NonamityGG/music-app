@@ -21,18 +21,22 @@ final class Viz {
     private static final float[] bands = new float[BANDS];
     private static final float[] wave = new float[WAVE];
     private static boolean failed;
+    private static volatile Page target;
 
     private Viz() {
     }
 
-    static void resume(MainActivity a) {
-        boolean want = a.isVisible() && Prefs.viz(a) && MediaHub.playing();
+    static void resume(Page a) {
+        if (a == null) return;
+        android.content.Context c = a.context();
+        boolean want = a.isVisible() && Prefs.viz(c) && MediaHub.playing();
         if (!want) {
-            stop();
+            if (target == null || target == a) stop();
             return;
         }
+        target = a;
         if (v != null || failed) return;
-        if (Build.VERSION.SDK_INT >= 23 && a.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return;
+        if (Build.VERSION.SDK_INT >= 23 && c.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return;
         try {
             v = new Visualizer(0);
             int[] range = Visualizer.getCaptureSizeRange();
@@ -49,7 +53,8 @@ final class Viz {
                 @Override
                 public void onFftDataCapture(Visualizer vis, byte[] fft, int samplingRate) {
                     fill(fft, fs / 1000f);
-                    send(a);
+                    Page t = target;
+                    if (t != null) send(t);
                 }
             }, rate, true, true);
             v.setEnabled(true);
@@ -60,6 +65,11 @@ final class Viz {
         }
     }
 
+    /** Stops the sound for this page only (another may have it now). */
+    static void stopFor(Page p) {
+        if (target == null || target == p) stop();
+    }
+
     static void stop() {
         if (v == null) return;
         try {
@@ -68,6 +78,7 @@ final class Viz {
         } catch (Throwable ignored) {
         }
         v = null;
+        target = null;
     }
 
     private static void fill(byte[] fft, float fs) {
@@ -97,7 +108,7 @@ final class Viz {
         }
     }
 
-    private static void send(MainActivity a) {
+    private static void send(Page a) {
         long now = SystemClock.uptimeMillis();
         if (now - lastSend < 45) return;
         lastSend = now;

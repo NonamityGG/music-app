@@ -333,7 +333,7 @@ final class MediaHub {
     }
 
     private static String label(String pkg) {
-        MainActivity a = MainActivity.current;
+        Context a = app;
         if (a == null) return pkg;
         try {
             PackageManager pm = a.getPackageManager();
@@ -344,13 +344,11 @@ final class MediaHub {
     }
 
     private static void publish(boolean always) {
-        MainActivity a = MainActivity.current;
-        if (a == null) return;
         String j = json();
         if (!always && j.equals(lastJson)) return;
         lastJson = j;
-        a.emit("media", j);
-        a.ui.post(() -> Viz.resume(a));
+        Page.All.emit("media", j);
+        main.post(() -> Viz.resume(Page.All.shown()));
     }
 
     static synchronized void action(String what) {

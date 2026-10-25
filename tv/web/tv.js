@@ -49,6 +49,8 @@ export const tv = {
   iconUrl: (pkg, banner) => (M() ? M().icon(pkg, banner) : `${BASE}icon/${encodeURIComponent(pkg)}${banner ? '?k=banner' : ''}`),
   artUrl: (v) => (M() ? M().art(v) : `${BASE}art?v=${v}`),
   keepAwake: (on) => N && N.keepAwake && N.keepAwake(!!on),
+  setSystemSaver: (on) => (N && N.setSystemSaver ? N.setSystemSaver(!!on) : false),
+  testSystemSaver: () => (N && N.testSystemSaver ? N.testSystemSaver() : false),
   // typing in a field: OK goes to the field, and the TV's keyboard comes up
   typing: (on) => N && N.typing && N.typing(!!on),
   keyboard: (show) => N && N.keyboard && N.keyboard(!!show),

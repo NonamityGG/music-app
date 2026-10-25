@@ -101,5 +101,22 @@ key KEYCODE_DPAD_CENTER 3
 shot 12-saver
 key KEYCODE_DPAD_UP 1.5
 adb shell dumpsys meminfo $PKG | head -30 > "$OUT/meminfo.txt"
+# the box's screen saver switched to Резонанс OS, as the installer does, then started
+adb shell pm grant $PKG android.permission.WRITE_SECURE_SETTINGS
+adb shell settings get secure screensaver_components > "$OUT/dream.txt"
+adb shell am start -n $PKG/.MainActivity --ez sysSaver true >> "$OUT/dream.txt" 2>&1
+sleep 2
+adb shell settings put secure screensaver_enabled 1
+adb shell settings get secure screensaver_components >> "$OUT/dream.txt"
+adb shell am start -n com.android.systemui/.Somnambulator >> "$OUT/dream.txt" 2>&1
+sleep 7
+shot 13-dream
+adb shell dumpsys dreams | grep -iE "dream|component" | head -12 >> "$OUT/dream.txt"
+key KEYCODE_DPAD_CENTER 2
+shot 14-after-dream
+# and back to the box's own, as Restore-Sber-Home.cmd does
+adb shell am start -n $PKG/.MainActivity --ez sysSaver false >> "$OUT/dream.txt" 2>&1
+sleep 2
+adb shell settings get secure screensaver_components >> "$OUT/dream.txt"
 adb logcat -d -s RezTV:V AndroidRuntime:E > "$OUT/logcat.txt"
 echo done

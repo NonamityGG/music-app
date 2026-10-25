@@ -82,6 +82,7 @@ on('media', (m) => {
 on('visible', (v) => {
   visible = !!v;
   look.setWaveState({ visible });
+  if (dreaming) return;
   if (visible) {
     refreshInfo();
     settings.refresh();
@@ -326,6 +327,15 @@ settings.onAct = (act) => {
     if (!tv.openNotificationAccess()) toast('На этой приставке нет такой настройки — её включит установщик с компьютера');
   } else if (act === 'guardOn') {
     if (!tv.openAccessibility()) toast('На этой приставке нет специальных возможностей — их включит установщик с компьютера');
+  } else if (act === 'sysSaver') {
+    const on = info.sysSaver !== 'ours';
+    if (info.canSaver) {
+      tv.setSystemSaver(on);
+      refreshInfo();
+      settings.refresh();
+      toast(info.sysSaver === 'ours' ? 'Теперь поверх приложений — эта заставка' : 'Вернул заставку приставки');
+    } else if (tv.setSystemSaver(on)) toast('Выбери «Резонанс OS — заставка» в списке');
+    else toast('Это включает установщик с компьютера — запусти Install-Rezonans-OS.cmd ещё раз');
   } else if (act === 'homeApp') {
     if (!tv.openHomeSettings()) toast('Эта приставка не даёт выбрать главный экран — помогут служба «Домой» или установщик');
   }
@@ -371,6 +381,7 @@ function endMove() {
 
 let idleTimer = 0;
 let sleepTimer = 0;
+const dreaming = location.hash === '#dream';
 
 // Резонанс OS holds the screen (the box's own saver stays away) until a long
 // time without keys has passed; then the box sleeps by its own settings
@@ -385,6 +396,7 @@ function awake() {
 }
 
 function resetIdle() {
+  if (dreaming) return;
   awake();
   clearTimeout(idleTimer);
   if (!visible || !(S.saver > 0) || skipIntro) return;
@@ -395,4 +407,22 @@ function resetIdle() {
   }, S.saver * 60000);
 }
 
-boot();
+// the box's own screen saver (Dream.java): straight into the saver, nothing else
+function dreamBoot() {
+  document.body.classList.remove('intro-on');
+  document.body.classList.add('dream');
+  look.apply();
+  const m = tv.mediaState();
+  home.setMedia(m);
+  look.setWaveState({ music: !!(m && m.active && m.playing) });
+  weather.start((w) => {
+    home.setWeather(w);
+    ambient.weather();
+  });
+  tv.visualizer(S.hear);
+  ambient.open();
+  tv.log('заставка открыта');
+}
+
+if (location.hash === '#dream') dreamBoot();
+else boot();
