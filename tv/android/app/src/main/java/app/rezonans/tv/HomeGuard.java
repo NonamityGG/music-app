@@ -8,7 +8,6 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.view.KeyEvent;
 import android.view.accessibility.AccessibilityEvent;
 
 import java.util.List;
@@ -75,15 +74,6 @@ public class HomeGuard extends AccessibilityService {
         super.onServiceConnected();
         // right after the box starts, its own home is already up: replace it
         if (active() && SystemClock.elapsedRealtime() < 180000 && (MainActivity.current == null || !MainActivity.current.isVisible())) openOurs();
-    }
-
-    /** The Home button itself: straight to Резонанс OS, without the box's home flashing first. */
-    @Override
-    protected boolean onKeyEvent(KeyEvent e) {
-        if (e.getKeyCode() != KeyEvent.KEYCODE_HOME || !active()) return false;
-        if (e.getAction() == KeyEvent.ACTION_DOWN) return true;
-        if (e.getAction() == KeyEvent.ACTION_UP) return openOurs();
-        return false;
     }
 
     @Override
