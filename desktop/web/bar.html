@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+    <title>Резонанс — строка</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="bar.css" />
+  </head>
+  <body data-bg="glass-violet">
+    <div class="bar">
+      <button class="brand" id="brand" title="Меню Резонанса">
+        <span class="mark" id="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="name">Резонанс</span>
+      </button>
+      <div class="player idle" id="player">
+        <span class="cover" id="cover"></span>
+        <span class="meta" id="meta"><span class="title" id="title">Ничего не играет</span><span class="artist" id="artist"></span></span>
+        <span class="ctl">
+          <button id="prev" aria-label="Предыдущий"></button>
+          <button id="play" aria-label="Играть или пауза"></button>
+          <button id="next" aria-label="Следующий"></button>
+        </span>
+        <span class="prog" id="prog"><i id="progFill"></i></span>
+      </div>
+      <div class="clock"><span class="date" id="date"></span><span class="time" id="time"></span></div>
+    </div>
+    <script src="bar.js"></script>
+  </body>
+</html>

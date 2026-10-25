@@ -1,0 +1,5 @@
+node_modules/
+app/
+release/
+host/bin/
+host/obj/

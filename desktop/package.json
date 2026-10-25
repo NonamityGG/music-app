@@ -1,0 +1,71 @@
+{
+  "name": "rezonans-pc",
+  "productName": "Rezonans",
+  "version": "0.1.0",
+  "description": "Резонанс для ПК — живые обои-волны, которые слышат музыку, и строка с плеером сверху",
+  "main": "main.js",
+  "private": true,
+  "author": "Rezonans",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node build.mjs",
+    "dist": "node build.mjs && electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "@fontsource/onest": "^5.3.1",
+    "@fontsource/unbounded": "^5.3.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0",
+    "esbuild": "^0.28.2"
+  },
+  "build": {
+    "appId": "app.rezonans.desktop",
+    "productName": "Rezonans",
+    "copyright": "Резонанс",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "host/bin",
+        "to": "host",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/tray.ico",
+        "to": "tray.ico"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Rezonans-PC-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "shortcutName": "Резонанс",
+      "uninstallDisplayName": "Резонанс для ПК",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

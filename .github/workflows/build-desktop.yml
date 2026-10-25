@@ -1,0 +1,101 @@
+name: Собрать Резонанс для ПК
+
+on:
+  push:
+    # pc-dev: test builds without a release
+    branches: [main, pc-dev]
+    paths:
+      - 'desktop/**'
+      - 'src/waves.js'
+      - 'src/util.js'
+      - '.github/workflows/build-desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        run: echo "PC_VERSION=0.1.${{ github.run_number }}" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      # the Windows helper (wallpaper under the icons, app bar, media controls)
+      - name: Build helper
+        run: dotnet build desktop/host/RezonansHost.csproj -c Release -o desktop/host/bin
+
+      - name: Helper answers
+        run: |
+          $out = '{"cmd":"hello"}' | & desktop/host/bin/RezonansHost.exe
+          Write-Output $out
+          if (-not ($out -match '"type":"hello"')) { throw "helper did not answer" }
+
+      - name: Install packages
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build pages
+        working-directory: desktop
+        run: npm run build
+
+      - name: Build installer
+        working-directory: desktop
+        run: npx electron-builder --win nsis --x64 --publish never "-c.extraMetadata.version=${{ env.PC_VERSION }}"
+
+      # start the app on the runner's desktop and photograph the screen
+      - name: Smoke test
+        run: |
+          $exe = Get-ChildItem desktop/release/win-unpacked -Filter Rezonans.exe | Select-Object -First 1
+          Start-Process $exe.FullName
+          Start-Sleep -Seconds 25
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+          New-Item -ItemType Directory -Force smoke | Out-Null
+          $bmp.Save("smoke/screen.png")
+          Copy-Item "$env:APPDATA/Rezonans/rezonans.log" smoke/ -ErrorAction SilentlyContinue
+          Get-Process Rezonans, RezonansHost -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowTitle | Out-String | Set-Content smoke/processes.txt
+          Get-Process Rezonans -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 2
+          Get-Content smoke/rezonans.log -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke
+          path: smoke
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: desktop/release/*.exe
+
+      - name: Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-v${{ env.PC_VERSION }}
+          name: Резонанс для ПК ${{ env.PC_VERSION }}
+          body: |
+            Резонанс для Windows 11: живые обои-волны, которые слышат музыку компьютера, и строка с плеером сверху.
+            Скачай Rezonans-PC-${{ env.PC_VERSION }}-setup.exe и запусти. Если Windows покажет «Система Windows защитила ваш компьютер» — «Подробнее» → «Выполнить в любом случае».
+          files: desktop/release/*.exe
+          make_latest: false

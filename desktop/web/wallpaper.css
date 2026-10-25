@@ -1,0 +1,113 @@
+/* Резонанс для ПК — the live wallpaper: a background in one of the app's looks
+   and the waves on top. Only the clouds move by themselves (transform only). */
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: default;
+  user-select: none;
+}
+
+body {
+  background: #120a24;
+}
+
+body[data-bg='glass-black'],
+body[data-bg='amoled'] {
+  background: #000;
+}
+
+body[data-bg='dark'] {
+  background: radial-gradient(120% 90% at 50% 45%, #1d1530 0%, #140f1f 55%, #0c0913 100%);
+}
+
+/* coloured light clouds of the Liquid Glass looks */
+.sky {
+  position: fixed;
+  inset: -10%;
+  display: none;
+  pointer-events: none;
+}
+
+body[data-bg^='glass'] .sky {
+  display: block;
+}
+
+.sky i {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  opacity: var(--a, 0.55);
+  will-change: transform;
+}
+
+.sky i:nth-child(1) {
+  left: -8%;
+  top: -18%;
+  background: radial-gradient(closest-side, rgba(122, 60, 255, 0.85), rgba(122, 60, 255, 0.25) 55%, rgba(122, 60, 255, 0));
+  animation: drift1 38s ease-in-out infinite alternate;
+}
+
+.sky i:nth-child(2) {
+  right: -12%;
+  top: 6%;
+  background: radial-gradient(closest-side, rgba(255, 79, 180, 0.6), rgba(255, 79, 180, 0.18) 55%, rgba(255, 79, 180, 0));
+  animation: drift2 44s ease-in-out infinite alternate;
+}
+
+.sky i:nth-child(3) {
+  left: 18%;
+  bottom: -30%;
+  background: radial-gradient(closest-side, rgba(47, 107, 255, 0.7), rgba(47, 107, 255, 0.2) 55%, rgba(47, 107, 255, 0));
+  animation: drift3 52s ease-in-out infinite alternate;
+}
+
+body[data-bg='glass-black'] .sky i {
+  --a: 0.26;
+}
+
+@keyframes drift1 {
+  to {
+    transform: translate(9vw, 6vh) scale(1.12);
+  }
+}
+
+@keyframes drift2 {
+  to {
+    transform: translate(-8vw, 9vh) scale(0.92);
+  }
+}
+
+@keyframes drift3 {
+  to {
+    transform: translate(6vw, -8vh) scale(1.08);
+  }
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.92;
+}
+
+/* a soft dark edge, so desktop icons and the corners stay calm */
+.vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(130% 100% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.38) 100%);
+}
+
+body[data-bg='amoled'] .vignette {
+  display: none;
+}
+
+body.resting .sky i {
+  animation-play-state: paused;
+}
