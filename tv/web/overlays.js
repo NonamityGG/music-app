@@ -31,7 +31,7 @@ export function toast(text) {
 // opening an app: a short zoom of its card, then the app
 export function launch(app, cardEl) {
   apps.markSeen(app.pkg);
-  if (cardEl && cardEl.animate && S.fx !== 'eco') {
+  if (cardEl && cardEl.animate && !look.eco()) {
     cardEl.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1.18)', opacity: 0.6 }, { transform: 'scale(1.1)', opacity: 1 }], { duration: 420, easing: 'ease-out' });
   }
   setTimeout(() => {
@@ -225,8 +225,9 @@ function items() {
     {
       key: 'fx',
       name: 'Эффекты',
-      sub: 'Экономно — для слабых приставок: меньше кадров и движения',
+      sub: look.weak() ? 'Сами — у этой приставки мало памяти, поэтому экономно: меньше кадров и движения' : 'Сами — по силам приставки. Экономно: меньше кадров и движения',
       choices: [
+        ['auto', 'Сами'],
         ['max', 'Максимум'],
         ['eco', 'Экономно'],
       ],
@@ -241,6 +242,7 @@ function items() {
     ['Резонанс OS', info.app || '1.0'],
     ['Приставка', [info.maker, info.model].filter(Boolean).join(' ') || '—'],
     ['Android', info.android ? `${info.android} (API ${info.sdk})` : '—'],
+    ['Память', info.ram ? `${(info.ram / 1024).toFixed(1)} ГБ, свободно ${(info.ramFree / 1024).toFixed(1)} ГБ` : '—'],
     ['Браузерный движок', info.webview || (navigator.userAgent.match(/Chrome\/[\d.]+/) || ['—'])[0]],
     ['Адрес в сети', info.ip || '—'],
   ];
@@ -460,9 +462,11 @@ function restoreStyle() {
   look.apply();
 }
 
-// on the home screen the waves keep to the right half, behind "now playing"
+// on the home screen the waves run along the bottom of the whole screen,
+// behind the rows of apps (the orb floats on the right, by "now playing")
 export function homePlace() {
-  look.setWavePlace({ y: 0.47, amp: 0.15, box: [0.42, 0.58] });
+  if (S.style === 'orb') look.setWavePlace({ y: 0.42, amp: 0.2, box: [0.5, 0.5] });
+  else look.setWavePlace({ y: 0.87, amp: 0.15 });
 }
 
 export { toTop };

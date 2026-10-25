@@ -101,7 +101,10 @@ on('key', (k) => {
     return;
   }
   resetIdle();
-  if (k === 'back') back();
+  // OK comes from the Android side as a whole press: short or held
+  if (k === 'ok') ok();
+  else if (k === 'long') long();
+  else if (k === 'back') back();
   else if (k === 'menu') menuKey();
   else if (k === 'home') goHome();
 });
@@ -110,6 +113,7 @@ onChange((patch) => {
   const keys = Object.keys(patch);
   const has = (...ks) => ks.some((k) => keys.indexOf(k) >= 0);
   if (has('bg', 'palette', 'style', 'fx', 'tint')) look.apply();
+  if (has('style') && !layers.isOpen(ambient)) homePlace();
   if (has('tint') && !S.tint) look.tint(null);
   if (has('hear')) tv.visualizer(S.hear);
   if (has('guard')) tv.setGuard(S.guard);

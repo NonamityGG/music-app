@@ -547,7 +547,7 @@ svg {
 }
 
 .rows-down #waves {
-  opacity: 0.2;
+  opacity: 0.4;
 }
 
 /* nothing plays: the waves wait out of sight (no row of sleeping dots) */

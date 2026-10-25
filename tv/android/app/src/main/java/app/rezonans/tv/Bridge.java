@@ -1,6 +1,7 @@
 package app.rezonans.tv;
 
 import android.Manifest;
+import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -186,6 +187,14 @@ final class Bridge {
                     o.put("stockLabel", String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(stock.getPackageName(), 0))));
                 } catch (Exception ignored) {
                 }
+            }
+            ActivityManager am = (ActivityManager) a.getSystemService(Context.ACTIVITY_SERVICE);
+            if (am != null) {
+                ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                o.put("ram", mi.totalMem / (1024 * 1024));
+                o.put("ramFree", mi.availMem / (1024 * 1024));
+                o.put("lowRam", am.isLowRamDevice());
             }
             o.put("ip", ip());
             o.put("net", network());

@@ -14,7 +14,7 @@ export const DEFAULTS = {
   tools: true,
   saver: 5, // minutes, 0 = never
   saverLook: 'clock',
-  fx: 'max', // max | eco
+  fx: 'auto', // auto | max | eco (auto: eco on a weak box)
   guard: true,
   favs: null, // [pkg] in order; null until first chosen
   hidden: [],
@@ -23,9 +23,15 @@ export const DEFAULTS = {
 
 function load() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    const s = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    // 1.0.2: effects follow the box unless chosen again
+    if (!s.v) {
+      s.v = 2;
+      if (s.fx === 'max') s.fx = 'auto';
+    }
+    return s;
   } catch {
-    return { ...DEFAULTS };
+    return { ...DEFAULTS, v: 2 };
   }
 }
 

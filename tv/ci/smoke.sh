@@ -51,6 +51,11 @@ shot 5-menu
 key KEYCODE_DPAD_DOWN 0.8
 shot 5b-menu-down
 key KEYCODE_BACK 1
+# holding OK opens the same menu
+adb shell input keyevent --longpress KEYCODE_DPAD_CENTER
+sleep 1.5
+shot 5c-long-ok
+key KEYCODE_BACK 1
 # settings (the tools row: all apps, saver, settings)
 key KEYCODE_DPAD_DOWN 0.8
 for i in 1 2 3 4 5 6; do adb shell input keyevent KEYCODE_DPAD_LEFT; done

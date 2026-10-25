@@ -6,6 +6,18 @@ import * as waves from '../../src/waves.js';
 import * as looks from '../../desktop/web/looks.js';
 import * as graph from './graph.js';
 import { S } from './store.js';
+import { tv } from './tv.js';
+
+// a box with little memory gets the light effects unless chosen otherwise
+let weakBox = null;
+export function weak() {
+  if (weakBox === null) {
+    const i = tv.info() || {};
+    weakBox = !!(i.lowRam || (i.ram && i.ram < 2600));
+  }
+  return weakBox;
+}
+export const eco = () => S.fx === 'eco' || (S.fx !== 'max' && weak());
 
 looks.install();
 
@@ -69,8 +81,8 @@ export function paletteColors(id) {
 export function apply() {
   body.className = body.className.replace(/\bbg-[\w-]+/g, '').trim();
   body.classList.add('bg-' + (S.bg || 'glass-violet'));
-  body.classList.toggle('eco', S.fx === 'eco');
-  body.classList.toggle('fx', S.fx !== 'eco');
+  body.classList.toggle('eco', eco());
+  body.classList.toggle('fx', !eco());
   const c = paletteColors(S.palette);
   body.style.setProperty('--a1', c[0]);
   body.style.setProperty('--a2', c[1]);
@@ -78,7 +90,7 @@ export function apply() {
   const a = hexRgb(c[0]);
   body.style.setProperty('--a1s', `rgba(${a[0]},${a[1]},${a[2]},0.35)`);
   body.style.setProperty('--a1g', `rgba(${a[0]},${a[1]},${a[2]},0.6)`);
-  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: S.fx === 'eco' ? 30 : 60 });
+  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: eco() ? 30 : 60 });
   waves.kick();
 }
 

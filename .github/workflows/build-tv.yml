@@ -62,7 +62,7 @@ jobs:
       - name: Name APK and installer
         run: |
           cp tv/android/app/build/outputs/apk/release/app-release.apk "Rezonans-OS-${TV_VERSION_NAME}.apk"
-          cp tv/install/Install-Rezonans-OS.cmd tv/install/Restore-Sber-Home.cmd .
+          cp tv/install/Install-Rezonans-OS.cmd tv/install/Restore-Sber-Home.cmd tv/install/Optimize-TV.cmd .
 
       - uses: actions/upload-artifact@v4
         with:
@@ -71,6 +71,7 @@ jobs:
             Rezonans-OS-*.apk
             Install-Rezonans-OS.cmd
             Restore-Sber-Home.cmd
+            Optimize-TV.cmd
 
   # the installer's PowerShell must at least parse on Windows
   installer:
@@ -80,7 +81,7 @@ jobs:
       - name: Parse installer scripts
         shell: pwsh
         run: |
-          foreach ($f in 'tv/install/Install-Rezonans-OS.cmd', 'tv/install/Restore-Sber-Home.cmd') {
+          foreach ($f in 'tv/install/Install-Rezonans-OS.cmd', 'tv/install/Restore-Sber-Home.cmd', 'tv/install/Optimize-TV.cmd') {
             $s = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)
             $code = $s.Substring($s.IndexOf('#PSSTART'))
             $errors = $null
@@ -154,8 +155,10 @@ jobs:
 
             Установка с компьютера (Windows): скачай Rezonans-OS-${{ needs.build.outputs.version }}.apk и Install-Rezonans-OS.cmd в одну папку, запусти Install-Rezonans-OS.cmd и следуй подсказкам. Нужна включённая отладка по сети на приставке.
             Вернуть экран Сбера: Restore-Sber-Home.cmd.
+            Ускорить приставку (безопасно, без прошивки): Optimize-TV.cmd — заодно сохранит отчёт о приставке на рабочий стол.
           files: |
             Rezonans-OS-*.apk
             Install-Rezonans-OS.cmd
             Restore-Sber-Home.cmd
+            Optimize-TV.cmd
           make_latest: false

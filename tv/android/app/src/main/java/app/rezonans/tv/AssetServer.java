@@ -37,8 +37,8 @@ final class AssetServer {
                 return png == null ? missing() : bytes("image/png", png, "max-age=86400");
             }
             if (p.startsWith("/art")) {
-                byte[] png = MediaHub.artPng();
-                return png == null ? missing() : bytes("image/png", png, "no-cache");
+                byte[] jpg = MediaHub.artJpeg();
+                return jpg == null ? missing() : bytes("image/jpeg", jpg, "no-cache");
             }
             InputStream in = c.getAssets().open("www" + p);
             return stream(mime(p), in, p.endsWith(".html") ? "no-cache" : "max-age=31536000");

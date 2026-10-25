@@ -150,9 +150,43 @@ public class MainActivity extends Activity {
         return visible;
     }
 
+    // OK on the remote, as one whole press: a short one, or held (the app's
+    // menu). Remotes differ in what they send while a key is held, so the time
+    // is measured here rather than in the page.
+    private boolean okDown = false;
+    private boolean okLong = false;
+    private final Runnable okHeld = () -> {
+        if (okDown && !okLong) {
+            okLong = true;
+            emit("key", "\"long\"");
+        }
+    };
+
+    private static boolean isOk(int k) {
+        return k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_NUMPAD_ENTER
+            || k == KeyEvent.KEYCODE_BUTTON_SELECT || k == KeyEvent.KEYCODE_BUTTON_A;
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (isOk(k)) {
+            if (e.getAction() == KeyEvent.ACTION_DOWN) {
+                if (e.getRepeatCount() == 0) {
+                    okDown = true;
+                    okLong = false;
+                    ui.removeCallbacks(okHeld);
+                    ui.postDelayed(okHeld, 550);
+                } else if (e.isLongPress()) {
+                    okHeld.run();
+                }
+            } else if (e.getAction() == KeyEvent.ACTION_UP) {
+                ui.removeCallbacks(okHeld);
+                if (okDown && !okLong && !e.isCanceled()) emit("key", "\"ok\"");
+                okDown = false;
+            }
+            return true;
+        }
         // Back and Menu are the page's to handle (a home screen never closes)
         if (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_ESCAPE) {
             if (e.getAction() == KeyEvent.ACTION_UP && !e.isCanceled()) emit("key", "\"back\"");
