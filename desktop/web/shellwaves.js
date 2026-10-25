@@ -31,6 +31,9 @@ export function look(palette, style = 'neon') {
 export function show(v) {
   on = !!v;
   if (on) {
+    // the window was hidden when the page loaded, so the canvas had no size yet:
+    // measure it now that the menu is on screen, then start the wave
+    waves.resize('shell');
     waves.burst(2000);
     waves.kick();
   }
