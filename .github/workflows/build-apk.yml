@@ -6,7 +6,9 @@ on:
     # the PC app has its own build (build-desktop.yml)
     paths-ignore:
       - 'desktop/**'
+      - 'tv/**'
       - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/build-tv.yml'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 

@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.rezonans.tv'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'app.rezonans.tv'
+        // old TV boxes too: the shell uses only what Android 5 already has
+        minSdk 21
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('TV_VERSION_CODE') ?: '1')
+        versionName System.getenv('TV_VERSION_NAME') ?: '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('rezonans-release.keystore')
+            storePassword 'rezonans-app-2026'
+            keyAlias 'rezonans'
+            keyPassword 'rezonans-app-2026'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+        }
+        debug {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    androidResources {
+        // keep the web part as it is (files starting with _ or . included)
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}

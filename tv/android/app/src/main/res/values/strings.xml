@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Резонанс OS</string>
+    <string name="media_listener">Резонанс OS — что сейчас играет</string>
+    <string name="home_guard">Резонанс OS — кнопка «Домой»</string>
+    <string name="home_guard_about">Возвращает Резонанс OS, когда приставка открывает свой домашний экран. Ничего не читает и не нажимает.</string>
+</resources>

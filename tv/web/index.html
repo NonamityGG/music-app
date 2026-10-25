@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Резонанс OS</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="bg-glass-violet intro-on">
+    <div class="layer base" aria-hidden="true"></div>
+    <div class="layer photo" id="photo" aria-hidden="true"></div>
+    <div class="layer sky" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="layer tint" id="tintA" aria-hidden="true"></div>
+    <div class="layer tint" id="tintB" aria-hidden="true"></div>
+    <canvas class="layer" id="waves" aria-hidden="true"></canvas>
+    <div class="layer vignette" aria-hidden="true"></div>
+
+    <main id="home" class="screen">
+      <header class="top">
+        <div class="brand"><span class="mark"><i></i><i></i><i></i><i></i></span><b>Резонанс</b><em>OS</em></div>
+        <div class="status">
+          <span class="weather" id="wxTop"></span>
+          <span class="net" id="net"></span>
+          <span class="time" id="timeTop"></span>
+        </div>
+      </header>
+      <div class="stage" id="stage">
+        <section class="hero" id="hero">
+          <div class="greet" id="greet"></div>
+          <div class="clock" id="clock"></div>
+          <div class="date" id="date"></div>
+        </section>
+        <section class="np hidden" id="np" data-row="np"></section>
+        <div class="rows" id="rows"></div>
+      </div>
+    </main>
+
+    <section id="grid" class="overlay hidden"></section>
+    <section id="settings" class="overlay hidden"></section>
+    <section id="menu" class="overlay hidden"></section>
+    <section id="ambient" class="overlay hidden"></section>
+    <div id="toast" class="toast"></div>
+    <div id="intro" class="intro"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
