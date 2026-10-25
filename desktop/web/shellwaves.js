@@ -49,16 +49,4 @@ export function show(v) {
   requestAnimationFrame(pump);
   setTimeout(pump, 80);
   keep = setInterval(pump, 500);
-  diag();
-}
-
-function diag() {
-  try {
-    const r = cv.getBoundingClientRect();
-    window.rez.log(`волна: open=${on} hidden=${document.hidden} vis=${document.visibilityState} canvas=${Math.round(r.width)}x${Math.round(r.height)} buf=${cv.width}x${cv.height}`);
-    setTimeout(() => {
-      const b = cv.getBoundingClientRect();
-      window.rez.log(`волна (через 0.6с): hidden=${document.hidden} canvas=${Math.round(b.width)}x${Math.round(b.height)} buf=${cv.width}x${cv.height}`);
-    }, 600);
-  } catch {}
 }
