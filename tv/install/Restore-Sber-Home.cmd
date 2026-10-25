@@ -7,7 +7,7 @@ echo.
 pause
 exit /b
 #PSSTART
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $work = Join-Path $env:LOCALAPPDATA 'RezonansOS'
 $adb = Join-Path $work 'platform-tools\adb.exe'

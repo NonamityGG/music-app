@@ -19,6 +19,22 @@ function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color 
 function Step($text) { Write-Host ''; Write-Host "  $text" -ForegroundColor Magenta }
 function Fail($text) { Write-Host ''; Write-Host "  $text" -ForegroundColor Red; exit 1 }
 
+# adb writes its messages to stderr; Windows PowerShell would take them for
+# errors and stop. Run it with its output as plain text.
+function A {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { $o = & $adb @args 2>&1 | ForEach-Object { "$_" } } finally { $ErrorActionPreference = $old }
+  return (($o -join "`n").Trim())
+}
+
+# the TV announces itself in the network while "Отладка по Wi-Fi" is on
+function Announced([string]$kind) {
+  $m = [regex]::Match((A mdns services), "_adb-tls-$kind\._tcp\.?\s+(\d+\.\d+\.\d+\.\d+:\d+)")
+  if ($m.Success) { return $m.Groups[1].Value }
+  return ''
+}
+
 $here = $env:REZ_HERE
 $work = Join-Path $env:LOCALAPPDATA 'RezonansOS'
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -67,6 +83,12 @@ Say '  (Если включал ADB через Sber Studio — хватит пр
 $ipFile = Join-Path $work 'tv-ip.txt'
 $last = ''
 if (Test-Path $ipFile) { $last = (Get-Content $ipFile -Raw).Trim() }
+A start-server | Out-Null
+$seen = Announced 'connect'
+if ($seen) {
+  Say "  Нашёл телевизор в сети: $seen" 'Green'
+  $last = $seen
+}
 $prompt = '  Адрес'
 if ($last) { $prompt += " [Enter — $last]" }
 $ip = (Read-Host $prompt).Trim()
@@ -76,12 +98,11 @@ $ip = $ip -replace '\s', ''
 Set-Content -Path $ipFile -Value $ip -Encoding ASCII
 $target = if ($ip -match ':\d+$') { $ip } else { "${ip}:5555" }
 
-& $adb start-server | Out-Null
-
 function TryConnect([int]$tries) {
+  A disconnect $target | Out-Null
   for ($try = 1; $try -le $tries; $try++) {
-    $r = (& $adb connect $target 2>&1 | Out-String).Trim()
-    $state = (& $adb -s $target get-state 2>&1 | Out-String).Trim()
+    $r = A connect $target
+    $state = A -s $target get-state
     if ($state -eq 'device') { return $true }
     if ($r -match 'unauthorized' -or $state -match 'unauthorized') {
       Say '  На экране телевизора вопрос про отладку — выбери «Разрешить» (лучше «Всегда с этого компьютера»).' 'Yellow'
@@ -101,31 +122,43 @@ if (-not $ok) {
   Say '  Нужно один раз связать компьютер с телевизором по коду.' 'Yellow'
   Say '  На телевизоре в «Отладка по Wi-Fi» выбери «Подключить устройство с помощью кода» (или «…по коду подключения»).'
   Say '  Там будут адрес с портом и шестизначный код.'
-  $pairAddr = (Read-Host '  Адрес и порт из этого окна (например 192.168.1.45:41234)').Trim() -replace '\s', ''
+  Read-Host '  Когда окно с кодом откроется — нажми Enter' | Out-Null
+  $pairSeen = Announced 'pairing'
+  $pairPrompt = '  Адрес и порт из этого окна (например 192.168.1.45:41234)'
+  if ($pairSeen) { $pairPrompt += " [Enter — $pairSeen]" }
+  $pairAddr = (Read-Host $pairPrompt).Trim() -replace '\s', ''
+  if (-not $pairAddr) { $pairAddr = $pairSeen }
   $code = (Read-Host '  Код').Trim() -replace '\s', ''
   if ($pairAddr -and $code) {
-    $pr = (& $adb pair $pairAddr $code 2>&1 | Out-String).Trim()
+    $pr = A pair $pairAddr $code
     Say "  $pr"
     if ($pr -notmatch 'Successfully') { Fail 'Связать не получилось: проверь адрес и код (код меняется, если окно закрыть).' }
     # after pairing the TV is usually found by itself
     Start-Sleep -Seconds 2
-    $found = (& $adb devices 2>&1 | Out-String) -split "`n" | Where-Object { $_ -match '^\S+\s+device\s*$' } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+    $again = Announced 'connect'
+    if ($again) { $target = $again }
+    $found = (A devices) -split "`n" | Where-Object { $_ -match '^\S+\s+device\s*$' } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
     if ($found) { $target = $found }
     $ok = TryConnect 10
   }
 }
+if (-not $ok -and $seen -and $seen -ne $target) {
+  Say "  По введённому адресу не отвечает, пробую найденный: $seen" 'Yellow'
+  $target = $seen
+  $ok = TryConnect 4
+}
 if (-not $ok) { Fail 'Приставка не ответила. Проверь, что «Отладка по Wi-Fi» включена, адрес верный (с портом), компьютер и телевизор в одной сети и VPN выключен.' }
-$model = (& $adb -s $target shell getprop ro.product.model | Out-String).Trim()
+$model = A -s $target shell getprop ro.product.model
 Say "  Подключено: $model" 'Green'
 
-function Shell([string]$cmd) { (& $adb -s $target shell $cmd 2>&1 | Out-String).Trim() }
+function Shell([string]$cmd) { A -s $target shell $cmd }
 
 # ---------- install ----------
 Step '4. Установка'
-$out = (& $adb -s $target install -r -g $apk.FullName 2>&1 | Out-String).Trim()
+$out = A -s $target install -r -g $apk.FullName
 if ($out -notmatch 'Success') {
   # older Android has no -g
-  $out = (& $adb -s $target install -r $apk.FullName 2>&1 | Out-String).Trim()
+  $out = A -s $target install -r $apk.FullName
 }
 if ($out -notmatch 'Success') { Fail "Приставка не приняла установку: $out" }
 Say '  Резонанс OS установлен.' 'Green'
