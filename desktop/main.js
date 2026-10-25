@@ -417,6 +417,33 @@ function rebuild(why) {
   }
 }
 
+// ---------- self-test (CI only) ----------
+
+// Plays a soft beat with media info in a hidden window, so the build machine can
+// check the whole chain: Windows media controls -> helper -> bar, and the waves.
+function selftest() {
+  log('самопроверка: включаю звук');
+  const page = `<audio id="a" loop></audio><script>
+    const sr = 22050, n = sr * 30, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const W = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    W(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); W(8, 'WAVE'); W(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true); W(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, b = (t * 2) % 1;
+      const s = Math.sin(2 * Math.PI * 55 * t) * Math.exp(-b * 8) * 0.8 + Math.sin(2 * Math.PI * 440 * t) * 0.08 * Math.exp(-((t * 4) % 1) * 6);
+      v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767 * 0.7, true);
+    }
+    const a = document.getElementById('a');
+    a.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    navigator.mediaSession.metadata = new MediaMetadata({ title: 'Проверка звука', artist: 'Резонанс', album: 'Самопроверка' });
+    a.play().then(() => console.log('selftest playing')).catch((e) => console.log('selftest: ' + e.message));
+  </script>`;
+  const w = new BrowserWindow({ show: false, webPreferences: { autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
+  w.webContents.on('console-message', (e, level, message) => log('самопроверка: ' + (typeof e.message === 'string' ? e.message : message)));
+  w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(page));
+}
+
 // ---------- start ----------
 
 if (!app.requestSingleInstanceLock()) {
@@ -463,10 +490,14 @@ if (!app.requestSingleInstanceLock()) {
     startHost();
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
+    if (process.env.REZONANS_SELFTEST === '1') setTimeout(selftest, 3000);
 
     screen.on('display-added', () => scheduleRebuild('новый экран'));
     screen.on('display-removed', () => scheduleRebuild('экран отключён'));
-    screen.on('display-metrics-changed', () => scheduleRebuild('экран изменился'));
+    // the bar itself changes the work area: only a real change of the screen counts
+    screen.on('display-metrics-changed', (e, d, changed) => {
+      if ((changed || []).some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'rotation')) scheduleRebuild('экран изменился');
+    });
     powerMonitor.on('resume', () => scheduleRebuild('после сна'));
   });
 
