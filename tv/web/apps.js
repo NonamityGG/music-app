@@ -10,13 +10,24 @@ const listeners = [];
 export const onApps = (fn) => listeners.push(fn);
 export const byPkg = (pkg) => list.find((a) => a.pkg === pkg) || null;
 
+let shownSig = '';
+
 export function load() {
   list = tv.apps() || [];
   firstFavourites();
+  // the system says "packages changed" often (updates in the background):
+  // rebuild only when the list of apps really changed
+  const sig = list.map((a) => a.pkg + '|' + a.label + '|' + (a.banner ? 1 : 0)).join(',');
+  if (sig === shownSig) return;
+  shownSig = sig;
   for (const fn of listeners) fn();
 }
 
-on('apps', () => load());
+let reloadTimer = 0;
+on('apps', () => {
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(load, 1200);
+});
 
 // on the first start: the video apps people open most, then other TV apps
 const LIKED = [/okko|окко/i, /кинопоиск|kinopoisk/i, /youtube/i, /wink/i, /\bivi\b|иви/i, /premier|премьер/i, /кион|kion/i, /rutube/i, /vk ?видео|vk video/i, /start/i, /смотрим|smotrim/i, /more\.?tv/i, /амедиатека|amediateka/i, /резонанс|музык|music/i];

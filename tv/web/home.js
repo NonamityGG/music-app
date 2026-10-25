@@ -131,9 +131,13 @@ export function setStock(label) {
 }
 
 export function render(keep) {
-  const focusedPkg = keep && nav.current() && nav.current()._app ? nav.current()._app.pkg : null;
-  const focusedTool = keep && nav.current() && nav.current()._tool;
-  const focusedRow = keep && nav.current() && nav.current().closest('[data-row]');
+  // what was focused on the home screen (also when something is open over it:
+  // apps get installed or updated in the background and the rows are rebuilt)
+  const onHome = nav.getScope() === home;
+  const ref = onHome ? nav.current() : home._last;
+  const focusedPkg = keep && ref && ref._app ? ref._app.pkg : null;
+  const focusedTool = keep && ref && ref._tool;
+  const focusedRow = keep && ref && ref.closest && ref.closest('[data-row]');
   const rowId = focusedRow ? focusedRow.getAttribute('data-row') : null;
   rowsEl.textContent = '';
 
@@ -164,8 +168,9 @@ export function render(keep) {
   let target = null;
   if (focusedPkg) target = Array.prototype.find.call(rowsEl.querySelectorAll('.card'), (c) => c._app && c._app.pkg === focusedPkg && (!rowId || c.closest('[data-row]').getAttribute('data-row') === rowId));
   if (!target && focusedTool) target = Array.prototype.find.call(rowsEl.querySelectorAll('.card'), (c) => c._tool === focusedTool);
-  if (keep && nav.current() && npEl.contains(nav.current())) target = nav.current();
-  if (nav.getScope() === home) nav.focus(target || rowsEl.querySelector('.card'), { silent: true });
+  if (keep && ref && npEl.contains(ref)) target = ref;
+  if (onHome) nav.focus(target || rowsEl.querySelector('.card'), { silent: true });
+  else home._last = target || rowsEl.querySelector('.card');
 }
 
 // ---------- what's playing ----------
