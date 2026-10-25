@@ -1,19 +1,25 @@
 // Резонанс для ПК — the main process.
 //
-// Two kinds of windows:
+// Windows of the app:
 //   * wallpaper: one per screen, put behind the desktop icons by the Windows
-//     helper (host/RezonansHost.exe); the waves listen to whatever the PC plays;
-//   * bar: a thin acrylic strip along the top of the main screen with the player
-//     (any music app that shows up in Windows' media controls) and the clock.
-// Everything is set from the tray icon (or the logo on the bar).
+//     helper (host/RezonansHost.exe); the waves listen to whatever the PC plays,
+//     with the words of the song (or a clock, or any text) glowing behind them;
+//   * bar: a thin acrylic strip along the top of the main screen (logo, clock);
+//   * island: the player — a black pill in the middle of the bar that drops down
+//     into a card with the cover, progress and buttons when the mouse comes;
+//   * panel: Резонанс's own menu with every setting (instead of a plain Windows
+//     menu), opened from the logo on the bar or from the tray icon.
+// The helper also paints Windows itself in the colours of the chosen palette.
 
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, screen, ipcMain, session, desktopCapturer, shell, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, screen, ipcMain, session, desktopCapturer, shell, powerMonitor, protocol, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const readline = require('readline');
+const lyrics = require('./lib/lyrics');
+const colors = require('./lib/colors');
 
 // The wallpaper sits under other windows: Chromium must not decide it is hidden
 // and stop drawing it.
@@ -22,60 +28,134 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
-const BAR_H = 36; // DIP
+protocol.registerSchemesAsPrivileged([{ scheme: 'rez', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }]);
 
-const STYLES = [
-  ['neon', 'Неон'],
-  ['ribbons', 'Ленты'],
-  ['capsules', 'Капсулы'],
-  ['dots', 'Точки'],
-  ['rings', 'Кольца'],
-  ['scope', 'Осциллограф'],
-];
-const PALETTES = [
-  ['violet', 'Фиолет'],
-  ['neon', 'Неон'],
-  ['sunset', 'Закат'],
-  ['mint', 'Мята'],
-];
-const BACKGROUNDS = [
-  ['glass-violet', 'Liquid Glass фиолетовый'],
-  ['glass-black', 'Liquid Glass чёрный'],
-  ['dark', 'Тёмный'],
-  ['amoled', 'Чёрный (AMOLED)'],
-];
-const ATTACH = [
-  ['auto', 'Автоматически'],
-  ['child', 'Способ 1 (Windows 11 24H2+)'],
-  ['layered', 'Способ 2 (Windows 11 24H2+)'],
-  ['worker', 'Способ 3 (Windows 10 и ранние 11)'],
-];
+const BAR_H = 36; // DIP
+const ISL_W = 560;
+const ISL_H = 300;
+const PANEL_W = 420;
+const PANEL_H = 680;
+const SELFTEST = process.env.REZONANS_SELFTEST === '1';
 
 // ---------- settings and log ----------
 
-const DEFAULTS = { wallpaper: true, bar: true, style: 'neon', palette: 'violet', bg: 'glass-violet', autostart: true, attachMode: 'auto', firstRun: true };
+const DEFAULTS = {
+  wallpaper: true,
+  bar: true,
+  island: true, // the player as the island (otherwise a capsule inside the bar)
+  islandPeek: true, // drop down for a moment when the song changes
+  islandGlow: true, // the island glows in the colour of the cover
+  style: 'neon',
+  palette: 'violet',
+  lastPalette: 'violet', // the last fixed palette (Windows colours when "from the cover")
+  bg: 'glass-violet',
+  bgImage: '',
+  bgDim: 0.35,
+  bgBlur: 0,
+  clouds: true,
+  vignette: true,
+  waveSize: 1,
+  waveBright: 0.92,
+  wavePos: 0.5,
+  fps: 60,
+  text: 'lyrics', // off | lyrics | track | clock | custom
+  textCustom: 'Резонанс',
+  textSize: 1,
+  textStyle: 'soft', // soft | outline | glass
+  textFont: 'display', // display | body | thin
+  textOpacity: 0.55,
+  textShift: 0,
+  textPos: 'center', // center | top
+  barTint: 0.42,
+  barSeconds: false,
+  barDate: true,
+  barMark: true,
+  winAccent: true,
+  winDark: false,
+  winPrevalence: false,
+  autostart: true,
+  attachMode: 'auto',
+  firstRun: true,
+  seen: '',
+};
+
+const CHOICES = {
+  style: ['neon', 'ribbons', 'capsules', 'dots', 'rings', 'scope', 'horizon', 'orb'],
+  palette: ['violet', 'neon', 'sunset', 'mint', 'ice', 'aurora', 'fire', 'sakura', 'gold', 'mono', 'cover'],
+  bg: ['glass-violet', 'glass-black', 'glass-palette', 'aurora', 'ember', 'dark', 'amoled', 'windows', 'image'],
+  text: ['off', 'lyrics', 'track', 'clock', 'custom'],
+  textStyle: ['soft', 'outline', 'glass'],
+  textFont: ['display', 'body', 'thin'],
+  textPos: ['center', 'top'],
+  attachMode: ['auto', 'child', 'layered', 'worker'],
+  fps: [30, 60, 144],
+};
+const RANGES = {
+  bgDim: [0, 0.85],
+  bgBlur: [0, 40],
+  waveSize: [0.4, 1.8],
+  waveBright: [0.2, 1],
+  wavePos: [0.2, 0.8],
+  textSize: [0.5, 1.8],
+  textOpacity: [0.1, 1],
+  textShift: [-5, 5],
+  barTint: [0, 0.95],
+};
+
 let settings = { ...DEFAULTS };
 let settingsFile = '';
 let logFile = '';
 
+function sanitize(patch) {
+  const out = {};
+  for (const [k, v] of Object.entries(patch || {})) {
+    if (!(k in DEFAULTS)) continue;
+    if (CHOICES[k]) {
+      if (CHOICES[k].includes(v)) out[k] = v;
+    } else if (RANGES[k]) {
+      const n = Number(v);
+      if (Number.isFinite(n)) out[k] = Math.max(RANGES[k][0], Math.min(RANGES[k][1], n));
+    } else if (typeof DEFAULTS[k] === 'boolean') out[k] = !!v;
+    else if (typeof DEFAULTS[k] === 'string') out[k] = String(v).slice(0, 400);
+  }
+  return out;
+}
+
 function loadSettings() {
   settingsFile = path.join(app.getPath('userData'), 'settings.json');
   try {
-    settings = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')) };
+    const raw = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    settings = { ...DEFAULTS, ...sanitize(raw), firstRun: raw.firstRun !== false, seen: String(raw.seen || '') };
   } catch {
     settings = { ...DEFAULTS };
   }
 }
 
-function saveSettings(patch) {
-  Object.assign(settings, patch);
+function writeSettings() {
   try {
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
   } catch (e) {
     log('settings: ' + e.message);
   }
-  for (const w of allWindows()) w.webContents.send('settings', settings);
-  rebuildMenu();
+}
+
+// what the pages get: the settings and a few derived things
+function view() {
+  return {
+    ...settings,
+    version: app.getVersion(),
+    bgUrl: bgUrl(),
+    windowsUrl: windowsUrl(),
+    imageUrl: imageUrl(),
+    paletteColors: colors.PALETTES[settings.palette === 'cover' ? settings.lastPalette : settings.palette] || colors.PALETTES.violet,
+    colorsSaved: !!winBackup,
+    selftest: SELFTEST,
+  };
+}
+
+function broadcastSettings() {
+  const v = view();
+  for (const w of allWindows()) w.webContents.send('settings', v);
 }
 
 function log(msg) {
@@ -93,6 +173,7 @@ function log(msg) {
 let host = null;
 let hostInfo = null; // reply to "hello"
 let quitting = false;
+let lastColors = null; // the last answer about Windows colours
 
 function hostPath() {
   return app.isPackaged ? path.join(process.resourcesPath, 'host', 'RezonansHost.exe') : path.join(__dirname, 'host', 'bin', 'RezonansHost.exe');
@@ -119,9 +200,7 @@ function startHost() {
     log('помощник закрылся, код ' + code);
     host = null;
     hostInfo = null;
-    if (!quitting) setTimeout(() => {
-      startHost();
-    }, 2000);
+    if (!quitting) setTimeout(startHost, 2000);
   });
   hostSend({ cmd: 'hello' });
 }
@@ -134,11 +213,14 @@ function onHost(m) {
   switch (m.type) {
     case 'hello':
       hostInfo = m;
-      log(`помощник готов: ${m.os}, рабочий стол ${m.raised ? 'нового типа (24H2+)' : 'классический'}`);
+      log(`помощник готов: ${m.os}, рабочий стол ${m.raised ? 'нового типа (24H2+)' : 'классический'}, акцент: ${m.immersive}`);
       hookBar();
       for (const id of walls.keys()) attachWall(id);
       if (bar && barShown) registerAppBar();
+      styleWindows();
       sendOwn();
+      applyWinColors();
+      hostSend({ cmd: 'wallpaperPath' });
       break;
     case 'attached': {
       const w = walls.get(Number(m.id));
@@ -148,7 +230,7 @@ function onHost(m) {
       if (m.ok) w.win.showInactive();
       else if (!w.warned) {
         w.warned = true;
-        notify('Обои не встали под значки', 'Попробуй другой способ: меню Резонанса → «Способ встраивания обоев».');
+        notify('Обои не встали под значки', 'Попробуй другой способ: панель Резонанса → Система → «Способ встраивания».');
       }
       break;
     }
@@ -156,11 +238,30 @@ function onHost(m) {
       log(`строка заняла место: ${m.x},${m.y} ${m.w}×${m.h}`);
       break;
     case 'media':
-      lastMedia = m.thumb !== undefined || !lastMedia ? m : { ...m, thumb: lastMedia.thumb };
-      if (bar) bar.webContents.send('media', m);
+      onMedia(m);
       break;
     case 'fg':
       onForeground(m);
+      break;
+    case 'audio':
+      log('звук: ' + (m.event === 'default' ? 'выбрано другое устройство вывода' : 'устройства изменились (' + m.event + ')'));
+      for (const w of allWindows()) w.webContents.send('audio', m);
+      break;
+    case 'winColorsBackup':
+      winBackup = { values: m.values, applied: { accent: false, dark: false, prev: false }, at: new Date().toISOString() };
+      saveBackup();
+      log('цвета Windows сохранены, чтобы их можно было вернуть');
+      if (pendingColors) applyWinColors();
+      break;
+    case 'winColors':
+      lastColors = m;
+      log(`цвета Windows: ${m.restored ? 'возвращены' : m.done || '—'}${m.accentNow ? ', акцент ' + m.accentNow : ''}${m.highlightNow ? ', выделение ' + m.highlightNow : ''}${m.immersive ? ', сразу: ' + m.immersive : ''}`);
+      if (panel && !panel.isDestroyed()) panel.webContents.send('info', info());
+      break;
+    case 'wallpaperPath':
+      winWallpaper = m.path || '';
+      log('обои Windows: ' + (winWallpaper || 'не нашлись'));
+      broadcastSettings();
       break;
     case 'log':
       log('помощник: ' + m.msg);
@@ -181,14 +282,118 @@ function sendOwn() {
 
 function allWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  if (bar) list.push(bar);
+  list.push(bar, island, panel);
   return list.filter((w) => w && !w.isDestroyed());
+}
+
+// rounded corners and a quiet border for the panel (Windows 11)
+function styleWindows() {
+  if (panel && !panel.isDestroyed()) hostSend({ cmd: 'style', hwnd: hwndOf(panel), corner: 2, border: '#3a2d58', dark: true });
+}
+
+// ---------- what's playing ----------
+
+let lastMedia = null;
+let lyricKey = '';
+let lyricTimer = 0;
+let lyricData = null;
+
+function trackKey(m) {
+  return m && m.status && m.status !== 'none' ? `${m.app}|${m.title}|${m.artist}` : '';
+}
+
+function onMedia(m) {
+  lastMedia = m.thumb !== undefined || !lastMedia ? m : { ...m, thumb: lastMedia.thumb };
+  if (m.status === 'none') lastMedia = { status: 'none' };
+  for (const w of mediaWindows()) w.webContents.send('media', m);
+  const key = trackKey(lastMedia);
+  if (key !== lyricKey) {
+    lyricKey = key;
+    lyricData = null;
+    sendLyrics();
+    clearTimeout(lyricTimer);
+    // titles settle in a moment (some players send the title before the artist)
+    if (key && settings.text === 'lyrics') lyricTimer = setTimeout(() => loadLyrics(key), 700);
+  }
+}
+
+function mediaWindows() {
+  const list = [...walls.values()].map((w) => w.win);
+  list.push(bar, island, panel);
+  return list.filter((w) => w && !w.isDestroyed());
+}
+
+async function loadLyrics(key) {
+  if (!lastMedia || key !== trackKey(lastMedia)) return;
+  const m = lastMedia;
+  try {
+    const r = await lyrics.find(m);
+    if (key !== lyricKey) return;
+    lyricData = r ? { key, ...r } : { key, none: true };
+    log(`текст песни «${m.title}»: ${r ? (r.synced ? 'синхронный, строк ' + r.lines.length : r.instrumental ? 'без слов' : 'обычный') : 'не нашёлся'}`);
+  } catch (e) {
+    if (key !== lyricKey) return;
+    lyricData = { key, none: true, error: true };
+    log('текст песни: ' + e.message);
+  }
+  sendLyrics();
+}
+
+function sendLyrics() {
+  for (const w of walls.values()) if (!w.win.isDestroyed()) w.win.webContents.send('lyrics', lyricData);
+}
+
+// ---------- backgrounds from files ----------
+
+let winWallpaper = '';
+let bgStamp = Date.now();
+
+function bgUrl() {
+  if (settings.bg === 'windows') return windowsUrl();
+  if (settings.bg === 'image') return imageUrl();
+  return '';
+}
+
+const windowsUrl = () => (winWallpaper ? `rez://bg/windows?v=${stamp(winWallpaper)}` : '');
+const imageUrl = () => (settings.bgImage ? `rez://bg/image?v=${stamp(settings.bgImage)}` : '');
+
+function stamp(file) {
+  try {
+    return Math.round(fs.statSync(file).mtimeMs) + '-' + bgStamp;
+  } catch {
+    return String(bgStamp);
+  }
+}
+
+function mimeOf(buf) {
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP') return 'image/webp';
+  if (buf.slice(0, 3).toString() === 'GIF') return 'image/gif';
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  return 'application/octet-stream';
+}
+
+function serveImages() {
+  protocol.handle('rez', async (req) => {
+    try {
+      const u = new URL(req.url);
+      if (u.host !== 'bg') return new Response('', { status: 404 });
+      const file = u.pathname === '/windows' ? winWallpaper : u.pathname === '/image' ? settings.bgImage : '';
+      if (!file) return new Response('', { status: 404 });
+      const buf = await fs.promises.readFile(file);
+      return new Response(buf, { headers: { 'content-type': mimeOf(buf), 'cache-control': 'no-cache' } });
+    } catch {
+      return new Response('', { status: 404 });
+    }
+  });
 }
 
 // ---------- wallpaper ----------
 
 const walls = new Map(); // display id -> { win, display, attached, paused }
 const preload = path.join(__dirname, 'preload.js');
+const webPrefs = { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false };
 
 function createWallpapers() {
   for (const d of screen.getAllDisplays()) createWall(d);
@@ -213,11 +418,15 @@ function createWall(d) {
     thickFrame: false, // no resize border: the picture must reach every edge
     backgroundColor: '#0f0b16',
     title: 'Rezonans wallpaper',
-    webPreferences: { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: webPrefs,
   });
   win.setIgnoreMouseEvents(true);
-  win.loadFile(path.join(__dirname, 'app', 'wallpaper.html'), { query: { screen: String(d.id) } });
-  win.once('ready-to-show', () => attachWall(d.id));
+  win.loadFile(path.join(__dirname, 'app', 'wallpaper.html'), { query: { screen: String(d.id), primary: d.id === screen.getPrimaryDisplay().id ? '1' : '0' } });
+  win.once('ready-to-show', () => {
+    attachWall(d.id);
+    if (lastMedia) win.webContents.send('media', lastMedia);
+    if (lyricData) win.webContents.send('lyrics', lyricData);
+  });
   win.on('closed', () => {
     const w = walls.get(d.id);
     if (w && w.win === win) walls.delete(d.id);
@@ -256,20 +465,17 @@ function onForeground(m) {
       w.win.webContents.send('pause', covered);
     }
   }
-  // a full-screen game or video on the main screen: the bar steps aside
-  if (bar && barShown) {
-    const p = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
-    const onMain = Math.abs(p.x - m.mx) < 4 && Math.abs(p.y - m.my) < 4;
-    setBarHidden(!m.desktop && m.full && onMain, 'fg');
-  }
+  // a full-screen game or video on the main screen: the bar and the island step aside
+  const p = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds);
+  const onMain = Math.abs(p.x - m.mx) < 4 && Math.abs(p.y - m.my) < 4;
+  setTopHidden(!m.desktop && m.full && onMain, 'fg');
 }
 
 // ---------- the bar ----------
 
 let bar = null;
 let barShown = false;
-let lastMedia = null;
-const barHide = new Set();
+const topHide = new Set();
 
 function createBar() {
   const d = screen.getPrimaryDisplay();
@@ -293,15 +499,17 @@ function createBar() {
     backgroundColor: '#00000000',
     backgroundMaterial: 'acrylic',
     title: 'Rezonans bar',
-    webPreferences: { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    webPreferences: webPrefs,
   });
   bar.loadFile(path.join(__dirname, 'app', 'bar.html'));
   bar.once('ready-to-show', () => {
-    bar.showInactive();
+    if (topHide.size === 0) bar.showInactive();
     barShown = true;
     registerAppBar();
     sendOwn();
     if (lastMedia) bar.webContents.send('media', lastMedia);
+    // the island stays above the bar
+    if (island && !island.isDestroyed()) island.moveTop();
   });
   bar.on('closed', () => {
     bar = null;
@@ -325,19 +533,21 @@ function hookBar() {
   bar.hookWindowMessage(hostInfo.appbarMsg, (wParam, lParam) => {
     const code = num(wParam);
     if (code === 1) registerAppBar(); // ABN_POSCHANGED: the taskbar moved or changed size
-    if (code === 2) setBarHidden(num(lParam) !== 0, 'fullscreen'); // ABN_FULLSCREENAPP
+    if (code === 2) setTopHidden(num(lParam) !== 0, 'fullscreen'); // ABN_FULLSCREENAPP
   });
   // Explorer restarted: the app bar has to be registered again
   bar.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerAppBar, 1500));
 }
 
-function setBarHidden(hide, why) {
-  if (!bar || bar.isDestroyed()) return;
-  if (hide) barHide.add(why);
-  else barHide.delete(why);
-  const should = barHide.size === 0;
-  if (should && !bar.isVisible()) bar.showInactive();
-  if (!should && bar.isVisible()) bar.hide();
+function setTopHidden(hide, why) {
+  if (hide) topHide.add(why);
+  else topHide.delete(why);
+  const show = topHide.size === 0;
+  for (const w of [bar, island]) {
+    if (!w || w.isDestroyed()) continue;
+    if (show && !w.isVisible()) w.showInactive();
+    if (!show && w.isVisible()) w.hide();
+  }
 }
 
 function closeBar() {
@@ -348,47 +558,263 @@ function closeBar() {
   hooked = null;
 }
 
-// ---------- tray and menu ----------
+// ---------- the island ----------
 
-let tray = null;
-let menu = null;
+let island = null;
 
-function radio(list, key) {
-  return list.map(([id, label]) => ({ label, type: 'radio', checked: settings[key] === id, click: () => applySetting(key, id) }));
+function islandBounds() {
+  const d = screen.getPrimaryDisplay();
+  return { x: Math.round(d.bounds.x + (d.bounds.width - ISL_W) / 2), y: d.bounds.y, width: ISL_W, height: ISL_H };
 }
 
-function rebuildMenu() {
-  menu = Menu.buildFromTemplate([
-    { label: 'Резонанс для ПК', enabled: false },
-    { type: 'separator' },
-    { label: 'Живые обои', type: 'checkbox', checked: settings.wallpaper, click: (i) => applySetting('wallpaper', i.checked) },
-    { label: 'Строка с плеером', type: 'checkbox', checked: settings.bar, click: (i) => applySetting('bar', i.checked) },
-    { type: 'separator' },
-    { label: 'Стиль волн', submenu: radio(STYLES, 'style') },
-    { label: 'Цвета', submenu: radio(PALETTES, 'palette') },
-    { label: 'Фон', submenu: radio(BACKGROUNDS, 'bg') },
-    { type: 'separator' },
-    { label: 'Запускать вместе с Windows', type: 'checkbox', checked: settings.autostart, click: (i) => applySetting('autostart', i.checked) },
-    { label: 'Способ встраивания обоев', submenu: radio(ATTACH, 'attachMode') },
-    { label: 'Открыть журнал', click: () => shell.openPath(logFile) },
-    { type: 'separator' },
-    { label: 'Выход', click: () => app.quit() },
-  ]);
-  if (tray) tray.setContextMenu(menu);
+function createIsland() {
+  island = new BrowserWindow({
+    ...islandBounds(),
+    frame: false,
+    transparent: true,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    title: 'Rezonans island',
+    webPreferences: webPrefs,
+  });
+  island.setAlwaysOnTop(true, 'screen-saver');
+  island.setIgnoreMouseEvents(true, { forward: true });
+  island.loadFile(path.join(__dirname, 'app', 'island.html'));
+  island.once('ready-to-show', () => {
+    if (topHide.size === 0) island.showInactive();
+    island.moveTop();
+    sendOwn();
+    if (lastMedia) island.webContents.send('media', lastMedia);
+  });
+  island.on('closed', () => {
+    island = null;
+  });
 }
 
-function applySetting(key, value) {
-  saveSettings({ [key]: value });
-  if (key === 'wallpaper') {
-    if (value) createWallpapers();
+function closeIsland() {
+  if (island && !island.isDestroyed()) island.destroy();
+  island = null;
+}
+
+// ---------- the panel (Резонанс's own menu) ----------
+
+let panel = null;
+let panelHiddenAt = 0;
+let dialogOpen = false;
+
+function createPanel() {
+  panel = new BrowserWindow({
+    width: PANEL_W,
+    height: PANEL_H,
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    hasShadow: true,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
+    roundedCorners: true,
+    title: 'Резонанс',
+    webPreferences: webPrefs,
+  });
+  panel.loadFile(path.join(__dirname, 'app', 'panel.html'));
+  panel.on('blur', () => {
+    if (dialogOpen || SELFTEST_PANEL) return;
+    hidePanel();
+  });
+  panel.on('closed', () => {
+    panel = null;
+  });
+  panel.once('ready-to-show', () => {
+    styleWindows();
+    sendOwn();
+    if (lastMedia) panel.webContents.send('media', lastMedia);
+  });
+}
+
+let SELFTEST_PANEL = false;
+
+function hidePanel() {
+  if (!panel || panel.isDestroyed() || !panel.isVisible()) return;
+  panelHiddenAt = Date.now();
+  panel.webContents.send('panel', { open: false });
+  panel.hide();
+}
+
+// from: 'bar' (drops from the logo) | 'tray' (rises above the tray icon) | 'center'
+function showPanel(from = 'bar', tab) {
+  if (!panel || panel.isDestroyed()) createPanel();
+  const target = from === 'tray' && tray ? tray.getBounds() : null;
+  const d = target ? screen.getDisplayNearestPoint({ x: target.x + 1, y: target.y + 1 }) : screen.getPrimaryDisplay();
+  const wa = d.workArea;
+  const h = Math.min(PANEL_H, wa.height - 20);
+  let x;
+  let y;
+  if (from === 'tray' && target) {
+    x = Math.round(Math.max(wa.x + 10, Math.min(wa.x + wa.width - PANEL_W - 10, target.x + target.width / 2 - PANEL_W / 2)));
+    y = target.y > d.bounds.y + d.bounds.height / 2 ? wa.y + wa.height - h - 10 : wa.y + 10;
+  } else if (from === 'center') {
+    x = Math.round(wa.x + (wa.width - PANEL_W) / 2);
+    y = Math.round(wa.y + (wa.height - h) / 2);
+  } else {
+    x = wa.x + 8;
+    y = wa.y + 8;
+  }
+  panel.setBounds({ x, y, width: PANEL_W, height: h });
+  panel.webContents.send('panel', { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null });
+  panel.webContents.send('info', info());
+  panel.show();
+  panel.focus();
+  if (island && !island.isDestroyed()) island.moveTop();
+}
+
+function togglePanel(from, tab) {
+  if (panel && !panel.isDestroyed() && panel.isVisible()) return hidePanel();
+  // the click that took the focus away from the panel has just closed it
+  if (Date.now() - panelHiddenAt < 350) return;
+  showPanel(from, tab);
+}
+
+function info() {
+  return {
+    version: app.getVersion(),
+    os: hostInfo ? hostInfo.os : '',
+    raised: hostInfo ? !!hostInfo.raised : null,
+    helper: !!hostInfo,
+    immersive: hostInfo ? hostInfo.immersive : '',
+    colors: lastColors,
+    colorsSaved: !!winBackup,
+    walls: [...walls.values()].map((w) => ({ attached: w.attached, paused: w.paused })),
+  };
+}
+
+// ---------- Windows in the colours of Резонанс ----------
+
+let winBackup = null; // { values, applied: { accent, dark, prev } }
+let pendingColors = false;
+let backupFile = '';
+
+function loadBackup() {
+  backupFile = path.join(app.getPath('userData'), 'windows-colors.json');
+  try {
+    winBackup = JSON.parse(fs.readFileSync(backupFile, 'utf8'));
+  } catch {
+    winBackup = null;
+  }
+}
+
+function saveBackup() {
+  try {
+    if (winBackup) fs.writeFileSync(backupFile, JSON.stringify(winBackup, null, 2));
+    else if (fs.existsSync(backupFile)) fs.unlinkSync(backupFile);
+  } catch (e) {
+    log('цвета Windows: ' + e.message);
+  }
+}
+
+const GROUPS = {
+  accent: [
+    'Software\\Microsoft\\Windows\\DWM|AccentColor',
+    'Software\\Microsoft\\Windows\\DWM|ColorizationColor',
+    'Software\\Microsoft\\Windows\\DWM|ColorizationAfterglow',
+    'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent|AccentPalette',
+    'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent|AccentColorMenu',
+    'Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent|StartColorMenu',
+    'Control Panel\\Desktop|AutoColorization',
+    'Control Panel\\Colors|Hilight',
+    'Control Panel\\Colors|HotTrackingColor',
+    'sys|highlight',
+    'sys|hotlight',
+  ],
+  dark: ['Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize|AppsUseLightTheme', 'Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize|SystemUsesLightTheme'],
+  prev: ['Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize|ColorPrevalence', 'Software\\Microsoft\\Windows\\DWM|ColorPrevalence'],
+};
+
+let lastApplied = '';
+
+function applyWinColors(force) {
+  if (!hostInfo) return;
+  const want = { accent: !!settings.winAccent, dark: !!settings.winDark, prev: !!settings.winPrevalence };
+  const any = want.accent || want.dark || want.prev;
+  if (any && !winBackup) {
+    pendingColors = true;
+    hostSend({ cmd: 'winColorsGet' });
+    return;
+  }
+  pendingColors = false;
+  if (!winBackup) return;
+  // groups switched off: put back what was there before
+  const back = {};
+  for (const g of Object.keys(GROUPS)) {
+    if (!want[g] && winBackup.applied[g]) for (const k of GROUPS[g]) if (winBackup.values[k]) back[k] = winBackup.values[k];
+  }
+  if (Object.keys(back).length) hostSend({ cmd: 'winColorsRestore', values: back });
+  const pal = settings.palette === 'cover' ? settings.lastPalette : settings.palette;
+  const c = colors.forPalette(pal);
+  const cmd = { cmd: 'winColorsSet' };
+  if (want.accent) Object.assign(cmd, { accent: c.accent, palette: c.palette, highlight: c.highlight, hot: c.hot });
+  if (want.dark) cmd.dark = true;
+  if (want.prev) cmd.prevalence = true;
+  const sig = JSON.stringify(cmd);
+  if (any && (force || sig !== lastApplied || Object.keys(back).length)) hostSend(cmd);
+  lastApplied = any ? sig : '';
+  winBackup.applied = want;
+  if (!any) {
+    winBackup = null; // next time, read Windows' colours afresh
+    lastApplied = '';
+  }
+  saveBackup();
+  broadcastSettings();
+}
+
+function restoreAllColors() {
+  saveSettingsPatch({ winAccent: false, winDark: false, winPrevalence: false });
+}
+
+// ---------- settings changes ----------
+
+function saveSettingsPatch(patch) {
+  const clean = sanitize(patch);
+  const prev = { ...settings };
+  Object.assign(settings, clean);
+  if (clean.palette && clean.palette !== 'cover') settings.lastPalette = clean.palette;
+  writeSettings();
+  const changed = (k) => k in clean && clean[k] !== prev[k];
+
+  if (changed('wallpaper')) {
+    if (settings.wallpaper) createWallpapers();
     else closeWallpapers();
   }
-  if (key === 'bar') {
-    if (value) createBar();
+  if (changed('bar')) {
+    if (settings.bar) createBar();
     else closeBar();
   }
-  if (key === 'autostart') setAutostart(value);
-  if (key === 'attachMode') rebuild('другой способ встраивания');
+  if (changed('island')) {
+    if (settings.island) createIsland();
+    else closeIsland();
+  }
+  if (changed('autostart')) setAutostart(settings.autostart);
+  if (changed('attachMode')) rebuild('другой способ встраивания');
+  if (changed('palette') || changed('winAccent') || changed('winDark') || changed('winPrevalence')) applyWinColors();
+  if (changed('bg') && settings.bg === 'windows') hostSend({ cmd: 'wallpaperPath' });
+  if (changed('bgImage')) bgStamp = Date.now();
+  if (changed('text') && settings.text === 'lyrics' && lyricKey && !lyricData) loadLyrics(lyricKey);
+  broadcastSettings();
 }
 
 function setAutostart(on) {
@@ -398,6 +824,23 @@ function setAutostart(on) {
 
 function notify(title, content) {
   if (tray) tray.displayBalloon({ title, content, iconType: 'info' });
+}
+
+async function pickImage() {
+  dialogOpen = true;
+  try {
+    const r = await dialog.showOpenDialog({
+      title: 'Свой рисунок для обоев',
+      properties: ['openFile'],
+      filters: [{ name: 'Картинки', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return '';
+    saveSettingsPatch({ bgImage: r.filePaths[0], bg: 'image' });
+    return r.filePaths[0];
+  } finally {
+    dialogOpen = false;
+    if (panel && !panel.isDestroyed() && panel.isVisible()) panel.focus();
+  }
 }
 
 // ---------- screens changing, sleep, Explorer restarts ----------
@@ -416,12 +859,21 @@ function rebuild(why) {
     closeBar();
     createBar();
   }
+  if (settings.island) {
+    closeIsland();
+    createIsland();
+  }
 }
+
+// ---------- tray ----------
+
+let tray = null;
 
 // ---------- self-test (CI only) ----------
 
 // Plays a soft beat with media info in a hidden window, so the build machine can
-// check the whole chain: Windows media controls -> helper -> bar, and the waves.
+// check the whole chain (Windows media controls -> helper -> island, waves), and
+// opens the island and the panel at known moments for the screenshots.
 function selftest() {
   log('самопроверка: включаю звук');
   const page = `<audio id="a" loop></audio><script>
@@ -432,17 +884,38 @@ function selftest() {
     v.setUint16(32, 2, true); v.setUint16(34, 16, true); W(36, 'data'); v.setUint32(40, n * 2, true);
     for (let i = 0; i < n; i++) {
       const t = i / sr, b = (t * 2) % 1;
-      const s = Math.sin(2 * Math.PI * 55 * t) * Math.exp(-b * 8) * 0.8 + Math.sin(2 * Math.PI * 440 * t) * 0.08 * Math.exp(-((t * 4) % 1) * 6);
+      const s = Math.sin(2 * Math.PI * 55 * t) * Math.exp(-b * 8) * 0.8 + Math.sin(2 * Math.PI * 440 * t) * 0.08 * Math.exp(-((t * 4) % 1) * 6) + Math.sin(2 * Math.PI * 1320 * t) * 0.05 * Math.exp(-((t * 8) % 1) * 9);
       v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767 * 0.7, true);
     }
     const a = document.getElementById('a');
     a.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-    navigator.mediaSession.metadata = new MediaMetadata({ title: 'Проверка звука', artist: 'Резонанс', album: 'Самопроверка' });
+    const c = document.createElement('canvas'); c.width = c.height = 300;
+    const x = c.getContext('2d'); const g = x.createLinearGradient(0, 0, 300, 300);
+    g.addColorStop(0, '#ff4fb4'); g.addColorStop(0.5, '#7a3cff'); g.addColorStop(1, '#2f6bff');
+    x.fillStyle = g; x.fillRect(0, 0, 300, 300); x.fillStyle = 'rgba(255,255,255,.85)';
+    x.beginPath(); x.arc(150, 150, 60, 0, 7); x.fill(); x.fillStyle = '#1a0f33'; x.beginPath(); x.arc(150, 150, 18, 0, 7); x.fill();
+    navigator.mediaSession.metadata = new MediaMetadata({ title: 'Проверка звука', artist: 'Резонанс', album: 'Самопроверка', artwork: [{ src: c.toDataURL('image/png'), sizes: '300x300', type: 'image/png' }] });
     a.play().then(() => console.log('selftest playing')).catch((e) => console.log('selftest: ' + e.message));
   </script>`;
   const w = new BrowserWindow({ show: false, webPreferences: { autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false } });
   w.webContents.on('console-message', (e, level, message) => log('самопроверка: ' + (typeof e.message === 'string' ? e.message : message)));
   w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(page));
+
+  const at = (sec, fn) => setTimeout(fn, sec * 1000 - 3000);
+  at(9, () => island && island.webContents.send('island', { force: true }));
+  at(19, () => island && island.webContents.send('island', { force: false }));
+  at(21, () => {
+    SELFTEST_PANEL = true;
+    showPanel('bar', 'home');
+  });
+  at(28, () => panel && panel.webContents.send('panel', { tab: 'waves' }));
+  at(34, () => panel && panel.webContents.send('panel', { tab: 'text' }));
+  at(40, () => {
+    SELFTEST_PANEL = false;
+    hidePanel();
+  });
+  // as if the headphones were plugged in: everything must listen again
+  at(43, () => onHost({ type: 'audio', event: 'selftest' }));
 }
 
 // ---------- start ----------
@@ -450,17 +923,18 @@ function selftest() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (tray && menu) tray.popUpContextMenu(menu);
-  });
+  app.on('second-instance', () => showPanel('center'));
 
   app.whenReady().then(() => {
     loadSettings();
+    loadBackup();
     log(`запуск ${app.getVersion()}`);
     if (settings.firstRun) {
-      saveSettings({ firstRun: false });
+      settings.firstRun = false;
+      writeSettings();
       setAutostart(settings.autostart);
     }
+    serveImages();
 
     // the waves hear the whole PC: system sound loopback, no picker, no screen video kept
     session.defaultSession.setDisplayMediaRequestHandler(
@@ -476,22 +950,45 @@ if (!app.requestSingleInstanceLock()) {
       { useSystemPicker: false }
     );
 
-    ipcMain.handle('settings', () => settings);
+    ipcMain.handle('settings', () => view());
+    ipcMain.handle('info', () => info());
+    ipcMain.handle('pick-image', () => pickImage());
+    ipcMain.on('set', (e, patch) => saveSettingsPatch(patch));
     ipcMain.on('media', (e, action, pos) => hostSend({ cmd: 'media', action, pos: typeof pos === 'number' ? Math.round(pos) : -1 }));
-    ipcMain.on('menu', (e, x, y) => {
-      if (menu && bar) menu.popup({ window: bar, x: Math.round(x), y: Math.round(y) });
+    ipcMain.on('panel', (e, cmd) => {
+      if (cmd === 'toggle') togglePanel('bar');
+      else if (cmd === 'close') hidePanel();
+    });
+    ipcMain.on('island-mouse', (e, on) => {
+      if (island && !island.isDestroyed()) island.setIgnoreMouseEvents(!on, { forward: true });
+    });
+    ipcMain.on('action', (e, name) => {
+      if (name === 'quit') app.quit();
+      else if (name === 'log') shell.openPath(logFile);
+      else if (name === 'reattach') rebuild('встроить обои заново');
+      else if (name === 'restoreColors') restoreAllColors();
+      else if (name === 'applyColors') applyWinColors(true);
+      else if (name === 'lyricsAgain' && lyricKey) loadLyrics(lyricKey);
     });
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
 
     tray = new Tray(app.isPackaged ? path.join(process.resourcesPath, 'tray.ico') : path.join(__dirname, 'build', 'tray.ico'));
     tray.setToolTip('Резонанс');
-    rebuildMenu();
-    tray.on('click', () => tray.popUpContextMenu(menu));
+    tray.on('click', () => togglePanel('tray'));
+    tray.on('right-click', () => togglePanel('tray'));
 
     startHost();
+    createPanel();
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
-    if (process.env.REZONANS_SELFTEST === '1') setTimeout(selftest, 3000);
+    if (settings.island) createIsland();
+    if (SELFTEST) setTimeout(selftest, 3000);
+    else if (settings.seen !== app.getVersion()) {
+      // a new version: show the new panel once
+      settings.seen = app.getVersion();
+      writeSettings();
+      setTimeout(() => showPanel('bar', 'home'), 3500);
+    }
 
     screen.on('display-added', () => scheduleRebuild('новый экран'));
     screen.on('display-removed', () => scheduleRebuild('экран отключён'));

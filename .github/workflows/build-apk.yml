@@ -19,6 +19,9 @@ concurrency:
 
 jobs:
   build:
+    # a push that changes only the PC app's side of shared code says so in the
+    # last commit's message: no new phone release for it
+    if: ${{ !contains(github.event.head_commit.message || '', '[только ПК]') }}
     runs-on: ubuntu-latest
     env:
       APP_VERSION_CODE: ${{ github.run_number }}

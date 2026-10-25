@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: rez:; font-src 'self'" />
+    <title>Резонанс</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <div class="panel" id="panel">
+      <header class="head">
+        <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="brand">Резонанс</span>
+        <span class="ver" id="ver"></span>
+        <button class="x" id="close" aria-label="Закрыть"></button>
+      </header>
+      <nav class="tabs" id="tabs" role="tablist"><i class="tab-ind" id="tabInd"></i></nav>
+      <main class="body" id="body"></main>
+    </div>
+    <script src="panel.js"></script>
+  </body>
+</html>

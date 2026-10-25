@@ -1,14 +1,26 @@
-// The small API the wallpaper and the bar pages get from the main process.
+// The small API the pages (wallpaper, bar, island, panel) get from the main process.
 'use strict';
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+const on = (channel) => (cb) => ipcRenderer.on(channel, (e, v) => cb(v));
+
 contextBridge.exposeInMainWorld('rez', {
   settings: () => ipcRenderer.invoke('settings'),
-  onSettings: (cb) => ipcRenderer.on('settings', (e, s) => cb(s)),
-  onMedia: (cb) => ipcRenderer.on('media', (e, m) => cb(m)),
-  onPause: (cb) => ipcRenderer.on('pause', (e, p) => cb(p)),
+  info: () => ipcRenderer.invoke('info'),
+  set: (patch) => ipcRenderer.send('set', patch),
+  pickImage: () => ipcRenderer.invoke('pick-image'),
+  onSettings: on('settings'),
+  onMedia: on('media'),
+  onLyrics: on('lyrics'),
+  onPause: on('pause'),
+  onAudio: on('audio'),
+  onPanel: on('panel'),
+  onIsland: on('island'),
+  onInfo: on('info'),
   media: (action, pos) => ipcRenderer.send('media', action, pos),
-  menu: (x, y) => ipcRenderer.send('menu', x, y),
+  panel: (cmd) => ipcRenderer.send('panel', cmd),
+  islandMouse: (on) => ipcRenderer.send('island-mouse', !!on),
+  action: (name) => ipcRenderer.send('action', name),
   log: (msg) => ipcRenderer.send('log', String(msg)),
 });

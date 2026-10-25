@@ -3,9 +3,13 @@
 // The Electron app starts it and talks to it with one JSON object per line:
 //   in  (stdin):  {"cmd":"hello"} | {"cmd":"attach",...} | {"cmd":"appbar",...} |
 //                 {"cmd":"appbarRemove"} | {"cmd":"media","action":...} |
-//                 {"cmd":"own","hwnds":[...]} | {"cmd":"refreshWallpaper"} | {"cmd":"quit"}
+//                 {"cmd":"own","hwnds":[...]} | {"cmd":"refreshWallpaper"} |
+//                 {"cmd":"style","hwnd":...} | {"cmd":"winColorsGet"} | {"cmd":"winColorsSet",...} |
+//                 {"cmd":"winColorsRestore","values":{...}} | {"cmd":"wallpaperPath"} | {"cmd":"quit"}
 //   out (stdout): {"type":"hello",...} | {"type":"attached",...} | {"type":"appbar",...} |
-//                 {"type":"media",...} | {"type":"fg",...} | {"type":"log","msg":...}
+//                 {"type":"media",...} | {"type":"fg",...} | {"type":"audio",...} |
+//                 {"type":"winColorsBackup",...} | {"type":"winColors",...} |
+//                 {"type":"wallpaperPath",...} | {"type":"log","msg":...}
 //
 // What it does:
 //   * puts the wallpaper windows behind the desktop icons (classic WorkerW, and the
@@ -13,7 +17,10 @@
 //   * registers the top bar as an app bar, so maximised windows stop below it;
 //   * reads what is playing from the system media controls (any player that shows
 //     up in the Windows volume flyout) and passes play/pause/next/previous/seek;
-//   * watches the window in front, so the wallpaper can rest while it is covered.
+//   * watches the window in front, so the wallpaper can rest while it is covered;
+//   * tells when the sound output changes (the waves listen to the new one);
+//   * paints Windows itself in the colours of Резонанс: accent, selection, dark
+//     theme (everything it changes is read first, so it can be put back).
 // When stdin closes (the app quit or crashed) it removes the app bar and puts the
 // normal wallpaper back on screen.
 
@@ -25,6 +32,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Web.Script.Serialization;
+using Microsoft.Win32;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
@@ -52,6 +60,7 @@ namespace Rezonans
             // the media controls need WinRT; if this Windows lacks it, the rest still works
             try { Media.Start(); } catch (Exception e) { Log("медиа недоступны: " + e.Message); }
             try { Foreground.Start(); } catch (Exception e) { Log("окна: " + e.Message); }
+            try { AudioWatch.Start(); } catch (Exception e) { Log("звуковые устройства: " + e.Message); }
 
             string line;
             while ((line = input.ReadLine()) != null)
@@ -109,6 +118,11 @@ namespace Rezonans
             try { return Convert.ToInt32(Math.Round(Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture))); } catch { return def; }
         }
 
+        internal static bool? Bool(Dictionary<string, object> c, string k)
+        {
+            return c.TryGetValue(k, out var v) && v is bool b ? b : (bool?)null;
+        }
+
         internal static IntPtr Hwnd(string s)
         {
             return long.TryParse(s, out var v) ? new IntPtr(v) : IntPtr.Zero;
@@ -137,6 +151,7 @@ namespace Rezonans
                             { "taskbarCreated", (long)Native.RegisterWindowMessage("TaskbarCreated") },
                             { "raised", pm != IntPtr.Zero && Wallpaper.Raised(pm) },
                             { "os", Environment.OSVersion.VersionString },
+                            { "immersive", SysColors.ImmersiveInfo() },
                         });
                         break;
                     }
@@ -176,6 +191,39 @@ namespace Rezonans
                     break;
                 case "media":
                     Media.Command(Str(c, "action"), Int(c, "pos", -1));
+                    break;
+                case "style":
+                    Look.Style(Hwnd(Str(c, "hwnd")), Int(c, "corner", 2), Str(c, "border", ""), Bool(c, "dark"));
+                    break;
+                case "winColorsGet":
+                    {
+                        var r = SysColors.Read();
+                        Send(new Dictionary<string, object> { { "type", "winColorsBackup" }, { "values", r } });
+                        break;
+                    }
+                case "winColorsSet":
+                    {
+                        // broadcasting the change can take a moment (every window hears it)
+                        var copy = c;
+                        new Thread(() =>
+                        {
+                            try { Send(SysColors.Apply(copy)); }
+                            catch (Exception e) { Log("цвета Windows: " + e.Message); }
+                        }) { IsBackground = true }.Start();
+                        break;
+                    }
+                case "winColorsRestore":
+                    {
+                        var copy = c;
+                        new Thread(() =>
+                        {
+                            try { Send(SysColors.Restore(copy.TryGetValue("values", out var v) ? v as Dictionary<string, object> : null)); }
+                            catch (Exception e) { Log("цвета Windows (вернуть): " + e.Message); }
+                        }) { IsBackground = true }.Start();
+                        break;
+                    }
+                case "wallpaperPath":
+                    Send(new Dictionary<string, object> { { "type", "wallpaperPath" }, { "path", Wallpaper.CurrentPath() } });
                     break;
                 case "quit":
                     return false;
@@ -321,6 +369,18 @@ namespace Rezonans
             res["at"] = p.X + "," + p.Y;
             if (!ok) res["error"] = "окно не встало под значки";
             return res;
+        }
+
+        // The picture of the user's own Windows wallpaper (for "waves over my wallpaper").
+        internal static string CurrentPath()
+        {
+            var sb = new StringBuilder(1024);
+            Native.SystemParametersInfo(Native.SPI_GETDESKWALLPAPER, (uint)sb.Capacity, sb, 0);
+            var p = sb.ToString();
+            if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p;
+            // set from Settings: Windows keeps its own copy
+            var t = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft", "Windows", "Themes", "TranscodedWallpaper");
+            return File.Exists(t) ? t : "";
         }
 
         // Re-applies the user's own wallpaper, which also wipes the last frame of the
@@ -631,6 +691,467 @@ namespace Rezonans
     }
 
     // ---------------------------------------------------------------------------
+    // Our windows in the Windows 11 style: rounded corners, a quiet dark border
+    // ---------------------------------------------------------------------------
+    internal static class Look
+    {
+        internal static void Style(IntPtr h, int corner, string border, bool? dark)
+        {
+            if (h == IntPtr.Zero || !Native.IsWindow(h)) return;
+            int v = corner;
+            Native.DwmSetWindowAttribute(h, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref v, 4);
+            if (dark == true)
+            {
+                int d = 1;
+                Native.DwmSetWindowAttribute(h, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, ref d, 4);
+            }
+            if (!string.IsNullOrEmpty(border))
+            {
+                int c = border == "none" ? unchecked((int)0xFFFFFFFE) : (int)SysColors.ColorRef(border);
+                Native.DwmSetWindowAttribute(h, 34 /* DWMWA_BORDER_COLOR */, ref c, 4);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // The sound output changed (headphones plugged in, another device chosen in the
+    // volume flyout): the app's loopback still listens to the old one, so it has
+    // to start listening again.
+    // ---------------------------------------------------------------------------
+    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+    public class MMDeviceEnumeratorCom
+    {
+    }
+
+    [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IMMDeviceEnumerator
+    {
+        [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IntPtr devices);
+        [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IntPtr endpoint);
+        [PreserveSig] int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IntPtr device);
+        [PreserveSig] int RegisterEndpointNotificationCallback(IMMNotificationClient client);
+        [PreserveSig] int UnregisterEndpointNotificationCallback(IMMNotificationClient client);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROPERTYKEY
+    {
+        public Guid fmtid;
+        public int pid;
+    }
+
+    [ComImport, Guid("7991EEC9-7E89-4D85-8390-6C703CEC60C0"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IMMNotificationClient
+    {
+        [PreserveSig] int OnDeviceStateChanged([MarshalAs(UnmanagedType.LPWStr)] string deviceId, int newState);
+        [PreserveSig] int OnDeviceAdded([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+        [PreserveSig] int OnDeviceRemoved([MarshalAs(UnmanagedType.LPWStr)] string deviceId);
+        [PreserveSig] int OnDefaultDeviceChanged(int flow, int role, [MarshalAs(UnmanagedType.LPWStr)] string defaultDeviceId);
+        [PreserveSig] int OnPropertyValueChanged([MarshalAs(UnmanagedType.LPWStr)] string deviceId, PROPERTYKEY key);
+    }
+
+    [ComVisible(true)]
+    public class AudioWatch : IMMNotificationClient
+    {
+        private static IMMDeviceEnumerator _enum;
+        private static AudioWatch _client;
+        private static Timer _timer;
+        private static string _why = "";
+        private static readonly object Lock = new object();
+
+        internal static void Start()
+        {
+            _enum = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+            _client = new AudioWatch();
+            var hr = _enum.RegisterEndpointNotificationCallback(_client);
+            if (hr != 0) Program.Log("не слежу за звуковыми устройствами: 0x" + hr.ToString("x"));
+        }
+
+        // Windows reports one change per role (console, multimedia, communications):
+        // send one message after things settle
+        private static void Later(string why)
+        {
+            lock (Lock)
+            {
+                _why = why;
+                if (_timer == null) _timer = new Timer(_ => Fire(), null, 500, Timeout.Infinite);
+                else _timer.Change(500, Timeout.Infinite);
+            }
+        }
+
+        private static void Fire()
+        {
+            string why;
+            lock (Lock) why = _why;
+            Program.Send(new Dictionary<string, object> { { "type", "audio" }, { "event", why } });
+        }
+
+        public int OnDeviceStateChanged(string deviceId, int newState)
+        {
+            Later("state");
+            return 0;
+        }
+
+        public int OnDeviceAdded(string deviceId)
+        {
+            Later("added");
+            return 0;
+        }
+
+        public int OnDeviceRemoved(string deviceId)
+        {
+            Later("removed");
+            return 0;
+        }
+
+        public int OnDefaultDeviceChanged(int flow, int role, string defaultDeviceId)
+        {
+            if (flow == 0 /* eRender */) Later("default");
+            return 0;
+        }
+
+        public int OnPropertyValueChanged(string deviceId, PROPERTYKEY key)
+        {
+            return 0;
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Windows in the colours of Резонанс: the accent (Start, Settings, focus rings,
+    // title bars), the selection colour (the rectangle on the desktop, selected
+    // text in classic apps) and, if asked, the dark theme.
+    // ---------------------------------------------------------------------------
+    internal static class SysColors
+    {
+        private const string Dwm = @"Software\Microsoft\Windows\DWM";
+        private const string Accent = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Accent";
+        private const string Desktop = @"Control Panel\Desktop";
+        private const string Colors = @"Control Panel\Colors";
+        private const string Personalize = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+        // everything that may be changed, read before the first change to put it back
+        private static readonly string[][] Values =
+        {
+            new[] { Dwm, "AccentColor" },
+            new[] { Dwm, "ColorizationColor" },
+            new[] { Dwm, "ColorizationAfterglow" },
+            new[] { Dwm, "ColorPrevalence" },
+            new[] { Accent, "AccentPalette" },
+            new[] { Accent, "AccentColorMenu" },
+            new[] { Accent, "StartColorMenu" },
+            new[] { Desktop, "AutoColorization" },
+            new[] { Colors, "Hilight" },
+            new[] { Colors, "HotTrackingColor" },
+            new[] { Personalize, "AppsUseLightTheme" },
+            new[] { Personalize, "SystemUsesLightTheme" },
+            new[] { Personalize, "ColorPrevalence" },
+        };
+
+        internal static Dictionary<string, object> Read()
+        {
+            var o = new Dictionary<string, object>();
+            foreach (var v in Values)
+            {
+                var e = new Dictionary<string, object> { { "exists", false } };
+                using (var k = Registry.CurrentUser.OpenSubKey(v[0]))
+                {
+                    var val = k == null ? null : k.GetValue(v[1], null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                    if (val != null)
+                    {
+                        e["exists"] = true;
+                        e["kind"] = k.GetValueKind(v[1]).ToString();
+                        if (val is byte[] b) e["value"] = Convert.ToBase64String(b);
+                        else if (val is int i) e["value"] = (long)unchecked((uint)i);
+                        else if (val is long l) e["value"] = l;
+                        else e["value"] = Convert.ToString(val);
+                    }
+                }
+                o[v[0] + "|" + v[1]] = e;
+            }
+            o["sys|highlight"] = new Dictionary<string, object> { { "exists", true }, { "kind", "Sys" }, { "value", (long)Native.GetSysColor(13) } };
+            o["sys|hotlight"] = new Dictionary<string, object> { { "exists", true }, { "kind", "Sys" }, { "value", (long)Native.GetSysColor(26) } };
+            return o;
+        }
+
+        internal static Dictionary<string, object> Restore(Dictionary<string, object> values)
+        {
+            var res = new Dictionary<string, object> { { "type", "winColors" }, { "restored", true }, { "ok", false } };
+            if (values == null) return res;
+            var before = CurrentAccent();
+            var hi = new List<int>();
+            var hc = new List<int>();
+            foreach (var kv in values)
+            {
+                var e = kv.Value as Dictionary<string, object>;
+                if (e == null) continue;
+                var parts = kv.Key.Split('|');
+                if (parts.Length != 2) continue;
+                var exists = e.TryGetValue("exists", out var ex) && ex is bool eb && eb;
+                var kind = e.TryGetValue("kind", out var kk) ? Convert.ToString(kk) : "";
+                e.TryGetValue("value", out var val);
+                try
+                {
+                    if (parts[0] == "sys")
+                    {
+                        hi.Add(parts[1] == "highlight" ? 13 : 26);
+                        hc.Add(unchecked((int)Convert.ToInt64(val)));
+                        continue;
+                    }
+                    using (var k = Registry.CurrentUser.CreateSubKey(parts[0]))
+                    {
+                        if (!exists)
+                        {
+                            k.DeleteValue(parts[1], false);
+                            continue;
+                        }
+                        if (kind == "Binary") k.SetValue(parts[1], Convert.FromBase64String(Convert.ToString(val)), RegistryValueKind.Binary);
+                        else if (kind == "DWord") k.SetValue(parts[1], unchecked((int)(uint)Convert.ToInt64(val)), RegistryValueKind.DWord);
+                        else if (kind == "QWord") k.SetValue(parts[1], Convert.ToInt64(val), RegistryValueKind.QWord);
+                        else k.SetValue(parts[1], Convert.ToString(val), RegistryValueKind.String);
+                    }
+                }
+                catch (Exception err)
+                {
+                    Program.Log("вернуть " + kv.Key + ": " + err.Message);
+                }
+            }
+            if (hi.Count > 0) Native.SetSysColors(hi.Count, hi.ToArray(), hc.ToArray());
+            uint accent = 0;
+            if (values.TryGetValue(Dwm + "|AccentColor", out var ac) && ac is Dictionary<string, object> ad && ad.TryGetValue("value", out var av) && av != null)
+                accent = (uint)Convert.ToInt64(av) & 0xFFFFFF;
+            if (accent != 0) res["immersive"] = Immersive(accent, before);
+            Broadcast();
+            res["ok"] = true;
+            return res;
+        }
+
+        // "#rrggbb" -> COLORREF 0x00BBGGRR
+        internal static uint ColorRef(string hex)
+        {
+            Rgb(hex, out var r, out var g, out var b);
+            return (uint)(r | (g << 8) | (b << 16));
+        }
+
+        private static void Rgb(string hex, out int r, out int g, out int b)
+        {
+            hex = (hex ?? "").Trim().TrimStart('#');
+            if (hex.Length != 6) hex = "7c4dff";
+            r = Convert.ToInt32(hex.Substring(0, 2), 16);
+            g = Convert.ToInt32(hex.Substring(2, 2), 16);
+            b = Convert.ToInt32(hex.Substring(4, 2), 16);
+        }
+
+        private static void Dword(string path, string name, uint v)
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(path)) k.SetValue(name, unchecked((int)v), RegistryValueKind.DWord);
+        }
+
+        internal static Dictionary<string, object> Apply(Dictionary<string, object> c)
+        {
+            var res = new Dictionary<string, object> { { "type", "winColors" }, { "ok", false } };
+            var done = new List<string>();
+            var before = CurrentAccent();
+            var accentHex = c.TryGetValue("accent", out var a) ? Convert.ToString(a) : "";
+            if (!string.IsNullOrEmpty(accentHex))
+            {
+                // eight shades, light to dark, as R G B 0 (index 3 is the accent itself)
+                var shades = new List<string>();
+                if (c.TryGetValue("palette", out var pv) && pv is IEnumerable pe)
+                    foreach (var x in pe) shades.Add(Convert.ToString(x));
+                if (shades.Count != 8) shades = new List<string> { accentHex, accentHex, accentHex, accentHex, accentHex, accentHex, accentHex, accentHex };
+                var pal = new byte[32];
+                for (var i = 0; i < 8; i++)
+                {
+                    Rgb(shades[i], out var r, out var g, out var b);
+                    pal[i * 4] = (byte)r;
+                    pal[i * 4 + 1] = (byte)g;
+                    pal[i * 4 + 2] = (byte)b;
+                    pal[i * 4 + 3] = 0;
+                }
+                uint abgr = 0xFF000000 | ColorRef(shades[3]);
+                uint startAbgr = 0xFF000000 | ColorRef(shades[4]);
+                Rgb(shades[3], out var ar, out var ag, out var ab);
+                uint argb = 0xC4000000 | (uint)((ar << 16) | (ag << 8) | ab);
+                using (var k = Registry.CurrentUser.CreateSubKey(Accent))
+                {
+                    k.SetValue("AccentPalette", pal, RegistryValueKind.Binary);
+                    k.SetValue("AccentColorMenu", unchecked((int)abgr), RegistryValueKind.DWord);
+                    k.SetValue("StartColorMenu", unchecked((int)startAbgr), RegistryValueKind.DWord);
+                }
+                Dword(Dwm, "AccentColor", abgr);
+                Dword(Dwm, "ColorizationColor", argb);
+                Dword(Dwm, "ColorizationAfterglow", argb);
+                // stop Windows from picking the accent out of the wallpaper again
+                using (var k = Registry.CurrentUser.CreateSubKey(Desktop)) k.SetValue("AutoColorization", 0, RegistryValueKind.DWord);
+                res["immersive"] = Immersive(ColorRef(shades[3]), before);
+                done.Add("акцент");
+            }
+            var selHex = c.TryGetValue("highlight", out var hv) ? Convert.ToString(hv) : "";
+            if (!string.IsNullOrEmpty(selHex))
+            {
+                var hotHex = c.TryGetValue("hot", out var hh) ? Convert.ToString(hh) : selHex;
+                Rgb(selHex, out var r1, out var g1, out var b1);
+                Rgb(hotHex, out var r2, out var g2, out var b2);
+                using (var k = Registry.CurrentUser.CreateSubKey(Colors))
+                {
+                    k.SetValue("Hilight", r1 + " " + g1 + " " + b1, RegistryValueKind.String);
+                    k.SetValue("HotTrackingColor", r2 + " " + g2 + " " + b2, RegistryValueKind.String);
+                }
+                Native.SetSysColors(2, new[] { 13, 26 }, new[] { (int)ColorRef(selHex), (int)ColorRef(hotHex) });
+                done.Add("выделение");
+            }
+            var dark = Program.Bool(c, "dark");
+            if (dark.HasValue)
+            {
+                uint light = dark.Value ? 0u : 1u;
+                Dword(Personalize, "AppsUseLightTheme", light);
+                Dword(Personalize, "SystemUsesLightTheme", light);
+                done.Add(dark.Value ? "тёмная тема" : "светлая тема");
+            }
+            var prev = Program.Bool(c, "prevalence");
+            if (prev.HasValue)
+            {
+                Dword(Personalize, "ColorPrevalence", prev.Value ? 1u : 0u);
+                Dword(Dwm, "ColorPrevalence", prev.Value ? 1u : 0u);
+                done.Add(prev.Value ? "акцент на панелях" : "без акцента на панелях");
+            }
+            Broadcast();
+            // read back, so the log shows what Windows really keeps
+            using (var k = Registry.CurrentUser.OpenSubKey(Dwm))
+            {
+                var v = k == null ? null : k.GetValue("AccentColor");
+                if (v is int iv) res["accentNow"] = "0x" + unchecked((uint)iv).ToString("x8");
+            }
+            res["highlightNow"] = "0x" + Native.GetSysColor(13).ToString("x6");
+            res["done"] = string.Join(", ", done);
+            res["ok"] = true;
+            return res;
+        }
+
+        // Tell every window (Explorer, the taskbar, Start, open apps) that colours changed.
+        private static void Broadcast()
+        {
+            var b = new IntPtr(0xFFFF);
+            Native.SendMessageTimeoutStr(b, 0x001A /* WM_SETTINGCHANGE */, IntPtr.Zero, "ImmersiveColorSet", 0x2 /* SMTO_ABORTIFHUNG */, 400, out _);
+            Native.SendMessageTimeoutStr(b, 0x001A, IntPtr.Zero, "WindowsThemeElement", 0x2, 400, out _);
+            Native.SendMessageTimeout(b, 0x0320 /* WM_DWMCOLORIZATIONCOLORCHANGED */, IntPtr.Zero, IntPtr.Zero, 0x2, 400, out _);
+        }
+
+        // ----- the accent as Settings sets it (applies at once, no sign-out) -----
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ColorPref
+        {
+            public uint Set1;
+            public uint Set2;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        private delegate int PrefFn(ref ColorPref p, [MarshalAs(UnmanagedType.Bool)] bool force);
+
+        private static PrefFn _get, _set;
+        private static string _how;
+
+        private static string Guard()
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Rezonans");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, "immersive-try");
+        }
+
+        private static void Resolve()
+        {
+            if (_how != null) return;
+            _how = "none";
+            try
+            {
+                var ux = Native.LoadLibrary("uxtheme.dll");
+                if (ux == IntPtr.Zero) return;
+                var g = Native.GetProcAddress(ux, "GetUserColorPreference");
+                var s = Native.GetProcAddress(ux, "SetUserColorPreference");
+                if (g != IntPtr.Zero && s != IntPtr.Zero)
+                {
+                    _how = "name";
+                }
+                else
+                {
+                    // older builds export them by number only. A crash while trying them
+                    // leaves the marker file behind: then they are never used again.
+                    if (File.Exists(Guard()) && File.ReadAllText(Guard()).Trim() == "try")
+                    {
+                        _how = "disabled";
+                        return;
+                    }
+                    g = Native.GetProcAddressOrd(ux, new IntPtr(120));
+                    s = Native.GetProcAddressOrd(ux, new IntPtr(122));
+                    if (g == IntPtr.Zero || s == IntPtr.Zero) return;
+                    _how = "ordinal";
+                }
+                _get = (PrefFn)Marshal.GetDelegateForFunctionPointer(g, typeof(PrefFn));
+                _set = (PrefFn)Marshal.GetDelegateForFunctionPointer(s, typeof(PrefFn));
+            }
+            catch (Exception e)
+            {
+                _how = "error: " + e.Message;
+            }
+        }
+
+        internal static string ImmersiveInfo()
+        {
+            Resolve();
+            return _how;
+        }
+
+        // the accent Windows keeps now, as 0x00BBGGRR (0 when unknown)
+        private static uint CurrentAccent()
+        {
+            try
+            {
+                using (var k = Registry.CurrentUser.OpenSubKey(Dwm))
+                {
+                    var cur = k == null ? null : k.GetValue("AccentColor");
+                    return cur is int ci ? unchecked((uint)ci) & 0xFFFFFF : 0;
+                }
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static string Immersive(uint colorRef, uint before)
+        {
+            Resolve();
+            if (_get == null || _set == null) return _how;
+            var guard = _how == "ordinal" ? Guard() : null;
+            try
+            {
+                if (guard != null) File.WriteAllText(guard, "try");
+                var p = new ColorPref();
+                var hr = _get(ref p, false);
+                if (hr != 0) return _how + ": чтение 0x" + hr.ToString("x");
+                // only if what it reads looks like an accent Windows had: the old one
+                // or the one just written
+                var seen = p.Set2 & 0xFFFFFF;
+                if (seen != before && seen != (colorRef & 0xFFFFFF))
+                {
+                    if (guard != null) File.WriteAllText(guard, "skip");
+                    return _how + ": не похоже (0x" + seen.ToString("x6") + " / 0x" + before.ToString("x6") + "), пропущено";
+                }
+                p.Set2 = (p.Set2 & 0xFF000000) | (colorRef & 0xFFFFFF);
+                hr = _set(ref p, true);
+                if (guard != null) File.WriteAllText(guard, "ok");
+                return _how + (hr == 0 ? ": ok" : ": 0x" + hr.ToString("x"));
+            }
+            catch (Exception e)
+            {
+                if (guard != null) try { File.WriteAllText(guard, "error"); } catch { }
+                return _how + ": " + e.Message;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // Win32
     // ---------------------------------------------------------------------------
     internal static class Native
@@ -712,5 +1233,12 @@ namespace Rezonans
         [DllImport("user32.dll")] internal static extern bool SetProcessDpiAwarenessContext(IntPtr value);
         [DllImport("shell32.dll")] internal static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
         [DllImport("dwmapi.dll")] internal static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
+        [DllImport("dwmapi.dll")] internal static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int v, int size);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageTimeoutW")] internal static extern IntPtr SendMessageTimeoutStr(IntPtr h, uint msg, IntPtr w, string l, uint flags, uint timeout, out IntPtr result);
+        [DllImport("user32.dll")] internal static extern uint GetSysColor(int index);
+        [DllImport("user32.dll")] internal static extern bool SetSysColors(int count, int[] elements, int[] colors);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] internal static extern IntPtr LoadLibrary(string name);
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)] internal static extern IntPtr GetProcAddress(IntPtr h, string name);
+        [DllImport("kernel32.dll", EntryPoint = "GetProcAddress", ExactSpelling = true)] internal static extern IntPtr GetProcAddressOrd(IntPtr h, IntPtr ordinal);
     }
 }

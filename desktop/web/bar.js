@@ -5,7 +5,8 @@
 import { icon } from '../../src/util.js';
 import * as graph from './graph.js';
 import { BANDS } from './graph.js';
-import { loopback } from './loopback.js';
+import * as listen from './listen.js';
+import { coverColors } from './looks.js';
 
 const $ = (id) => document.getElementById(id);
 const player = $('player');
@@ -24,16 +25,29 @@ playBtn.append(icon('play', 16));
 
 // ---------- settings ----------
 
+let settings = {};
+let coverCols = null;
+
 function apply(s) {
-  if (s) document.body.dataset.bg = s.bg || 'glass-violet';
+  if (!s) return;
+  settings = s;
+  const b = document.body;
+  b.dataset.bg = s.bg || 'glass-violet';
+  b.style.setProperty('--tint-a', String(s.barTint ?? 0.42));
+  b.classList.toggle('island', !!s.island);
+  b.classList.toggle('nodate', s.barDate === false);
+  paintColors();
+  tick();
 }
 window.rez.settings().then(apply);
 window.rez.onSettings(apply);
 
-$('brand').addEventListener('click', () => {
-  const r = $('brand').getBoundingClientRect();
-  window.rez.menu(r.left, r.bottom + 4);
-});
+function paintColors() {
+  const c = settings.palette === 'cover' && coverCols ? coverCols : settings.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
+  c.forEach((v, i) => document.body.style.setProperty(`--c${i + 1}`, v));
+}
+
+$('brand').addEventListener('click', () => window.rez.panel('toggle'));
 
 // ---------- what's playing ----------
 
@@ -55,8 +69,14 @@ function replay(el, cls) {
 }
 
 window.rez.onMedia((m) => {
-  media = { ...media, ...m };
-  if (m.thumb !== undefined) thumb = m.thumb || '';
+  media = m.status === 'none' ? { status: 'none' } : { ...media, ...m };
+  if (m.thumb !== undefined && m.thumb !== thumb) {
+    thumb = m.thumb || '';
+    coverColors(thumb).then((c) => {
+      coverCols = c;
+      paintColors();
+    });
+  }
   posAt = performance.now();
   paint();
 });
@@ -133,11 +153,14 @@ $('prog').parentElement.addEventListener('click', (e) => {
 
 // ---------- clock ----------
 
+let clockTimer = 0;
 function tick() {
+  clearTimeout(clockTimer);
   const d = new Date();
+  const sec = !!settings.barSeconds;
   $('date').textContent = d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
-  $('time').textContent = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  setTimeout(tick, 60500 - d.getSeconds() * 1000 - d.getMilliseconds());
+  $('time').textContent = d.toLocaleTimeString('ru-RU', sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
+  clockTimer = setTimeout(tick, sec ? 1010 - d.getMilliseconds() : 60500 - d.getSeconds() * 1000 - d.getMilliseconds());
 }
 tick();
 
@@ -148,7 +171,6 @@ const REST = [0.42, 1, 0.66, 0.32];
 const bands = new Float32Array(BANDS);
 const wave = new Float32Array(256);
 const level = [0, 0, 0, 0];
-let hearing = false;
 let last = 0;
 
 function frame(t) {
@@ -156,7 +178,7 @@ function frame(t) {
   if (t - last < 33) return; // 30 fps is plenty for four little bars
   last = t;
   let loud = false;
-  if (hearing) {
+  if (listen.heard() && settings.barMark !== false) {
     const r = graph.read(bands, wave);
     if (r.ok) {
       const groups = [
@@ -180,10 +202,6 @@ function frame(t) {
 }
 requestAnimationFrame(frame);
 
-loopback()
-  .then((s) => {
-    hearing = graph.attachStream(s);
-  })
-  .catch((e) => window.rez.log('строка: звук недоступен: ' + (e && e.message)));
+listen.start({ name: 'строка', playing: () => media.status === 'playing' });
 
 paint();

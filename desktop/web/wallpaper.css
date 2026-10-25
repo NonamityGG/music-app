@@ -1,5 +1,6 @@
-/* Резонанс для ПК — the live wallpaper: a background in one of the app's looks
-   and the waves on top. Only the clouds move by themselves (transform only). */
+/* Резонанс для ПК — the live wallpaper: a background in one of the looks, big
+   soft words behind (the song's lyrics, its title, a clock or any text), and the
+   waves on top. Only the clouds move by themselves (transform only). */
 
 html,
 body {
@@ -12,11 +13,19 @@ body {
 }
 
 body {
+  --c1: #7c4dff;
+  --c2: #c3a6ff;
+  --c3: #ff6fd8;
+  --dim: 0.35;
+  --blur: 0px;
+  --wb: 0.92;
   background: #120a24;
 }
 
 body[data-bg='glass-black'],
-body[data-bg='amoled'] {
+body[data-bg='amoled'],
+body[data-bg='windows'],
+body[data-bg='image'] {
   background: #000;
 }
 
@@ -24,7 +33,43 @@ body[data-bg='dark'] {
   background: radial-gradient(120% 90% at 50% 45%, #1d1530 0%, #140f1f 55%, #0c0913 100%);
 }
 
-/* coloured light clouds of the Liquid Glass looks */
+body[data-bg='aurora'] {
+  background: linear-gradient(180deg, #02131c 0%, #041d24 50%, #07101c 100%);
+}
+
+body[data-bg='ember'] {
+  background: radial-gradient(130% 100% at 50% 110%, #2a0710 0%, #14050b 55%, #0a0306 100%);
+}
+
+body[data-bg='glass-palette'] {
+  background: color-mix(in srgb, var(--c1) 14%, #07040e);
+}
+
+/* ---------- a picture: the Windows wallpaper or the user's own ---------- */
+
+.photo {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: center / cover no-repeat;
+  filter: blur(var(--blur));
+  transform: scale(calc(1 + var(--blur-k, 0)));
+}
+
+.photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, var(--dim));
+}
+
+body[data-bg='windows'] .photo.ready,
+body[data-bg='image'] .photo.ready {
+  display: block;
+}
+
+/* ---------- coloured light clouds ---------- */
+
 .sky {
   position: fixed;
   inset: -10%;
@@ -32,7 +77,7 @@ body[data-bg='dark'] {
   pointer-events: none;
 }
 
-body[data-bg^='glass'] .sky {
+body:is([data-bg^='glass'], [data-bg='aurora'], [data-bg='ember']) .sky {
   display: block;
 }
 
@@ -43,31 +88,76 @@ body[data-bg^='glass'] .sky {
   border-radius: 50%;
   opacity: var(--a, 0.55);
   will-change: transform;
+  background: radial-gradient(closest-side, var(--k), color-mix(in srgb, var(--k) 30%, transparent) 55%, transparent);
 }
 
 .sky i:nth-child(1) {
+  --k: rgba(122, 60, 255, 0.85);
   left: -8%;
   top: -18%;
-  background: radial-gradient(closest-side, rgba(122, 60, 255, 0.85), rgba(122, 60, 255, 0.25) 55%, rgba(122, 60, 255, 0));
   animation: drift1 38s ease-in-out infinite alternate;
 }
 
 .sky i:nth-child(2) {
+  --k: rgba(255, 79, 180, 0.6);
   right: -12%;
   top: 6%;
-  background: radial-gradient(closest-side, rgba(255, 79, 180, 0.6), rgba(255, 79, 180, 0.18) 55%, rgba(255, 79, 180, 0));
   animation: drift2 44s ease-in-out infinite alternate;
 }
 
 .sky i:nth-child(3) {
+  --k: rgba(47, 107, 255, 0.7);
   left: 18%;
   bottom: -30%;
-  background: radial-gradient(closest-side, rgba(47, 107, 255, 0.7), rgba(47, 107, 255, 0.2) 55%, rgba(47, 107, 255, 0));
   animation: drift3 52s ease-in-out infinite alternate;
 }
 
 body[data-bg='glass-black'] .sky i {
   --a: 0.26;
+}
+
+body[data-bg='glass-palette'] .sky i:nth-child(1) {
+  --k: color-mix(in srgb, var(--c1) 85%, transparent);
+}
+
+body[data-bg='glass-palette'] .sky i:nth-child(2) {
+  --k: color-mix(in srgb, var(--c3) 60%, transparent);
+}
+
+body[data-bg='glass-palette'] .sky i:nth-child(3) {
+  --k: color-mix(in srgb, var(--c2) 55%, transparent);
+}
+
+body[data-bg='aurora'] .sky i {
+  --a: 0.5;
+}
+
+body[data-bg='aurora'] .sky i:nth-child(1) {
+  --k: rgba(0, 229, 160, 0.7);
+}
+
+body[data-bg='aurora'] .sky i:nth-child(2) {
+  --k: rgba(0, 150, 255, 0.55);
+}
+
+body[data-bg='aurora'] .sky i:nth-child(3) {
+  --k: rgba(138, 92, 255, 0.55);
+}
+
+body[data-bg='ember'] .sky i {
+  --a: 0.5;
+}
+
+body[data-bg='ember'] .sky i:nth-child(1) {
+  --k: rgba(255, 46, 77, 0.6);
+}
+
+body[data-bg='ember'] .sky i:nth-child(2) {
+  --k: rgba(255, 122, 26, 0.5);
+}
+
+body[data-bg='ember'] .sky i:nth-child(3) {
+  --k: rgba(255, 80, 40, 0.55);
 }
 
 @keyframes drift1 {
@@ -88,12 +178,121 @@ body[data-bg='glass-black'] .sky i {
   }
 }
 
+body.still .sky i,
+body.resting .sky i {
+  animation-play-state: paused;
+}
+
+/* ---------- the words behind the waves ---------- */
+
+.words {
+  --ts: 1;
+  --to: 0.55;
+  position: fixed;
+  left: 7vw;
+  right: 7vw;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: var(--to);
+  transition: opacity 0.8s ease;
+}
+
+body.text-top .words {
+  bottom: 42vh;
+}
+
+body.paused-music .words {
+  opacity: calc(var(--to) * 0.55);
+}
+
+.w {
+  grid-area: 1 / 1;
+  max-width: 86vw;
+  text-align: center;
+  text-wrap: balance;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  font: 700 calc(var(--ts) * min(5vw, 8.6vh)) / 1.08 'Unbounded', 'Onest', sans-serif;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding: 0.1em 0.2em;
+  will-change: transform, opacity, filter;
+}
+
+body.font-body .w {
+  font-family: 'Onest', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+body.font-thin .w {
+  font-family: 'Segoe UI Variable Display', 'Segoe UI Light', 'Segoe UI', 'Onest', sans-serif;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+.w small {
+  display: block;
+  margin-top: 0.7em;
+  font: 600 0.24em/1.2 'Onest', sans-serif;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.w.track {
+  font-size: calc(var(--ts) * min(5.6vw, 9.6vh));
+}
+
+.w.clock {
+  font-size: calc(var(--ts) * min(15vw, 26vh));
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.w.clock small {
+  font-size: 0.12em;
+  letter-spacing: 0.4em;
+  margin-top: 0.9em;
+}
+
+/* soft: a gradient in the palette's colours, glowing */
+body.ts-soft .w {
+  color: transparent;
+  background: linear-gradient(100deg, var(--c1), var(--c2) 50%, var(--c3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 0 0.35em color-mix(in srgb, var(--c1) 45%, transparent));
+}
+
+/* outline: thin bright letters */
+body.ts-outline .w {
+  color: transparent;
+  -webkit-text-stroke: max(1.5px, 0.016em) color-mix(in srgb, var(--c2) 70%, white);
+  filter: drop-shadow(0 0 0.25em color-mix(in srgb, var(--c1) 50%, transparent));
+}
+
+/* glass: frosted white, as if pressed into the glass */
+body.ts-glass .w {
+  color: rgba(255, 255, 255, 0.85);
+  mix-blend-mode: overlay;
+  text-shadow: 0 0.03em 0 rgba(255, 255, 255, 0.35), 0 0 0.6em rgba(255, 255, 255, 0.25);
+}
+
+/* ---------- the waves ---------- */
+
 canvas {
   position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
-  opacity: 0.92;
+  opacity: var(--wb);
 }
 
 /* a soft dark edge, so desktop icons and the corners stay calm */
@@ -104,10 +303,7 @@ canvas {
   background: radial-gradient(130% 100% at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.38) 100%);
 }
 
-body[data-bg='amoled'] .vignette {
+body[data-bg='amoled'] .vignette,
+body.novignette .vignette {
   display: none;
-}
-
-body.resting .sky i {
-  animation-play-state: paused;
 }

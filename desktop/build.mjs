@@ -1,4 +1,5 @@
-// Builds the pages of Резонанс для ПК into app/: the wallpaper and the bar,
+// Builds the pages of Резонанс для ПК into app/: the wallpaper, the bar, the
+// island and the panel,
 // bundled with the phone app's own waves (src/waves.js) and fonts.
 import { build } from 'esbuild';
 import { mkdirSync, rmSync, copyFileSync, writeFileSync } from 'node:fs';
@@ -20,7 +21,12 @@ const pcGraph = {
 };
 
 await build({
-  entryPoints: { wallpaper: join(here, 'web', 'wallpaper.js'), bar: join(here, 'web', 'bar.js') },
+  entryPoints: {
+    wallpaper: join(here, 'web', 'wallpaper.js'),
+    bar: join(here, 'web', 'bar.js'),
+    island: join(here, 'web', 'island.js'),
+    panel: join(here, 'web', 'panel.js'),
+  },
   bundle: true,
   format: 'iife',
   target: ['chrome130'],
@@ -30,7 +36,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css']) copyFileSync(join(here, 'web', f), join(out, f));
+for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css', 'island.html', 'island.css', 'panel.html', 'panel.css']) copyFileSync(join(here, 'web', f), join(out, f));
 
 const ranges = {
   cyrillic: 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116',

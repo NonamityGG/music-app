@@ -46,6 +46,22 @@ export function attachStream(stream) {
   }
 }
 
+// The sound output changed: drop the old stream before listening to the new one.
+export function detachAll() {
+  for (const src of attached) {
+    try {
+      src.disconnect();
+    } catch {}
+  }
+  attached.clear();
+  silentSince = 0;
+}
+
+// how long the sound has been fully silent (ms), as of the last read
+export function silentMs() {
+  return silentSince ? performance.now() - silentSince : 0;
+}
+
 // kept for the shared waves module (the phone app attaches media elements)
 export function attach() {
   return false;

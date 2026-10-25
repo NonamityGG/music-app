@@ -15,7 +15,12 @@ body {
 }
 
 body {
-  --tint: rgba(36, 18, 72, 0.42);
+  --tint-c: rgb(36, 18, 72);
+  --tint-a: 0.42;
+  --tint: color-mix(in srgb, var(--tint-c) calc(var(--tint-a) * 100%), transparent);
+  --c1: #7c4dff;
+  --c2: #c3a6ff;
+  --c3: #ff6fd8;
   --line: rgba(255, 255, 255, 0.09);
   --chip: rgba(255, 255, 255, 0.08);
   --chip-hover: rgba(255, 255, 255, 0.14);
@@ -23,16 +28,34 @@ body {
   --accent-2: #ff7ad9;
 }
 
-body[data-bg='glass-black'] {
-  --tint: rgba(8, 8, 12, 0.5);
+body[data-bg='glass-black'],
+body[data-bg='windows'],
+body[data-bg='image'] {
+  --tint-c: rgb(8, 8, 12);
 }
 
 body[data-bg='dark'] {
-  --tint: rgba(20, 15, 31, 0.78);
+  --tint-c: rgb(20, 15, 31);
 }
 
 body[data-bg='amoled'] {
-  --tint: rgba(0, 0, 0, 0.82);
+  --tint-c: rgb(0, 0, 0);
+}
+
+body[data-bg='aurora'] {
+  --tint-c: rgb(6, 30, 40);
+}
+
+body[data-bg='ember'] {
+  --tint-c: rgb(48, 12, 18);
+}
+
+body[data-bg='glass-palette'] {
+  --tint-c: color-mix(in srgb, var(--c1) 28%, rgb(10, 6, 20));
+}
+
+::selection {
+  background: color-mix(in srgb, var(--c1) 60%, transparent);
 }
 
 button {
@@ -88,7 +111,7 @@ button {
   width: 3px;
   height: 16px;
   border-radius: 2px;
-  background: linear-gradient(var(--accent-1), #8b5cff);
+  background: linear-gradient(var(--c2), var(--c1));
   transform: scaleY(var(--h, 0.5));
   transition: transform 0.08s linear;
 }
@@ -226,12 +249,29 @@ button {
   width: 100%;
   transform-origin: left center;
   transform: scaleX(var(--p, 0));
-  background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+  background: linear-gradient(90deg, var(--c1), var(--c3));
 }
 
 .player.idle .prog,
 .player.nodur .prog {
   opacity: 0;
+}
+
+/* the island draws the player over the middle of the bar */
+body.island .player {
+  visibility: hidden;
+}
+
+/* a hairline in the palette's colours along the bottom edge */
+.line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--c1) 20%, var(--c2) 50%, var(--c3) 80%, transparent);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 /* ---------- clock ---------- */
@@ -251,4 +291,8 @@ button {
 
 .time {
   font-weight: 600;
+}
+
+body.nodate .date {
+  display: none;
 }

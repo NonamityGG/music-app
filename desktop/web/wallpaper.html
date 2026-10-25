@@ -2,12 +2,15 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: rez:; font-src 'self'" />
     <title>Резонанс — обои</title>
+    <link rel="stylesheet" href="fonts.css" />
     <link rel="stylesheet" href="wallpaper.css" />
   </head>
   <body data-bg="glass-violet">
+    <div class="photo" id="photo" aria-hidden="true"></div>
     <div class="sky" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="words" id="words" aria-hidden="true"></div>
     <canvas id="waves" aria-hidden="true"></canvas>
     <div class="vignette" aria-hidden="true"></div>
     <script src="wallpaper.js"></script>

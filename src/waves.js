@@ -160,7 +160,7 @@ function loop(now) {
   if (lastTick) {
     const d = now - lastTick;
     if (d > 4 && d < 40) refreshMs = refreshMs ? refreshMs * 0.95 + d * 0.05 : d;
-    every = refreshMs ? Math.max(1, Math.round(1000 / refreshMs / 75)) : 1;
+    every = refreshMs ? Math.max(1, Math.round(1000 / refreshMs / (cfg.maxFps || 75))) : 1;
   }
   lastTick = now;
   if (frameNo++ % every === 0) {
@@ -622,6 +622,16 @@ export function renderPreview(canvas, styleId, paletteId) {
   bass = saved.bass;
   mid = saved.mid;
 }
+
+// Another look for a style id (the PC wallpaper draws its own capsules for big
+// screens). fn(f, bands, wave) gets the same frame info as the built-in styles.
+// opts.rest: stays on screen as a still picture when the music stops.
+export function registerStyle(id, fn, opts = {}) {
+  DRAW[id] = fn;
+  if (opts.rest) RESTING.add(id);
+  else RESTING.delete(id);
+}
+export { roundRect };
 
 // For diagnostics and the seek bar: current smoothed levels.
 export function levels() {

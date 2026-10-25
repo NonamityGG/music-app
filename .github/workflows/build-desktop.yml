@@ -27,8 +27,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # the version is the one in desktop/package.json; test builds get a suffix
       - name: Version
-        run: echo "PC_VERSION=0.1.${{ github.run_number }}" >> $env:GITHUB_ENV
+        run: |
+          $v = (Get-Content desktop/package.json -Raw | ConvertFrom-Json).version
+          if ('${{ github.ref }}' -ne 'refs/heads/main') { $v = "$v-dev.${{ github.run_number }}" }
+          echo "PC_VERSION=$v" >> $env:GITHUB_ENV
+          echo "version $v"
 
       - uses: actions/setup-node@v4
         with:
@@ -63,31 +68,74 @@ jobs:
         working-directory: desktop
         run: npx electron-builder --win nsis --x64 --publish never "-c.extraMetadata.version=${{ env.PC_VERSION }}"
 
-      # start the app on the runner's desktop and photograph the screen
+      # start the app on the runner's desktop and photograph the screen at the
+      # moments the self-test opens things (see selftest() in desktop/main.js)
       - name: Smoke test
         continue-on-error: true
         run: |
           $exe = Get-ChildItem desktop/release/win-unpacked -Filter Rezonans.exe | Select-Object -First 1
           $env:REZONANS_SELFTEST = '1'
+          New-Item -ItemType Directory -Force smoke | Out-Null
+          $before = @()
+          $before += reg query "HKCU\Software\Microsoft\Windows\DWM" 2>&1
+          $before += reg query "HKCU\Control Panel\Colors" /v Hilight 2>&1
+          $before | Set-Content smoke/colors-before.txt
           Start-Process $exe.FullName
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          Add-Type @"
+          using System; using System.Runtime.InteropServices;
+          public static class Mouse {
+            [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+            [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
+          }
+          "@
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
           function Shot($name) {
-            $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
             $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
             $g = [System.Drawing.Graphics]::FromImage($bmp)
             $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
             $bmp.Save("smoke/$name.png")
           }
-          New-Item -ItemType Directory -Force smoke | Out-Null
-          Start-Sleep -Seconds 15
-          Shot "screen"
+          [Mouse]::SetCursorPos($b.Left + 200, $b.Top + 500) | Out-Null
+          Start-Sleep -Seconds 13
+          Shot "1-island-open"
+          Start-Sleep -Seconds 11
+          Shot "2-panel-home"
+          Start-Sleep -Seconds 6
+          Shot "3-panel-waves"
+          Start-Sleep -Seconds 6
+          Shot "4-panel-text"
+          Start-Sleep -Seconds 10
+          Shot "5-after-audio-switch"
+          # the mouse comes to the island: it should light up and drop down
+          [Mouse]::SetCursorPos($b.Left + [int]($b.Width / 2), $b.Top + 16) | Out-Null
+          Start-Sleep -Milliseconds 1600
+          Shot "6-island-hover"
+          [Mouse]::SetCursorPos($b.Left + 200, $b.Top + 500) | Out-Null
+          Start-Sleep -Seconds 2
           # show the desktop itself: the wallpaper should be the waves, under the icons
           (New-Object -ComObject Shell.Application).MinimizeAll()
           Start-Sleep -Seconds 4
-          Shot "desktop"
-          Start-Sleep -Seconds 1
-          Shot "desktop2"
+          Shot "7-desktop"
+          # a selection rectangle on the desktop, in the new selection colour
+          $x0 = $b.Left + [int]($b.Width * 0.42); $y0 = $b.Top + [int]($b.Height * 0.3)
+          [Mouse]::SetCursorPos($x0, $y0) | Out-Null
+          [Mouse]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+          for ($i = 1; $i -le 20; $i++) { [Mouse]::SetCursorPos($x0 + $i * 18, $y0 + $i * 12) | Out-Null; Start-Sleep -Milliseconds 25 }
+          Start-Sleep -Milliseconds 300
+          Shot "8-selection"
+          [Mouse]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+          $after = @()
+          $after += reg query "HKCU\Software\Microsoft\Windows\DWM" 2>&1
+          $after += reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" 2>&1
+          $after += reg query "HKCU\Control Panel\Colors" /v Hilight 2>&1
+          $after += reg query "HKCU\Control Panel\Colors" /v HotTrackingColor 2>&1
+          $after | Set-Content smoke/colors-after.txt
+          Start-Process "ms-settings:colors" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 7
+          Shot "9-settings-colors"
           Copy-Item "$env:APPDATA/Rezonans/rezonans.log" smoke/ -ErrorAction SilentlyContinue
+          Copy-Item "$env:APPDATA/Rezonans/settings.json" smoke/ -ErrorAction SilentlyContinue
           Get-Process Rezonans, RezonansHost -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowTitle | Out-String | Set-Content smoke/processes.txt
           Get-Process Rezonans -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 2
@@ -131,7 +179,8 @@ jobs:
           tag_name: pc-v${{ env.PC_VERSION }}
           name: Резонанс для ПК ${{ env.PC_VERSION }}
           body: |
-            Резонанс для Windows 11: живые обои-волны, которые слышат музыку компьютера, и строка с плеером сверху.
+            Резонанс для Windows 11: живые обои-волны, которые слышат музыку компьютера, остров-плеер в строке сверху, слова песни за волнами и Windows в цветах Резонанса.
+            Всё настраивается в панели Резонанса: логотип на строке или значок в трее.
             Скачай Rezonans-PC-${{ env.PC_VERSION }}-setup.exe и запусти. Если Windows покажет «Система Windows защитила ваш компьютер» — «Подробнее» → «Выполнить в любом случае».
           files: desktop/release/*.exe
           make_latest: false

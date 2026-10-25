@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "sync": "npm run build && npx cap sync android",
-    "test": "node --test tests/logic.test.mjs",
+    "test": "node --test tests/logic.test.mjs tests/desktop.test.mjs",
     "postinstall": "node tools/patch-plugins.mjs"
   },
   "dependencies": {
