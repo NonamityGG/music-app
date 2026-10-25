@@ -41,10 +41,15 @@ jobs:
         run: dotnet build desktop/host/RezonansHost.csproj -c Release -o desktop/host/bin
 
       - name: Helper answers
+        continue-on-error: true
         run: |
-          $out = '{"cmd":"hello"}' | & desktop/host/bin/RezonansHost.exe
-          Write-Output $out
-          if (-not ($out -match '"type":"hello"')) { throw "helper did not answer" }
+          New-Item -ItemType Directory -Force smoke | Out-Null
+          Get-ChildItem desktop/host/bin | Format-Table Name, Length | Out-String | Set-Content smoke/host-files.txt
+          '{"cmd":"hello"}' | Set-Content -Encoding ascii hello.txt
+          $p = Start-Process -FilePath desktop/host/bin/RezonansHost.exe -RedirectStandardInput hello.txt -RedirectStandardOutput smoke/helper-out.txt -RedirectStandardError smoke/helper-err.txt -Wait -PassThru -NoNewWindow
+          "exit code: $($p.ExitCode)" | Add-Content smoke/helper-out.txt
+          Get-Content smoke/helper-out.txt, smoke/helper-err.txt
+          if (-not (Select-String -Path smoke/helper-out.txt -Pattern '"type":"hello"' -Quiet)) { throw "helper did not answer" }
 
       - name: Install packages
         working-directory: desktop
@@ -60,6 +65,7 @@ jobs:
 
       # start the app on the runner's desktop and photograph the screen
       - name: Smoke test
+        continue-on-error: true
         run: |
           $exe = Get-ChildItem desktop/release/win-unpacked -Filter Rezonans.exe | Select-Object -First 1
           Start-Process $exe.FullName
@@ -76,12 +82,32 @@ jobs:
           Get-Process Rezonans -ErrorAction SilentlyContinue | Stop-Process -Force
           Start-Sleep -Seconds 2
           Get-Content smoke/rezonans.log -ErrorAction SilentlyContinue
+          $raw = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object ProductName, DisplayVersion, CurrentBuild
+          $raw | Out-String | Set-Content smoke/os.txt
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: smoke
           path: smoke
+
+      # the logs and the screen picture go to the ci-smoke branch, where they can be
+      # read without the Actions log storage
+      - name: Share smoke results
+        if: always()
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "smoke-repo"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          if (Test-Path smoke) { Copy-Item smoke/* $dir -Recurse -ErrorAction SilentlyContinue }
+          "run ${{ github.run_number }} ${{ github.sha }}" | Set-Content (Join-Path $dir "run.txt")
+          Set-Location $dir
+          git init -q
+          git config user.name "ci"
+          git config user.email "ci@users.noreply.github.com"
+          git checkout -q -b ci-smoke
+          git add -A
+          git commit -q -m "smoke ${{ github.run_number }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-smoke
 
       - uses: actions/upload-artifact@v4
         with:

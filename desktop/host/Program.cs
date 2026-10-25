@@ -39,12 +39,19 @@ namespace Rezonans
         [MTAThread]
         private static int Main()
         {
+            // a crash must not hang on the Windows error dialog: report and leave
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                try { Console.Error.WriteLine("crash: " + e.ExceptionObject); Console.Error.Flush(); } catch { }
+                Environment.Exit(3);
+            };
             _out = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
             var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
             try { Native.SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { /* the manifest already asks for it */ }
 
-            Media.Start();
-            Foreground.Start();
+            // the media controls need WinRT; if this Windows lacks it, the rest still works
+            try { Media.Start(); } catch (Exception e) { Log("медиа недоступны: " + e.Message); }
+            try { Foreground.Start(); } catch (Exception e) { Log("окна: " + e.Message); }
 
             string line;
             while ((line = input.ReadLine()) != null)
@@ -374,25 +381,34 @@ namespace Rezonans
 
         internal static void Start()
         {
-            var t = new Thread(() =>
-            {
-                try
-                {
-                    _mgr = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().GetAwaiter().GetResult();
-                }
-                catch (Exception e)
-                {
-                    Program.Log("системные медиа-кнопки недоступны: " + e.Message);
-                    return;
-                }
-                while (true)
-                {
-                    try { Tick(); }
-                    catch (Exception e) { Program.Log("медиа: " + e.Message); }
-                    Thread.Sleep(500);
-                }
-            }) { IsBackground = true, Name = "media" };
+            var t = new Thread(Run) { IsBackground = true, Name = "media" };
             t.Start();
+        }
+
+        private static void Run()
+        {
+            try
+            {
+                Init();
+            }
+            catch (Exception e)
+            {
+                Program.Log("системные медиа-кнопки недоступны: " + e.Message);
+                return;
+            }
+            while (true)
+            {
+                try { Tick(); }
+                catch (Exception e) { Program.Log("медиа: " + e.Message); }
+                Thread.Sleep(500);
+            }
+        }
+
+        // separate, so a Windows without these WinRT types fails here, inside the try
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void Init()
+        {
+            _mgr = GlobalSystemMediaTransportControlsSessionManager.RequestAsync().AsTask().GetAwaiter().GetResult();
         }
 
         private static GlobalSystemMediaTransportControlsSession Current()
