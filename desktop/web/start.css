@@ -56,7 +56,7 @@ svg {
 .bg {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   overflow: hidden;
 }
 
@@ -92,6 +92,7 @@ svg {
 .root {
   position: fixed;
   inset: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   padding: 20px 22px 14px;

@@ -930,9 +930,9 @@ function showStart() {
   const x = wa.x + 12;
   const y = wa.y + wa.height - h - 12; // above the taskbar, bottom-left
   startWin.setBounds({ x, y, width: START_W, height: h });
-  startWin.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
   startWin.show();
   startWin.focus();
+  startWin.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
   refreshApps();
   if (island && !island.isDestroyed()) island.moveTop();
 }
@@ -946,9 +946,9 @@ function showQuick() {
   const x = wa.x + wa.width - QUICK_W - 12; // above the tray, bottom-right
   const y = wa.y + wa.height - h - 12;
   quickWin.setBounds({ x, y, width: QUICK_W, height: h });
-  quickWin.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
   quickWin.show();
   quickWin.focus();
+  quickWin.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
   hostSend({ cmd: 'status' });
   if (island && !island.isDestroyed()) island.moveTop();
 }
