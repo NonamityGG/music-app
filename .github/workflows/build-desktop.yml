@@ -109,12 +109,21 @@ jobs:
           Shot "4-panel-text"
           Start-Sleep -Seconds 10
           Shot "5-after-audio-switch"
-          # the mouse comes to the island: it should light up and drop down
-          [Mouse]::SetCursorPos($b.Left + [int]($b.Width / 2), $b.Top + 16) | Out-Null
+          # the mouse comes to the island: it should light up and drop down (real
+          # mouse input, as from a hand: the island only hears that, not SetCursorPos)
+          for ($i = 0; $i -le 12; $i++) {
+            $mx = 200 + ($b.Width / 2 - 200) * $i / 12; $my = 500 + (16 - 500) * $i / 12
+            [Mouse]::mouse_event(0x8001, [uint32]($mx * 65535 / ($b.Width - 1)), [uint32]($my * 65535 / ($b.Height - 1)), 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 30
+          }
           Start-Sleep -Milliseconds 1600
           Shot "6-island-hover"
-          [Mouse]::SetCursorPos($b.Left + 200, $b.Top + 500) | Out-Null
+          [Mouse]::mouse_event(0x8001, [uint32](($b.Width / 2 + 10) * 65535 / ($b.Width - 1)), [uint32](20 * 65535 / ($b.Height - 1)), 0, [UIntPtr]::Zero)
+          Start-Sleep -Milliseconds 600
+          Shot "6b-island-hover"
+          [Mouse]::mouse_event(0x8001, [uint32](200 * 65535 / ($b.Width - 1)), [uint32](500 * 65535 / ($b.Height - 1)), 0, [UIntPtr]::Zero)
           Start-Sleep -Seconds 2
+          Shot "6c-island-closed"
           # show the desktop itself: the wallpaper should be the waves, under the icons
           (New-Object -ComObject Shell.Application).MinimizeAll()
           Start-Sleep -Seconds 4

@@ -564,15 +564,16 @@ function fixTop() {
   const d = screen.getPrimaryDisplay();
   if (bar && !bar.isDestroyed()) {
     const b = bar.getBounds();
-    if (b.x !== d.bounds.x || b.y !== d.bounds.y || b.width !== d.bounds.width || b.height !== BAR_H) {
-      log(`строка съехала на ${b.x},${b.y} — возвращаю наверх`);
+    const off = (p, q, tol) => Math.abs(p - q) > tol;
+    if (off(b.x, d.bounds.x, 2) || off(b.y, d.bounds.y, 2) || off(b.width, d.bounds.width, 4) || off(b.height, BAR_H, 3)) {
+      log(`строка съехала: ${b.x},${b.y} ${b.width}×${b.height} — возвращаю наверх`);
       bar.setBounds({ x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: BAR_H });
     }
   }
   if (island && !island.isDestroyed()) {
     const want = islandBounds();
     const b = island.getBounds();
-    if (b.x !== want.x || b.y !== want.y) island.setBounds(want);
+    if (Math.abs(b.x - want.x) > 2 || Math.abs(b.y - want.y) > 2) island.setBounds(want);
   }
 }
 
