@@ -676,12 +676,13 @@ namespace Rezonans
                     max = Native.IsZoomed(h) && Native.IsWindowVisible(h);
                 }
             }
-            var key = desktop + "|" + full + "|" + max + "|" + mr.Left + "," + mr.Top + "," + mr.Right + "," + mr.Bottom;
+            var key = h.ToInt64() + "|" + desktop + "|" + full + "|" + max + "|" + mr.Left + "," + mr.Top + "," + mr.Right + "," + mr.Bottom;
             if (key == _last) return;
             _last = key;
             Program.Send(new Dictionary<string, object>
             {
                 { "type", "fg" },
+                { "hwnd", h.ToInt64().ToString() },
                 { "desktop", desktop },
                 { "full", full },
                 { "max", max },

@@ -236,6 +236,7 @@ function onHost(m) {
     }
     case 'appbar':
       log(`строка заняла место: ${m.x},${m.y} ${m.w}×${m.h}`);
+      fixTopSoon();
       break;
     case 'media':
       onMedia(m);
@@ -455,6 +456,12 @@ function closeWallpapers() {
 
 // rest while a window covers the whole screen (saves the graphics card)
 function onForeground(m) {
+  // another window came to the front: the panel steps away (in case Windows
+  // didn't give it the focus, so it never heard the click elsewhere)
+  if (panel && !panel.isDestroyed() && panel.isVisible() && m.hwnd && m.hwnd !== hwndOf(panel) && Date.now() - panelShownAt > 700 && !dialogOpen && !SELFTEST_PANEL) {
+    const own = allWindows().some((w) => hwndOf(w) === m.hwnd);
+    if (!own) hidePanel();
+  }
   for (const w of walls.values()) {
     if (w.win.isDestroyed()) continue;
     const r = screen.dipToScreenRect(null, w.display.bounds);
@@ -550,6 +557,31 @@ function setTopHidden(hide, why) {
   }
 }
 
+// When the bar takes its strip, the work area shrinks and Chromium "helpfully"
+// moves every window of ours that sticks out of the new work area into it — the
+// bar and the island would end up 36 px lower, with a gap above. Put them back.
+function fixTop() {
+  const d = screen.getPrimaryDisplay();
+  if (bar && !bar.isDestroyed()) {
+    const b = bar.getBounds();
+    if (b.x !== d.bounds.x || b.y !== d.bounds.y || b.width !== d.bounds.width || b.height !== BAR_H) {
+      log(`строка съехала на ${b.x},${b.y} — возвращаю наверх`);
+      bar.setBounds({ x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: BAR_H });
+    }
+  }
+  if (island && !island.isDestroyed()) {
+    const want = islandBounds();
+    const b = island.getBounds();
+    if (b.x !== want.x || b.y !== want.y) island.setBounds(want);
+  }
+}
+
+let fixTimers = [];
+function fixTopSoon() {
+  for (const t of fixTimers) clearTimeout(t);
+  fixTimers = [150, 600, 1800].map((ms) => setTimeout(fixTop, ms));
+}
+
 function closeBar() {
   hostSend({ cmd: 'appbarRemove' });
   if (bar && !bar.isDestroyed()) bar.destroy();
@@ -593,6 +625,7 @@ function createIsland() {
   island.once('ready-to-show', () => {
     if (topHide.size === 0) island.showInactive();
     island.moveTop();
+    fixTopSoon();
     sendOwn();
     if (lastMedia) island.webContents.send('media', lastMedia);
   });
@@ -610,6 +643,7 @@ function closeIsland() {
 
 let panel = null;
 let panelHiddenAt = 0;
+let panelShownAt = 0;
 let dialogOpen = false;
 
 function createPanel() {
@@ -680,6 +714,7 @@ function showPanel(from = 'bar', tab) {
   panel.webContents.send('info', info());
   panel.show();
   panel.focus();
+  panelShownAt = Date.now();
   if (island && !island.isDestroyed()) island.moveTop();
 }
 
@@ -995,7 +1030,10 @@ if (!app.requestSingleInstanceLock()) {
     // the bar itself changes the work area: only a real change of the screen counts
     screen.on('display-metrics-changed', (e, d, changed) => {
       if ((changed || []).some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'rotation')) scheduleRebuild('экран изменился');
+      else fixTopSoon();
     });
+    // and now and then, in case something else moved them
+    setInterval(fixTop, 5000);
     powerMonitor.on('resume', () => scheduleRebuild('после сна'));
   });
 
