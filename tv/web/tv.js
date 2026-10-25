@@ -48,6 +48,11 @@ export const tv = {
   log: (m) => (N ? N.log(String(m)) : console.log(String(m))),
   iconUrl: (pkg, banner) => (M() ? M().icon(pkg, banner) : `${BASE}icon/${encodeURIComponent(pkg)}${banner ? '?k=banner' : ''}`),
   artUrl: (v) => (M() ? M().art(v) : `${BASE}art?v=${v}`),
+  // typing in a field: OK goes to the field, and the TV's keyboard comes up
+  typing: (on) => N && N.typing && N.typing(!!on),
+  keyboard: (show) => N && N.keyboard && N.keyboard(!!show),
+  // outside services go through the Android side (see AssetServer.net)
+  net: (url) => (N ? `${BASE}net?u=${encodeURIComponent(url)}` : M() && M().net ? M().net(url) : url),
 };
 
 // keys from the Android side: back, menu, home

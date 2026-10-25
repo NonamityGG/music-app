@@ -10,7 +10,7 @@ import * as look from './look.js';
 import * as home from './home.js';
 import * as weather from './weather.js';
 import * as intro from './intro.js';
-import { grid, menu, settings, ambient, toast, launch, setInfo, setCity, homePlace } from './overlays.js';
+import { grid, menu, settings, ambient, toast, launch, setInfo, setCity, homePlace, cityEnter } from './overlays.js';
 
 const homeEl = document.getElementById('home');
 let visible = true;
@@ -39,10 +39,7 @@ function boot() {
   const m = tv.mediaState();
   home.setMedia(m);
   look.setWaveState({ music: !!(m && m.active && m.playing) });
-  weather.start((w) => {
-    home.setWeather(w);
-    setCity(w && w.city);
-  });
+  weather.start(onWeather);
   tv.visualizer(S.hear);
   tv.setGuard(S.guard);
   tv.log(`Резонанс OS запущен: ${apps.everything().length} приложений, ${navigator.userAgent.match(/Chrome\/[\d.]+/) || ''}`);
@@ -65,6 +62,13 @@ function boot() {
     document.fonts.ready.then(go);
     setTimeout(go, 900);
   } else startIntro();
+}
+
+function onWeather(w) {
+  home.setWeather(w);
+  setCity(w && !(S.city && S.city.name) ? w.city : '');
+  ambient.weather();
+  if (settings.page === 'main') settings.refresh();
 }
 
 // ---------- events from the TV ----------
@@ -112,7 +116,7 @@ on('key', (k) => {
 onChange((patch) => {
   const keys = Object.keys(patch);
   const has = (...ks) => ks.some((k) => keys.indexOf(k) >= 0);
-  if (has('bg', 'palette', 'style', 'fx', 'tint')) look.apply();
+  if (has('bg', 'palette', 'style', 'fx', 'tint', 'inset')) look.apply();
   if (has('style') && !layers.isOpen(ambient)) homePlace();
   if (has('tint') && !S.tint) look.tint(null);
   if (has('hear')) tv.visualizer(S.hear);
@@ -120,7 +124,8 @@ onChange((patch) => {
   if (has('favs', 'hidden', 'tools')) home.render(true);
   if (has('np')) home.setMedia(home.media());
   if (has('clockSec')) home.tick();
-  if (has('weather')) weather.start((w) => home.setWeather(w));
+  if (has('weather')) weather.start(onWeather);
+  if (has('city')) weather.refresh();
   if (has('saver')) resetIdle();
 });
 
@@ -136,9 +141,30 @@ let longDone = false;
 let lastMove = 0;
 let moving = null; // a favourite being moved: its package
 
+// typing in a field (the town for the weather): the keys are the field's,
+// except Enter (search) and up/down (leave the field)
+function typingKey(e) {
+  const a = document.activeElement;
+  if (!a || a.tagName !== 'INPUT') return false;
+  const k = keyOf(e);
+  if (k === 'ok') {
+    e.preventDefault();
+    if (a.value.trim()) cityEnter();
+    else tv.keyboard(true);
+  } else if (k === 'up' || k === 'down') {
+    e.preventDefault();
+    a.blur();
+    tv.typing(false);
+    tv.keyboard(false);
+    nav.move(k);
+  }
+  return true;
+}
+
 document.addEventListener(
   'keydown',
   (e) => {
+    if (typingKey(e)) return;
     const k = keyOf(e);
     if (skipIntro) {
       e.preventDefault();
@@ -183,6 +209,7 @@ document.addEventListener(
 document.addEventListener(
   'keyup',
   (e) => {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
     if (keyOf(e) !== 'ok' || !okAt) return;
     e.preventDefault();
     const held = performance.now() - okAt;
@@ -218,6 +245,14 @@ function long() {
 
 function back() {
   tv.log('Назад' + (layers.top() ? ' (закрываю ' + layers.top().el.id + ')' : ''));
+  const a = document.activeElement;
+  if (a && a.tagName === 'INPUT') {
+    // first Back leaves the field
+    a.blur();
+    tv.typing(false);
+    tv.keyboard(false);
+    return;
+  }
   if (moving) return endMove();
   const t = layers.top();
   if (t) return t.back ? t.back() : layers.pop(t);

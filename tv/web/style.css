@@ -157,8 +157,10 @@ svg {
   display: none;
 }
 
+/* light effects: the clouds stand still and are drawn once, not as layers of their own */
 .eco .sky i {
   animation: none;
+  will-change: auto;
 }
 
 @keyframes drift1 {
@@ -828,7 +830,8 @@ svg {
 
 /* when the rows are scrolled up, the clock steps aside */
 .scrolled .hero,
-.scrolled .np {
+.scrolled .np,
+.scrolled .wxc {
   opacity: 0;
   transform: translateY(-3rem);
 }
@@ -1178,10 +1181,10 @@ svg {
   min-height: 6.4rem;
 }
 
-/* ---------- screen saver ---------- */
+/* ---------- screen saver: words behind the waves (like the PC wallpaper) ---------- */
 
 #ambient {
-  background: rgba(0, 0, 0, 0.35);
+  background: transparent;
   animation: fade-in 1.2s ease;
 }
 
@@ -1190,63 +1193,548 @@ body.saver .screen {
 }
 
 body.saver #waves {
-  opacity: 1;
+  opacity: 0.82;
 }
 
-.amb {
+body.saver .sky {
+  opacity: 0.75;
+}
+
+body.saver .vignette {
+  background: radial-gradient(ellipse 120% 100% at 50% 50%, rgba(0, 0, 0, 0.1) 40%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.words {
+  --w1: var(--a1);
+  --w2: var(--a2);
+  --w3: var(--a3);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 8rem;
+  transition: transform 3s ease;
+}
+
+body.saver .words {
+  display: -webkit-box;
+  display: flex;
+}
+
+.words .wrap {
   position: absolute;
-  left: 50%;
-  top: 44%;
-  text-align: center;
-  transform: translate(-50%, -50%);
-  transition: left 3s ease, top 3s ease;
+  left: 8rem;
+  right: 8rem;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.amb-clock {
-  font: 700 22rem/0.9 'Unbounded', sans-serif;
+.w {
+  max-width: 160rem;
+  text-align: center;
+  font: 700 9.2rem/1.1 'Unbounded', 'Onest', sans-serif;
+  letter-spacing: -0.01em;
+  padding: 0.1em 0.2em;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0.92;
+}
+
+.w.track {
+  font-size: 10.4rem;
+}
+
+.w.lyric {
+  font-size: 9.2rem;
+  opacity: 0.96;
+}
+
+.w.clock {
+  font-size: 27rem;
+  line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
-  color: #fff;
-  background: linear-gradient(100deg, #fff 0%, var(--a2) 50%, var(--a3) 100%);
+  -webkit-line-clamp: 4;
+  opacity: 0.96;
+}
+
+.w small {
+  display: block;
+  margin-top: 0.8em;
+  font: 600 0.26em/1.2 'Onest', sans-serif;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.w.clock small {
+  font-size: 0.1em;
+  letter-spacing: 0.42em;
+  margin-top: 0.7em;
+}
+
+/* soft: a gradient in the colours of the cover (or the palette), glowing */
+body.ts-soft .w {
+  color: transparent;
+  background: linear-gradient(100deg, var(--w2) 0%, #fff 45%, var(--w3) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.amb-date {
-  margin-top: 2.4rem;
-  font: 600 2.6rem/1 'Onest', sans-serif;
-  letter-spacing: 0.35em;
+body.ts-soft.fx .w {
+  -webkit-filter: drop-shadow(0 0 0.3em var(--a1s));
+  filter: drop-shadow(0 0 0.3em var(--a1s));
+}
+
+/* outline: thin bright letters */
+body.ts-outline .w {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0.25rem rgba(255, 255, 255, 0.85);
+}
+
+body.ts-outline .w small {
+  -webkit-text-stroke: 0;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.8);
+}
+
+/* glass: frosted white, as if pressed into the glass */
+body.ts-glass .w {
+  color: rgba(255, 255, 255, 0.9);
+  mix-blend-mode: overlay;
+  text-shadow: 0 0.03em 0 rgba(255, 255, 255, 0.35), 0 0 0.6em rgba(255, 255, 255, 0.25);
+}
+
+/* around the words */
+.sv {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: transform 3s ease;
+}
+
+.sv-clock {
+  position: absolute;
+  left: 8rem;
+  top: 6.4rem;
+  opacity: 0;
+  transform: translateY(-1rem);
+  transition: opacity 0.8s ease, transform 0.8s var(--ease);
+}
+
+body.sv-music .sv-clock {
+  opacity: 1;
+  transform: none;
+}
+
+.sv-clock b {
+  display: block;
+  font: 700 8rem/1 'Unbounded', sans-serif;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sv-clock span {
+  display: block;
+  margin-top: 1.4rem;
+  font: 600 1.9rem/1 'Onest', sans-serif;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.amb-np {
-  display: inline-flex;
+/* the weather, top right */
+.sv-wx {
+  position: absolute;
+  right: 8rem;
+  top: 6rem;
+  text-align: right;
+  transition: opacity 0.8s ease;
+}
+
+.wx-head {
+  display: flex;
   align-items: center;
-  margin-top: 5rem;
-  padding: 1.4rem 2.8rem 1.4rem 1.4rem;
-  border-radius: 5rem;
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 0 0 0 0.12rem var(--edge);
-  font-size: 2.2rem;
+  justify-content: flex-end;
 }
 
-.amb-np i {
-  width: 6rem;
-  height: 6rem;
-  margin-right: 2rem;
-  border-radius: 50%;
-  background: #333 center / cover no-repeat;
+.wx-pic svg {
+  display: block;
+  width: 11rem;
+  height: 11rem;
+  overflow: visible;
 }
 
-.amb-np b {
+.wx-t {
+  margin-left: 2rem;
+  font: 700 9rem/1 'Unbounded', sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.wx-words {
+  margin-top: 1.2rem;
+  font: 600 2.6rem/1.2 'Onest', sans-serif;
+}
+
+.wx-words:first-letter {
+  text-transform: uppercase;
+}
+
+.wx-city {
+  margin-top: 0.6rem;
+  font: 500 2.1rem/1.2 'Onest', sans-serif;
+  color: var(--muted);
+}
+
+.wx-hours {
+  display: inline-flex;
+  margin-top: 2.4rem;
+  padding: 1.4rem 1rem;
+  border-radius: 2.6rem;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 0.12rem rgba(255, 255, 255, 0.1);
+}
+
+.wx-h {
+  width: 8.4rem;
+  text-align: center;
+}
+
+.wx-h span {
+  display: block;
+  font: 600 1.7rem/1 'Onest', sans-serif;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-h i {
+  display: block;
+  margin: 1rem auto 0.9rem;
+  width: 4.4rem;
+  height: 4.4rem;
+}
+
+.wx-h i svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.wx-h b {
+  font: 700 2.2rem/1 'Onest', sans-serif;
+}
+
+/* what's playing, bottom left */
+.sv-np {
+  position: absolute;
+  left: 8rem;
+  bottom: 6.4rem;
+  display: flex;
+  align-items: center;
+  max-width: 90rem;
+  transition: opacity 0.8s ease;
+}
+
+.sv-cover {
+  flex: none;
+  width: 15rem;
+  height: 15rem;
+  border-radius: 2.6rem;
+  background: linear-gradient(160deg, var(--w1, #a066ff), #2a1550) center / cover no-repeat;
+  box-shadow: 0 0 6rem var(--a1s), 0 2rem 4rem rgba(0, 0, 0, 0.55);
+}
+
+.sv-cover.empty {
+  background-image: linear-gradient(160deg, var(--a1), var(--a3));
+}
+
+.sv-meta {
+  min-width: 0;
+  margin-left: 3.2rem;
+}
+
+.sv-app {
+  font: 700 1.5rem/1 'Onest', sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.sv-title {
+  margin-top: 1.2rem;
+  font: 700 4rem/1.12 'Onest', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sv-artist {
+  margin-top: 0.6rem;
+  font: 500 2.6rem/1.2 'Onest', sans-serif;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sv-bar {
+  position: relative;
+  width: 44rem;
+  height: 0.6rem;
+  margin-top: 2rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.sv-bar i {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--w2, var(--a2)), var(--w3, var(--a3)));
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  transition: transform 0.2s linear;
+}
+
+.sv-np.paused {
+  opacity: 0.55;
+}
+
+body.sv-waves .sv {
+  display: none;
+}
+
+/* the weather moves a little (only in big pictures, not in eco) */
+.wx-anim .wx-rays {
+  transform-origin: 12px 12px;
+  animation: wx-spin 24s linear infinite;
+}
+
+.wx-anim .wx-cloud {
+  animation: wx-float 6s ease-in-out infinite alternate;
+}
+
+.wx-anim .wx-moon {
+  transform-origin: 12px 12px;
+  animation: wx-rock 7s ease-in-out infinite alternate;
+}
+
+.wx-anim .wx-drop {
+  animation: wx-drop 1.1s linear infinite;
+}
+
+.wx-anim .wx-flake {
+  animation: wx-flake 2.6s linear infinite;
+}
+
+.wx-anim .d2 {
+  animation-delay: -0.4s;
+}
+
+.wx-anim .d3 {
+  animation-delay: -0.8s;
+}
+
+.wx-anim .wx-flake.d2 {
+  animation-delay: -1.1s;
+}
+
+.wx-anim .wx-flake.d3 {
+  animation-delay: -1.9s;
+}
+
+.wx-anim .wx-bolt {
+  animation: wx-bolt 3.2s ease-in-out infinite;
+}
+
+.wx-anim .wx-fog {
+  animation: wx-float 5s ease-in-out infinite alternate;
+}
+
+.wx-anim .wx-fog.d2 {
+  animation-direction: alternate-reverse;
+}
+
+@keyframes wx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes wx-float {
+  from {
+    transform: translateX(-0.8px);
+  }
+  to {
+    transform: translateX(0.8px);
+  }
+}
+
+@keyframes wx-rock {
+  from {
+    transform: rotate(-6deg);
+  }
+  to {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes wx-drop {
+  0% {
+    transform: translate(0, -2px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-1px, 3px);
+    opacity: 0;
+  }
+}
+
+@keyframes wx-flake {
+  0% {
+    transform: translate(0, -2.5px);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0.8px, 3px);
+    opacity: 0;
+  }
+}
+
+@keyframes wx-bolt {
+  0%,
+  70%,
+  100% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.2;
+  }
+  80% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 0.3;
+  }
+}
+
+/* ---------- the weather card on the home screen ---------- */
+
+.wxc {
+  position: absolute;
+  right: 8rem;
+  top: 15.2rem;
+  width: 70rem;
+  box-sizing: border-box;
+  padding: 2.8rem 3.2rem 2.6rem;
+  border-radius: 3.4rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035));
+  box-shadow: inset 0 0 0 0.12rem var(--edge), inset 0 0.12rem 0 rgba(255, 255, 255, 0.12), 0 3rem 6rem rgba(0, 0, 0, 0.3);
+  transition: opacity 0.5s ease, transform 0.65s var(--ease);
+  overflow: hidden;
+}
+
+.wxc-top {
+  display: flex;
+  align-items: center;
+}
+
+.wxc-top .wx-pic svg {
+  width: 10rem;
+  height: 10rem;
+}
+
+.wxc-now {
+  flex: 1;
+  min-width: 0;
+  margin-left: 2.6rem;
+}
+
+.wxc-t {
+  font: 700 7.2rem/1 'Unbounded', sans-serif;
+  letter-spacing: -0.03em;
+}
+
+.wxc-w {
+  margin-top: 1rem;
+  font: 600 2.2rem/1.2 'Onest', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wxc-w:first-letter {
+  text-transform: uppercase;
+}
+
+.wxc-side {
+  text-align: right;
+  font: 500 2rem/1.5 'Onest', sans-serif;
+  color: var(--muted);
+}
+
+.wxc-side b {
+  display: block;
+  color: var(--text);
   font-weight: 600;
 }
 
-.amb-np span {
-  color: var(--muted);
-  margin-left: 1rem;
+.wxc-hours {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2.4rem;
+  padding-top: 2.2rem;
+  border-top: 0.12rem solid rgba(255, 255, 255, 0.1);
+}
+
+.wxc-hours .wx-h {
+  width: auto;
+  flex: 1;
+}
+
+.hero,
+.np,
+.wxc {
+  will-change: opacity;
+}
+
+/* ---------- settings: the town for the weather ---------- */
+
+.opt-input input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1.4rem 2rem;
+  border: 0;
+  border-radius: 1.6rem;
+  outline: none;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 0.15rem rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font: 600 2.6rem/1.2 'Onest', sans-serif;
+}
+
+.opt-input input:focus {
+  box-shadow: inset 0 0 0 0.25rem var(--a2);
+}
+
+.opt-input input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* ---------- toast ---------- */

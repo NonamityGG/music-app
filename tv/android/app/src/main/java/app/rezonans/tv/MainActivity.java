@@ -153,6 +153,7 @@ public class MainActivity extends Activity {
     // OK on the remote, as one whole press: a short one, or held (the app's
     // menu). Remotes differ in what they send while a key is held, so the time
     // is measured here rather than in the page.
+    volatile boolean typing = false;
     private boolean okDown = false;
     private boolean okLong = false;
     private final Runnable okHeld = () -> {
@@ -170,6 +171,7 @@ public class MainActivity extends Activity {
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
         int k = e.getKeyCode();
+        if (typing && isOk(k)) return super.dispatchKeyEvent(e);
         if (isOk(k)) {
             if (e.getAction() == KeyEvent.ACTION_DOWN) {
                 if (e.getRepeatCount() == 0) {
@@ -223,7 +225,10 @@ public class MainActivity extends Activity {
         current = this;
         visible = true;
         immersive();
-        if (web != null) web.onResume();
+        if (web != null) {
+            web.resumeTimers();
+            web.onResume();
+        }
         emit("visible", "true");
         MediaHub.refresh(this);
         Viz.resume(this);
@@ -234,6 +239,17 @@ public class MainActivity extends Activity {
         visible = false;
         emit("visible", "false");
         Viz.stop();
+        // an app is in front: the home screen sleeps (no drawing, no timers),
+        // so the box's processor and memory are the app's
+        final WebView w = web;
+        if (w != null) {
+            ui.postDelayed(() -> {
+                if (!visible && web == w) {
+                    w.onPause();
+                    w.pauseTimers();
+                }
+            }, 400);
+        }
         super.onPause();
     }
 

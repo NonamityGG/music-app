@@ -48,7 +48,7 @@ export function tick() {
   const date = $('date');
   date.textContent = '';
   date.appendChild(el('b', '', dateText(d)));
-  if (S.weather !== false && weather) date.appendChild(document.createTextNode(` · ${weather.tempText}, ${weather.words}${weather.range ? ' · днём ' + weather.range : ''}`));
+  if (S.weather !== false && weather && !weatherCardShown()) date.appendChild(document.createTextNode(` · ${weather.tempText}, ${weather.words}${weather.range ? ' · днём ' + weather.range : ''}`));
   clockTimer = setTimeout(tick, S.clockSec ? 1000 - d.getMilliseconds() + 5 : 60000 - d.getSeconds() * 1000 - d.getMilliseconds() + 20);
 }
 
@@ -61,7 +61,47 @@ export function setWeather(w) {
     box.appendChild(el('b', '', w.tempText));
     if (w.city) box.title = w.city;
   }
+  paintWeatherCard();
   tick();
+}
+
+// the weather card: in the place of "now playing" while nothing plays
+const weatherCardShown = () => !!weather && S.weather !== false && !(S.np !== false && np.active);
+
+function paintWeatherCard() {
+  const box = $('wxc');
+  const w = weather;
+  const show = weatherCardShown();
+  const was = !box.classList.contains('hidden');
+  box.classList.toggle('hidden', !show);
+  if (was !== show) tick(); // the date line says the weather when the card doesn't
+  if (!show) return;
+  const key = [w.at, w.city, w.temp, w.code].join('|');
+  if (box._key === key) return;
+  box._key = key;
+  box.textContent = '';
+  const top = el('div', 'wxc-top');
+  const pic = el('div', 'wx-pic wx-anim');
+  pic.innerHTML = w.svg;
+  const now = el('div', 'wxc-now');
+  now.append(el('div', 'wxc-t', w.tempText), el('div', 'wxc-w', w.words + (w.feels != null && w.feels !== w.temp ? `, ощущается ${w.feels > 0 ? '+' : w.feels < 0 ? '−' : ''}${Math.abs(w.feels)}°` : '')));
+  const side = el('div', 'wxc-side');
+  side.appendChild(el('b', '', w.city || ''));
+  if (w.range) side.appendChild(el('div', '', 'днём ' + w.range));
+  if (w.wind != null) side.appendChild(el('div', '', `ветер ${w.wind} м/с`));
+  top.append(pic, now, side);
+  box.appendChild(top);
+  if (w.hours && w.hours.length) {
+    const strip = el('div', 'wxc-hours');
+    for (const h of w.hours.slice(0, 6)) {
+      const it = el('div', 'wx-h');
+      const ic = el('i');
+      ic.innerHTML = h.svg;
+      it.append(el('span', '', h.h + ':00'), ic, el('b', '', h.text));
+      strip.appendChild(it);
+    }
+    box.appendChild(strip);
+  }
 }
 
 export function setNet(kind) {
@@ -157,7 +197,7 @@ export function render(keep) {
   if (S.tools !== false) {
     const r3 = row('tools', 'Резонанс OS');
     r3._track.appendChild(toolCard('allApps', 'Все приложения', `${apps.everything().length} шт.`, 'grid'));
-    r3._track.appendChild(toolCard('saver', 'Заставка', 'Часы и волны', 'moon'));
+    r3._track.appendChild(toolCard('saver', 'Заставка', 'Часы, песня, погода', 'moon'));
     r3._track.appendChild(toolCard('settings', 'Настройки', 'Вид, заставка, «Домой»', 'gear'));
     r3._track.appendChild(toolCard('tvSettings', 'Настройки ТВ', 'Сеть, экран, звук', 'sliders'));
     if (stockLabel) r3._track.appendChild(toolCard('stock', 'Экран Сбера', 'На 5 минут', 'home'));
@@ -235,6 +275,7 @@ const fmt = (ms) => {
 function paintMedia() {
   const show = S.np !== false && np.active;
   npEl.classList.toggle('hidden', !show);
+  paintWeatherCard();
   if (!show) {
     if (nav.current() && npEl.contains(nav.current())) nav.focus(rowsEl.querySelector('.card'));
     return;

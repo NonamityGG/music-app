@@ -8,6 +8,8 @@ import * as nav from './nav.js';
 import * as layers from './layers.js';
 import * as look from './look.js';
 import { icon } from './icons.js';
+import { saver } from './saver.js';
+import * as weather from './weather.js';
 import { appCard, dateText, media as npMedia, toTop } from './home.js';
 
 const $ = (id) => document.getElementById(id);
@@ -173,6 +175,13 @@ export function setCity(c) {
   weatherCity = c || '';
 }
 
+function citySub() {
+  if (S.city && S.city.name) return `${S.city.name} — выбран вручную`;
+  const st = weather.status();
+  if (st.status === 'fail' && !weatherCity) return `Не получилось определить: ${st.why}. Выбери город сам`;
+  return weatherCity ? `${weatherCity} — определён по интернету` : 'Определяю по интернету…';
+}
+
 const SAVER = [
   [2, '2 минуты'],
   [5, '5 минут'],
@@ -205,7 +214,8 @@ function items() {
     { key: 'tint', name: 'Подсветка от приложения', sub: 'Комната окрашивается в цвет выбранного приложения', bool: true },
     { sec: 'Главный экран' },
     { key: 'clockSec', name: 'Секунды в часах', bool: true },
-    { key: 'weather', name: 'Погода', sub: weatherCity ? `Место: ${weatherCity}` : 'Место определяется по интернету', bool: true },
+    { key: 'weather', name: 'Погода', sub: 'На главном экране и на заставке', bool: true },
+    { act: 'city', name: 'Город для погоды', sub: citySub() },
     { key: 'np', name: '«Сейчас играет»', sub: info.notif === false ? 'Нет доступа к плеерам — его выдаёт установщик' : 'Обложка и кнопки того, что играет', bool: true },
     { key: 'tools', name: 'Ряд «Резонанс OS»', bool: true },
     { act: 'hidden', name: 'Скрытые приложения', sub: `${apps.hiddenApps().length} шт.` },
@@ -213,14 +223,39 @@ function items() {
     { key: 'saver', name: 'Включать через', choices: SAVER },
     {
       key: 'saverLook',
-      name: 'Вид',
+      name: 'Что за волнами',
+      sub: 'Как обои на ПК: большие часы, а пока играет музыка — строчка песни (или её название)',
       choices: [
-        ['clock', 'Часы и волны'],
+        ['auto', 'Песня и часы'],
+        ['clock', 'Только часы'],
         ['orb', 'Сфера и часы'],
         ['waves', 'Только волны'],
       ],
     },
+    {
+      key: 'saverText',
+      name: 'Надписи',
+      choices: [
+        ['soft', 'Мягкий свет'],
+        ['outline', 'Контур'],
+        ['glass', 'Стекло'],
+      ],
+    },
+    { key: 'saverWx', name: 'Погода на заставке', sub: 'Сейчас и на ближайшие часы', bool: true },
+    { key: 'saverCover', name: 'Цвета из обложки', sub: 'Волны и надписи в цветах того, что играет', bool: true },
     { act: 'saverNow', name: 'Показать заставку' },
+    { sec: 'Экран' },
+    {
+      key: 'inset',
+      name: 'Поля по краям',
+      sub: 'Если телевизор обрезает края картинки (или включи на нём «По размеру экрана»)',
+      choices: [
+        [0, 'Нет'],
+        [2, '2%'],
+        [3.5, '3,5%'],
+        [5, '5%'],
+      ],
+    },
     { sec: 'Плавность' },
     {
       key: 'fx',
@@ -298,10 +333,12 @@ export const settings = {
     const head = el('div', 'panel-head');
     const mark = el('span', 'mark');
     for (let i = 0; i < 4; i++) mark.appendChild(el('i'));
-    head.append(mark, el('h1', '', page === 'hidden' ? 'Скрытые' : 'Настройки'));
+    head.append(mark, el('h1', '', page === 'hidden' ? 'Скрытые' : page === 'city' ? 'Город для погоды' : 'Настройки'));
     const view = el('div', 'panel-view');
     const inner = el('div', 'panel-in');
-    if (page === 'hidden') {
+    if (page === 'city') {
+      buildCity(inner);
+    } else if (page === 'hidden') {
       const list = apps.hiddenApps();
       if (!list.length) inner.appendChild(el('div', 'sec-t', 'Скрытых приложений нет'));
       for (const a of list) inner.appendChild(buildRow({ act: 'unhide', name: a.label, sub: 'OK — вернуть на главный экран', pkg: a.pkg }));
@@ -345,6 +382,9 @@ export const settings = {
       settings.refresh();
     } else if (it.choices) step(it, 1);
     else if (it.act === 'hidden') settings.open('hidden');
+    else if (it.act === 'city') settings.open('city');
+    else if (it.act === 'cityType') typeCity(o);
+    else if (it.act === 'cityPick' || it.act === 'cityAuto') pickCity(it.place || null);
     else if (it.act === 'unhide') {
       apps.unhide(it.pkg);
       toast(`«${it.name}» снова на главном экране`);
@@ -353,9 +393,104 @@ export const settings = {
   },
   back() {
     if (settings.page === 'hidden') settings.open('main', 'hidden');
+    else if (settings.page === 'city') settings.open('main', 'city');
     else layers.pop(settings);
   },
 };
+
+// ---------- the town for the weather: typed with the TV's keyboard ----------
+
+let found = []; // towns found for what was typed
+let typed = '';
+let searching = '';
+
+function buildCity(inner) {
+  const row = el('div', 'opt f opt-input');
+  row.setAttribute('data-row', 'opt-cityType');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = typed;
+  input.placeholder = 'Название города — OK, чтобы ввести';
+  input.setAttribute('autocomplete', 'off');
+  input.setAttribute('enterkeyhint', 'search');
+  input.addEventListener('input', () => {
+    typed = input.value;
+    clearTimeout(input._t);
+    input._t = setTimeout(() => findTowns(typed), 700);
+  });
+  input.addEventListener('blur', () => tv.typing(false));
+  row.appendChild(input);
+  row._item = { act: 'cityType' };
+  row._input = input;
+  inner.appendChild(row);
+  if (searching) inner.appendChild(buildRow({ info: true, name: 'Ищу…', value: '' }));
+  else if (typed.trim().length >= 2 && !found.length) inner.appendChild(buildRow({ info: true, name: 'Ничего не нашлось', value: '' }));
+  for (const t of found) inner.appendChild(buildRow({ act: 'cityPick', name: t.name, sub: t.where, place: t }));
+  inner.appendChild(el('div', 'sec-t', ''));
+  inner.appendChild(buildRow({ act: 'cityAuto', name: 'Определять по интернету', sub: S.city ? 'Сейчас выбран вручную: ' + S.city.name : 'Так сейчас и есть' + (weatherCity ? ': ' + weatherCity : '') }));
+}
+
+// OK on the field: the keyboard comes up
+function typeCity(row) {
+  const input = row && row._input;
+  if (!input) return;
+  tv.typing(true);
+  input.focus();
+  tv.keyboard(true);
+}
+
+export function cityEnter() {
+  findTowns(typed, true);
+}
+
+async function findTowns(q, now) {
+  q = (q || '').trim();
+  if (q.length < 2) {
+    found = [];
+    return;
+  }
+  searching = q;
+  try {
+    const list = await weather.search(q);
+    if (searching !== q) return;
+    found = list;
+  } catch (e) {
+    found = [];
+    toast('Поиск не ответил: ' + (e && e.message ? e.message : e));
+  }
+  searching = '';
+  if (settings.page !== 'city' || !layers.isOpen(settings)) return;
+  // keep the keyboard while typing; after Enter go to what was found
+  const active = document.activeElement && document.activeElement.tagName === 'INPUT';
+  if (active && !now) {
+    redrawCityList();
+  } else {
+    tv.keyboard(false);
+    settings.open('city', found.length ? 'cityPick' : 'cityType');
+  }
+}
+
+// the list under the field, without touching the field (the keyboard stays up)
+function redrawCityList() {
+  const inner = settings._in;
+  if (!inner) return;
+  const field = inner.querySelector('.opt-input');
+  while (field && field.nextSibling) inner.removeChild(field.nextSibling);
+  const tmp = el('div');
+  buildCity(tmp);
+  tmp.removeChild(tmp.firstChild);
+  while (tmp.firstChild) inner.appendChild(tmp.firstChild);
+}
+
+function pickCity(place) {
+  tv.keyboard(false);
+  if (place) save({ city: { name: place.name, lat: place.lat, lon: place.lon } });
+  else save({ city: null });
+  found = [];
+  typed = '';
+  toast(place ? `Погода для города ${place.name}` : 'Город определяется по интернету');
+  settings.open('main', 'city');
+}
 
 function step(it, d) {
   const i = it.choices.findIndex((x) => x[0] === S[it.key]);
@@ -381,86 +516,10 @@ nav.onFocus((o) => {
   }
 });
 
-// ---------- the screen saver ----------
+// ---------- the screen saver (saver.js) ----------
 
-const ambEl = $('ambient');
-let ambTimer = 0;
-export const ambient = {
-  el: ambEl,
-  dim: false,
-  open() {
-    ambEl.textContent = '';
-    const box = el('div', 'amb');
-    const look2 = S.saverLook || 'clock';
-    if (look2 !== 'waves') {
-      box.appendChild(el('div', 'amb-clock'));
-      box.appendChild(el('div', 'amb-date'));
-    }
-    const npBox = el('div');
-    box.appendChild(npBox);
-    ambEl.appendChild(box);
-    ambient._box = box;
-    ambient._np = npBox;
-    // the only focusable thing: any key closes the saver anyway
-    const f = el('i', 'f');
-    f.style.position = 'absolute';
-    ambEl.appendChild(f);
-    document.body.classList.add('saver');
-    look.setWavePlace(look2 === 'orb' ? { y: 0.42, amp: 0.34 } : look2 === 'waves' ? { y: 0.5, amp: 0.34 } : { y: 0.74, amp: 0.2 });
-    if (look2 === 'orb') saveStyleTemp('orb');
-    look.setWaveState({ saver: true });
-    layers.push(ambient, f);
-    ambient.tick();
-  },
-  tick() {
-    clearTimeout(ambTimer);
-    if (!layers.isOpen(ambient)) return;
-    const d = new Date();
-    const c = ambEl.querySelector('.amb-clock');
-    if (c) c.textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const dt = ambEl.querySelector('.amb-date');
-    if (dt) dt.textContent = dateText(d);
-    const m = npMedia();
-    ambient._np.textContent = '';
-    if (m.active && S.np !== false) {
-      const pill = el('div', 'amb-np');
-      const art = el('i');
-      if (m.art) art.style.backgroundImage = `url("${tv.artUrl(m.art)}")`;
-      pill.append(art, el('b', '', m.title || ''), el('span', '', m.artist || ''));
-      ambient._np.appendChild(pill);
-    }
-    // the picture drifts a little every minute (no burn-in on the TV)
-    const box = ambient._box;
-    if (box) {
-      box.style.left = `${46 + Math.random() * 8}%`;
-      box.style.top = `${40 + Math.random() * 8}%`;
-    }
-    ambTimer = setTimeout(ambient.tick, 60000 - d.getSeconds() * 1000 + 30);
-  },
-  onClose() {
-    clearTimeout(ambTimer);
-    document.body.classList.remove('saver');
-    if (savedStyle) restoreStyle();
-    look.setWaveState({ saver: false });
-    homePlace();
-  },
-  any() {
-    layers.pop(ambient);
-  },
-};
-
-// the "orb" saver shows the orb whatever style the home screen uses
-let savedStyle = null;
-function saveStyleTemp(id) {
-  savedStyle = S.style;
-  S.style = id;
-  look.apply();
-}
-function restoreStyle() {
-  if (savedStyle) S.style = savedStyle;
-  savedStyle = null;
-  look.apply();
-}
+export const ambient = saver;
+saver.onClosed = () => homePlace();
 
 // on the home screen the waves run along the bottom of the whole screen,
 // behind the rows of apps (the orb floats on the right, by "now playing")

@@ -57,7 +57,7 @@ waves.setSource({
 
 // a big TV screen at full sharpness costs more than it shows: about 1100 px wide
 waves.addSurface('bg', canvas, {
-  dpr: Math.min(1, 1100 / Math.max(1, window.innerWidth)),
+  dpr: Math.min(1, (eco() ? 900 : 1100) / Math.max(1, window.innerWidth)),
   center: () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -81,6 +81,9 @@ export function paletteColors(id) {
 export function apply() {
   body.className = body.className.replace(/\bbg-[\w-]+/g, '').trim();
   body.classList.add('bg-' + (S.bg || 'glass-violet'));
+  // room for TVs that cut the edges of the picture
+  const k = 1 - (Number(S.inset) || 0) / 50;
+  document.documentElement.style.transform = k < 1 ? `scale(${k})` : '';
   body.classList.toggle('eco', eco());
   body.classList.toggle('fx', !eco());
   const c = paletteColors(S.palette);
@@ -90,7 +93,7 @@ export function apply() {
   const a = hexRgb(c[0]);
   body.style.setProperty('--a1s', `rgba(${a[0]},${a[1]},${a[2]},0.35)`);
   body.style.setProperty('--a1g', `rgba(${a[0]},${a[1]},${a[2]},0.6)`);
-  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: eco() ? 30 : 60 });
+  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: eco() ? 24 : 60 });
   waves.kick();
 }
 
@@ -102,6 +105,21 @@ export function coverPalette(src) {
     return c;
   });
 }
+
+// the screen saver takes the colours of the cover, whatever the palette;
+// null gives the palette back
+export function saverColors(c) {
+  if (c) {
+    looks.setCoverColors(c);
+    waves.configure({ palette: 'cover' });
+  } else {
+    if (S.palette === 'cover') return waves.kick();
+    waves.configure({ palette: S.palette || 'violet' });
+  }
+  waves.kick();
+}
+
+export const coverColors = (src) => looks.coverColors(src);
 
 // ---------- light from the focused app ----------
 

@@ -42,15 +42,16 @@ export function icon(name, cls) {
 
 // ---------- weather, in colour ----------
 
-const SUN = '<circle cx="12" cy="12" r="4.6" fill="#ffd36b"/><g stroke="#ffd36b" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M5.4 18.6l1.5-1.5M17.1 6.9l1.5-1.5"/></g>';
-const MOON = '<path d="M19.5 14.4A8 8 0 0 1 9.6 4.5a8 8 0 1 0 9.9 9.9z" fill="#e8dcff"/>';
-const CLOUD = (y = 0, c = '#eef0ff') => `<path transform="translate(0 ${y})" d="M7 19h10.2a4.3 4.3 0 0 0 .5-8.6A5.8 5.8 0 0 0 6.6 11.2 3.9 3.9 0 0 0 7 19z" fill="${c}"/>`;
+// the parts have classes, so big pictures can move (see .wx-anim in style.css)
+const SUN = '<circle cx="12" cy="12" r="4.6" fill="#ffd36b"/><g class="wx-rays" stroke="#ffd36b" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.5 1.5M17.1 17.1l1.5 1.5M5.4 18.6l1.5-1.5M17.1 6.9l1.5-1.5"/></g>';
+const MOON = '<path class="wx-moon" d="M19.5 14.4A8 8 0 0 1 9.6 4.5a8 8 0 1 0 9.9 9.9z" fill="#e8dcff"/>';
+const CLOUD = (y = 0, c = '#eef0ff') => `<g transform="translate(0 ${y})"><path class="wx-cloud" d="M7 19h10.2a4.3 4.3 0 0 0 .5-8.6A5.8 5.8 0 0 0 6.6 11.2 3.9 3.9 0 0 0 7 19z" fill="${c}"/></g>`;
 const SMALL_SUN = '<g transform="translate(-3.2 -3.4) scale(.78)">' + SUN + '</g>';
 const SMALL_MOON = '<g transform="translate(-2.4 -2.6) scale(.72)">' + MOON + '</g>';
-const RAIN = '<g stroke="#7fb5ff" stroke-width="1.7" stroke-linecap="round"><path d="M8.5 19.8l-1 2.4M12.5 19.8l-1 2.4M16.5 19.8l-1 2.4"/></g>';
-const SNOW = '<g fill="#ffffff"><circle cx="8" cy="21" r="1.1"/><circle cx="12" cy="22.2" r="1.1"/><circle cx="16" cy="21" r="1.1"/></g>';
-const BOLT = '<path d="M12.8 15.5 10 20.2h2.4l-1 3.3 3.6-5h-2.4l1.2-3z" fill="#ffd36b"/>';
-const FOG = '<g stroke="#d9dcf0" stroke-width="1.8" stroke-linecap="round"><path d="M4 10h16M6 14h12M4 18h16"/></g>';
+const RAIN = '<g stroke="#7fb5ff" stroke-width="1.7" stroke-linecap="round"><path class="wx-drop" d="M8.5 19.8l-1 2.4"/><path class="wx-drop d2" d="M12.5 19.8l-1 2.4"/><path class="wx-drop d3" d="M16.5 19.8l-1 2.4"/></g>';
+const SNOW = '<g fill="#ffffff"><circle class="wx-flake" cx="8" cy="21" r="1.1"/><circle class="wx-flake d2" cx="12" cy="22.2" r="1.1"/><circle class="wx-flake d3" cx="16" cy="21" r="1.1"/></g>';
+const BOLT = '<path class="wx-bolt" d="M12.8 15.5 10 20.2h2.4l-1 3.3 3.6-5h-2.4l1.2-3z" fill="#ffd36b"/>';
+const FOG = '<g stroke="#d9dcf0" stroke-width="1.8" stroke-linecap="round"><path class="wx-fog" d="M4 10h16"/><path class="wx-fog d2" d="M6 14h12"/><path class="wx-fog d3" d="M4 18h16"/></g>';
 
 // WMO weather codes (Open-Meteo) -> picture and words
 export function weatherLook(code, day) {

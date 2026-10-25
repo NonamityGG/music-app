@@ -13,7 +13,12 @@ export const DEFAULTS = {
   np: true,
   tools: true,
   saver: 5, // minutes, 0 = never
-  saverLook: 'clock',
+  saverLook: 'auto', // auto | clock | orb | waves
+  saverText: 'soft', // soft | outline | glass
+  saverWx: true,
+  saverCover: true,
+  inset: 0, // % of the screen kept free at the edges (TVs that cut them)
+  city: null, // { name, lat, lon } chosen in the settings; null: found by the internet address
   fx: 'auto', // auto | max | eco (auto: eco on a weak box)
   guard: true,
   favs: null, // [pkg] in order; null until first chosen
@@ -29,9 +34,14 @@ function load() {
       s.v = 2;
       if (s.fx === 'max') s.fx = 'auto';
     }
+    // 1.0.3: the new screen saver
+    if (s.v < 3) {
+      s.v = 3;
+      if (s.saverLook === 'clock') s.saverLook = 'auto';
+    }
     return s;
   } catch {
-    return { ...DEFAULTS, v: 2 };
+    return { ...DEFAULTS, v: 3 };
   }
 }
 

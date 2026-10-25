@@ -275,6 +275,29 @@ final class Bridge {
         return start(i);
     }
 
+    // ---------- typing (the town for the weather) ----------
+
+    /** While a field is being typed in, OK goes to the field, not to the page. */
+    @JavascriptInterface
+    public void typing(boolean on) {
+        a.typing = on;
+    }
+
+    @JavascriptInterface
+    public void keyboard(boolean show) {
+        a.ui.post(() -> {
+            if (a.web == null) return;
+            android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) a.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm == null) return;
+            if (show) {
+                a.web.requestFocus();
+                imm.showSoftInput(a.web, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+            } else {
+                imm.hideSoftInputFromWindow(a.web.getWindowToken(), 0);
+            }
+        });
+    }
+
     // ---------- misc ----------
 
     @JavascriptInterface

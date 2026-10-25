@@ -124,6 +124,36 @@ function FreeMb {
 }
 $before = FreeMb
 
+# apps that don't need to run while nobody watches them: films, TV, videos.
+# Only the ones installed are touched; music apps and VPNs never are.
+$quiet = [ordered]@{
+  'ru.mts.mtstv' = 'МТС ТВ'; 'ru.more.play' = 'more.tv'; 'com.infolink.limeiptv' = 'Лайм HD'
+  'ru.kinopoisk.tv' = 'Кинопоиск'; 'tv.lfstrm.smotreshka_stb' = 'Смотрёшка'; 'ru.rutube.app' = 'RUTUBE'
+  'com.vk.tv' = 'VK Видео'; 'org.smarttube.stable' = 'SmartTube'; 'ru.okko.tv' = 'Okko'
+  'ru.ivi.client' = 'Иви'; 'ru.start.androidtv' = 'START'; 'ru.mts.kion' = 'KION'
+  'ru.rt.video.app.tv' = 'Wink'; 'ru.sberdevices.startube' = 'Видео Сбера'
+}
+# Sber's own extras nobody needs running: surveys and smart-home adverts
+$off = [ordered]@{ 'ru.sberdevices.survey' = 'опросы Сбера'; 'ru.sberdevices.smarthome.promo' = 'реклама умного дома' }
+# bigger ones: only if asked
+$ask = [ordered]@{
+  'ru.sberdevices.parentcontrol' = 'Родительский контроль Сбера (~110 МБ памяти). Выключить, если им не пользуешься?'
+}
+$installed = (Shell 'pm list packages') -split "`n" | ForEach-Object { $_.Trim() -replace '^package:', '' }
+function Has([string]$p) { return $installed -contains $p }
+
+Write-Host ''
+Say '  Enter — ускорить телевизор;  0 — вернуть всё, что меняла эта программа'
+$mode = (Read-Host '  Выбор').Trim()
+if ($mode -eq '0') {
+  Step 'Возвращаю как было'
+  foreach ($s in 'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale') { Shell "settings put global $s 1" | Out-Null }
+  foreach ($p in $quiet.Keys) { if (Has $p) { Shell "cmd appops set $p RUN_ANY_IN_BACKGROUND allow" | Out-Null } }
+  foreach ($p in @($off.Keys) + @($ask.Keys)) { if (Has $p) { Shell "pm enable $p" | Out-Null } }
+  Say '  Анимации, фоновая работа приложений и выключенные приложения Сбера — как было.' 'Green'
+  exit 0
+}
+
 # ---------- report first: what the box is and what eats it ----------
 Step '2. Отчёт о приставке'
 $desk = [Environment]::GetFolderPath('Desktop')
@@ -138,6 +168,8 @@ $parts = [ordered]@{
   'Кто занимает память' = "dumpsys meminfo | sed -n '/Total PSS by process/,/Total PSS by OOM/p' | head -n 45"
   'Процессор сейчас' = 'top -b -n 1 -m 20 2>/dev/null || top -n 1 -m 20'
   'Домашний экран' = 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME'
+  'Браузерный движок' = "dumpsys webviewupdate | grep -iE 'current webview package|valid package'"
+  'Журнал Резонанс OS' = 'logcat -d -s RezTV | tail -n 150'
   'Отключённые приложения' = 'pm list packages -d'
   'Установленные (не системные)' = 'pm list packages -3'
   'Системные' = 'pm list packages -s'
@@ -169,11 +201,37 @@ Say '  Оптимизирую приложения под процессор п�
 $r = Shell 'cmd package bg-dexopt-job'
 if ($r -match 'Unknown|Error|not found|Failure') { Say "  Приставка этого не умеет ($r) — пропускаю." 'Yellow' } else { Say '  Готово: приложения будут запускаться быстрее.' }
 
+# ---------- apps that run in the background for nothing ----------
+Step '4. Фоновые приложения'
+$done = @()
+foreach ($p in $quiet.Keys) {
+  if (-not (Has $p)) { continue }
+  Shell "cmd appops set $p RUN_ANY_IN_BACKGROUND ignore" | Out-Null
+  Shell "am force-stop $p" | Out-Null
+  $done += $quiet[$p]
+}
+if ($done.Count) {
+  Say ('  Больше не работают в фоне (открываются и работают как обычно): ' + ($done -join ', ') + '.')
+} else { Say '  Таких приложений нет.' }
+foreach ($p in $off.Keys) {
+  if (-not (Has $p)) { continue }
+  $r = Shell "pm disable-user --user 0 $p"
+  if ($r -match 'disabled') { Say "  Выключено: $($off[$p])." }
+}
+foreach ($p in $ask.Keys) {
+  if (-not (Has $p)) { continue }
+  $a = (Read-Host "  $($ask[$p]) [д/Н]").Trim().ToLower()
+  if ($a -eq 'д' -or $a -eq 'y' -or $a -eq 'да' -or $a -eq 'l') {
+    $r = Shell "pm disable-user --user 0 $p"
+    if ($r -match 'disabled') { Say '  Выключено.' } else { Say "  Не вышло: $r" 'Yellow' }
+  }
+}
+
 Shell 'am kill-all' | Out-Null
+Start-Sleep -Seconds 2
 $after = FreeMb
 Write-Host ''
 if ($before -and $after) { Say "  Свободная память: было $before МБ, стало $after МБ." 'Green' }
 Write-Host '  Готово!' -ForegroundColor Green
-Say '  Анимации вернуть: Настройки → «Для разработчиков» → «Анимация окон/переходов/длительность» → 1x.'
-Say '  Хочешь ускорить сильнее — пришли Claude файл Rezonans-TV-report.txt с рабочего стола:'
-Say '  по нему видно, какие приложения Сбера крутятся зря, и их можно выключить (это тоже обратимо).'
+Say '  Вернуть всё как было: запусти эту программу ещё раз и выбери 0.'
+Say '  Отчёт о приставке лежит на рабочем столе: Rezonans-TV-report.txt.'
