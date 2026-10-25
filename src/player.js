@@ -52,6 +52,7 @@ export const state = {
   via: '', // where the current track actually plays from
   error: '',
   waitingUntil: 0, // set while waiting for a service to let the app back in
+  extending: false, // the queue ended and similar music is being picked
 };
 
 const listeners = new Set();
@@ -497,8 +498,21 @@ export function setWaveMode(reactive) {
 
 // ---------- playback ----------
 
+// How long a track took to start, logged when it was slow (to find out why).
+let startLog = null; // { seq, t0, resolved }
+function noteStart() {
+  const s = startLog;
+  if (!s || s.seq !== loadSeq || s.done) return;
+  s.done = true;
+  const total = performance.now() - s.t0;
+  if (total < 3500) return;
+  const r = s.resolved ? Math.round(s.resolved - s.t0) : -1;
+  logError('slow-start', new Error(`«${(current() || {}).title || ''}» запускался ${(total / 1000).toFixed(1)} с: ссылка ${r >= 0 ? (r / 1000).toFixed(1) + ' с' : '—'}, звук ${r >= 0 ? ((total - r) / 1000).toFixed(1) + ' с' : '—'} (${state.via || '?'})`));
+}
+
 async function load_(index, autoplay = true, auto = false) {
   const seq = ++loadSeq;
+  startLog = { seq, t0: performance.now(), resolved: 0, done: !autoplay };
   disarm();
   state.index = index;
   const track = current();
@@ -516,6 +530,7 @@ async function load_(index, autoplay = true, auto = false) {
   audio.pause();
   try {
     const src = await resolve(track);
+    if (startLog && startLog.seq === seq) startLog.resolved = performance.now();
     if (seq !== loadSeq) {
       if (src.url.startsWith('blob:')) URL.revokeObjectURL(src.url);
       return;
@@ -648,6 +663,29 @@ export function resume() {
   if (!current()) return;
   if (!audio.getAttribute('src')) return load_(state.index);
   if (isFx(audio)) graph.resume();
+  // Paused for minutes and still on the stream (the copy didn't make it): the old
+  // link has probably expired, so ask for a fresh one instead of waiting for it to fail.
+  const idle = pausedAt ? Date.now() - pausedAt : 0;
+  if (idle > 90000 && /^https?:/.test(directUrl) && curRef && !state.loading) {
+    const seq = loadSeq;
+    const at = audio.currentTime;
+    state.loading = true;
+    emit('state');
+    online
+      .streamFor(curRef)
+      .then((url) => {
+        if (seq === loadSeq) moveTo(url, at, true);
+      })
+      .catch(() => {
+        if (seq === loadSeq) audio.play().catch(() => load_(state.index));
+      })
+      .finally(() => {
+        if (seq !== loadSeq) return;
+        state.loading = false;
+        emit('state');
+      });
+    return;
+  }
   audio.play().catch((e) => {
     if (e && e.name === 'AbortError') return; // a quick pause right after play: nothing broke
     logError('resume', e);
@@ -667,11 +705,16 @@ export function next(auto = false) {
   // the end of the queue
   if (state.repeat === 'all') return playAt(0, auto);
   if (settings.endless) {
-    // carry on with similar music
+    // carry on with similar music; while it is being picked, more presses don't pile up
+    if (state.extending) return;
+    state.extending = true;
+    emit('state');
     extendQueue().then((added) => {
+      state.extending = false;
       if (added) playAt(state.index + 1, true);
       else if (auto) pause();
       else playAt(0, false);
+      emit('state');
     });
     return;
   }
@@ -883,21 +926,65 @@ function isBuffered(t) {
 }
 
 // Downloads the whole track while it plays, so a jump far ahead (or a stream that
-// breaks off) can switch to the downloaded copy.
-function startFullCopy() {
+// breaks off) can switch to the downloaded copy. `force`: also for a stream that
+// plays directly (used while paused, see prepareResume).
+function startFullCopy(force = false) {
   const track = current();
-  if (!track || !viaProxyNow() || (fullCopy && fullCopy.key === track.key)) return;
-  const copy = { key: track.key, url: '', loading: true };
+  if (!track || (fullCopy && fullCopy.key === track.key)) return fullCopy;
+  if (!(force ? /^https?:/.test(directUrl) && String(state.via).startsWith('online') : viaProxyNow())) return null;
+  const copy = { key: track.key, url: '', loading: true, onReady: null };
   fullCopy = copy;
   const url = directUrl;
-  fetch(proxied(url))
+  fetch(Capacitor.isNativePlatform() ? proxied(url) : url)
     .then((r) => (r.ok ? r.blob() : null))
     .then((blob) => {
       if (fullCopy !== copy || !blob || blob.size < 50000) return;
       copy.url = URL.createObjectURL(blob);
+      if (copy.onReady) copy.onReady();
     })
     .catch((e) => logError('stream-copy', e))
     .finally(() => (copy.loading = false));
+  return copy;
+}
+
+// ---------- a long pause ----------
+// After a while on pause the phone lets go of the stream (and its link expires),
+// so pressing play again used to take seconds. Some time into a pause the track
+// quietly moves to a complete copy in memory: play then starts at once.
+
+let pausedAt = 0;
+let restTimer = 0;
+
+function quietSwap(url) {
+  if (!audio.paused) return false;
+  const at = audio.currentTime;
+  const { el, src } = pick(deck, url);
+  directUrl = url;
+  if (el !== audio) {
+    retire(audio);
+    audio = el;
+  }
+  audio.src = src;
+  seekWhenReady(at);
+  emit('state');
+  return true;
+}
+
+function useCopy(copy) {
+  const t = current();
+  if (!copy || !copy.url || !t || copy.key !== t.key || !audio.paused || state.loading) return;
+  if (fullCopy === copy) fullCopy = null;
+  setObjectUrl(copy.url);
+  quietSwap(copy.url);
+}
+
+function prepareResume() {
+  const t = current();
+  if (!t || !audio.paused || state.loading || !/^https?:/.test(directUrl) || !String(state.via).startsWith('online')) return;
+  const copy = fullCopy && fullCopy.key === t.key ? fullCopy : startFullCopy(true);
+  if (!copy) return;
+  if (copy.url) useCopy(copy);
+  else copy.onReady = () => useCopy(copy);
 }
 
 function moveTo(url, at, wasPlaying) {
@@ -1052,9 +1139,12 @@ for (const el of allElements) {
     'playing',
     mine(() => {
       setPlaying(true);
+      pausedAt = 0;
+      clearTimeout(restTimer);
       pushPosition();
       schedulePreload(800);
       setTimeout(startFullCopy, 1500);
+      noteStart();
     })
   );
   el.addEventListener(
@@ -1063,6 +1153,9 @@ for (const el of allElements) {
       clearTimeout(earlyTimer);
       earlyTimer = 0;
       setPlaying(false);
+      pausedAt = Date.now();
+      clearTimeout(restTimer);
+      restTimer = setTimeout(prepareResume, 10000);
     })
   );
   el.addEventListener(

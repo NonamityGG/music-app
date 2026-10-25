@@ -363,7 +363,9 @@ export function hSwipe(area, { targets, onSwipe, ignore = '', enabled = () => tr
     setTimeout(() => area.removeEventListener('click', swallow, { capture: true }), 350);
     const w = area.clientWidth || 320;
     const v = dx / Math.max(1, performance.now() - t0);
-    const go = e && e.type !== 'pointercancel' && (Math.abs(dx) > threshold || (Math.abs(v) > 0.45 && Math.abs(dx) > 24));
+    // a cancelled touch (the system took it over) still counts if it went far enough
+    const far = Math.abs(dx) > threshold;
+    const go = e && e.type === 'pointercancel' ? Math.abs(dx) > threshold * 1.2 : far || (Math.abs(v) > 0.45 && Math.abs(dx) > 24);
     const from = els.map((el) => ({ transform: el.style.transform || 'none', opacity: el.style.opacity || '1' }));
     if (go) {
       const sign = dx < 0 ? -1 : 1;
@@ -383,6 +385,7 @@ export function hSwipe(area, { targets, onSwipe, ignore = '', enabled = () => tr
   };
   area.addEventListener('pointerup', end);
   area.addEventListener('pointercancel', end);
+  area.addEventListener('lostpointercapture', (e) => d && d.on && end(e));
 }
 
 // Brings in new content from the side a swipe went to (or back, if the track

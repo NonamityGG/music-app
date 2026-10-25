@@ -151,16 +151,22 @@ function paintMini() {
 let swipeDir = ''; // the side the next track's cover comes in from
 let swipeTimer = 0;
 function swipeTrack(dir, flown) {
-  const before = player.current() && player.current().key;
+  const keyNow = () => player.current() && player.current().key;
+  const before = keyNow();
+  const started = Date.now();
   swipeDir = dir;
   clearTimeout(swipeTimer);
   if (dir === 'next') player.next();
   else player.prev(true);
-  swipeTimer = setTimeout(() => {
+  const check = () => {
+    if (keyNow() !== before) return (swipeDir = ''); // the new track came in from the side
+    // the list ended and similar music is being picked: wait for it
+    if (player.state.extending && Date.now() - started < 25000) return (swipeTimer = setTimeout(check, 300));
     swipeDir = '';
     // nowhere to go (start of the list): what flew away comes back
-    if ((player.current() && player.current().key) === before) for (const el of flown) slideIn(el, dir === 'next' ? 'prev' : 'next');
-  }, 700);
+    for (const el of flown) if (el) slideIn(el, dir === 'next' ? 'prev' : 'next');
+  };
+  swipeTimer = setTimeout(check, 700);
 }
 
 // Restarts a one-shot CSS animation class.
@@ -173,7 +179,7 @@ function replay(el, cls) {
 // The play/pause icon only changes (with a little morph) when the state does.
 let playShown = '';
 function paintPlayButtons() {
-  const busy = player.state.loading;
+  const busy = player.state.loading || player.state.extending;
   const playing = player.state.playing;
   const k = busy ? 'busy' : playing ? 'pause' : 'play';
   if (k === playShown) return;
@@ -423,7 +429,9 @@ function buildFull() {
   // pull the player down to close it
   dragToClose(el, el, () => closeFull(), el, { threshold: 140, ignore: '.wave, .controls, .full-bottom, .full-meta button, .sheet, .lyrics' });
   // swipe the cover sideways to change the track
-  const artTargets = () => [art.querySelector('.cover-full:not(.cover-out)'), el.querySelector('.full-meta-text')];
+  // (with the cover hidden behind the waves only the title moves: the hidden cover must stay hidden)
+  // (the source line stays: it says when similar music is being picked)
+  const artTargets = () => [el.classList.contains('focus') ? null : art.querySelector('.cover-full:not(.cover-out)'), title, artist];
   hSwipe(art, { targets: artTargets, onSwipe: (dir) => swipeTrack(dir, artTargets()) });
   // tap the cover: waves take the whole stage, tap again to bring the cover back
   art.addEventListener('click', () => {
@@ -453,7 +461,7 @@ function swapCover(src, dir = '') {
     old.classList.add('cover-out');
     setTimeout(() => old.remove(), 260);
     full.art.appendChild(next);
-    slideIn(next, dir, 90);
+    if (!full.el.classList.contains('focus')) slideIn(next, dir, 90);
     return;
   }
   if (old) {
@@ -491,19 +499,24 @@ function paintFull() {
     clear(full.thumb).appendChild(cover(c, 'cover'));
     full.title.textContent = t.title;
     full.artist.textContent = t.artist || '';
-    if (changedTrack && swipeDir) slideIn(full.el.querySelector('.full-meta-text'), swipeDir, 50);
+    if (changedTrack && swipeDir) {
+      slideIn(full.title, swipeDir, 50);
+      slideIn(full.artist, swipeDir, 50);
+    }
     else if (changedTrack && !first) replay(full.el.querySelector('.full-meta-text'), 'swap');
   }
   if (settings.lyricsOn && !full.el.hidden) lyricsView.show(t);
   full.lyricsBtn.classList.toggle('active', !!settings.lyricsOn);
   full.lyricsBtn.setAttribute('aria-pressed', settings.lyricsOn ? 'true' : 'false');
   full.wave.setShape(t.key);
-  full.wave.busy = !!player.state.loading;
+  full.wave.busy = !!(player.state.loading || player.state.extending);
   ensureLoop();
   const waitLeft = player.state.waitingUntil ? Math.ceil((player.state.waitingUntil - Date.now()) / 1000) : 0;
   full.via.textContent =
     waitLeft > 0
       ? `Сервис ненадолго закрыл доступ, включу сам через ${waitLeft} с`
+      : player.state.extending
+      ? 'Плейлист закончился — подбираю похожую музыку…'
       : player.state.loading
       ? 'Загружаю…'
       : t.unavailable

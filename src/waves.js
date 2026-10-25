@@ -125,7 +125,29 @@ let every = 1;
 
 export function kick() {
   if (!raf && running()) raf = requestAnimationFrame(loop);
+  else if (!raf) scheduleRest();
   if (cfg.style === 'off') clearActive();
+}
+
+// At rest (paused, loading, nothing playing) the line styles stay on screen as a
+// calm still picture — a flat oscilloscope line, resting ribbons — instead of
+// vanishing. Drawn once, no animation loop, so it costs nothing.
+const RESTING = new Set(['scope', 'ribbons']);
+let restPending = false;
+function scheduleRest() {
+  if (restPending) return;
+  restPending = true;
+  requestAnimationFrame(() => {
+    restPending = false;
+    if (!raf && !running()) restFrame();
+  });
+}
+function restFrame() {
+  const s = surfaces[active];
+  if (!s || !s.w || document.hidden) return;
+  if (!RESTING.has(cfg.style)) return clearActive();
+  beatPulse = 0;
+  draw(performance.now() / 1000, 0);
 }
 
 function clearActive() {
@@ -155,7 +177,7 @@ function loop(now) {
     lastDraw = 0;
     lastTick = 0;
     frameNo = 0;
-    clearActive();
+    restFrame();
   }
 }
 
