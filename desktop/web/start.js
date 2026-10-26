@@ -206,18 +206,13 @@ function render() {
   const recBox = $('recent');
   clear(recBox);
   $('recentSec').classList.toggle('hidden', !recentOn || !recent.length);
-  for (const r of recent.slice(0, 5)) recBox.appendChild(row(r, folderOf(r.path), 'file'));
+  // no sublabel: these are shortcuts in Windows' Recent folder, so the folder
+  // name says nothing useful — the «Недавние файлы» header is enough
+  for (const r of recent.slice(0, 5)) recBox.appendChild(row(r, null, 'file'));
 
   const appBox = $('apps');
   clear(appBox);
   for (const a of apps) appBox.appendChild(row(a));
-}
-
-// the folder a recent file sits in — a quiet, useful sublabel (not "Недавнее")
-function folderOf(p) {
-  if (!p) return '';
-  const parts = String(p).replace(/[\\/]+$/, '').split(/[\\/]/);
-  return parts.length > 1 ? parts[parts.length - 2] : '';
 }
 
 // ---------- search ----------

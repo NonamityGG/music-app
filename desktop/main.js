@@ -565,20 +565,30 @@ function onForeground(m) {
   // another window just came to the front: make sure the bar and the island are
   // still above it, or the logo stops taking clicks (after a snip, after a reboot)
   assertTop();
+  // a capture overlay closing can take a beat to really leave the top
+  setTimeout(() => assertTop(true), 300);
+  setTimeout(() => assertTop(true), 900);
 }
 
 // keep the bar and the island clickable: back on top when something else took it.
-// A snipping overlay or Explorer drawing over them after a reboot leaves them
-// below, where clicks never reach them; re-asserting on each foreground change
-// (throttled) brings them back within a moment.
+// A screen-capture overlay (Win+Shift+S) or Explorer drawing over them after a
+// reboot leaves them below, where clicks never reach them. Re-asserting their
+// topmost standing — on each foreground change and on a short timer — brings
+// them back. setAlwaysOnTop re-applies the topmost flag without any flicker, so
+// they climb back above a capture overlay that was itself topmost a moment ago.
 let lastAssert = 0;
-function assertTop() {
+function assertTop(force) {
   if (topHide.size !== 0) return;
   const now = Date.now();
-  if (now - lastAssert < 350) return;
+  if (!force && now - lastAssert < 300) return;
   lastAssert = now;
   for (const w of [bar, island]) {
-    if (w && !w.isDestroyed() && w.isVisible()) w.moveTop();
+    if (!w || w.isDestroyed()) continue;
+    if (!w.isVisible()) w.showInactive();
+    try {
+      w.setAlwaysOnTop(true, 'screen-saver');
+      w.moveTop();
+    } catch {}
   }
 }
 
@@ -1328,6 +1338,8 @@ if (!app.requestSingleInstanceLock()) {
     });
     // and now and then, in case something else moved them
     setInterval(fixTop, 5000);
+    // a short, flicker-free safety net so the bar never stays unclickable for long
+    setInterval(() => assertTop(true), 2500);
     powerMonitor.on('resume', () => scheduleRebuild('после сна'));
   });
 

@@ -1,8 +1,9 @@
-// Резонанс для ПК — the Win key, the Start button and the tray open Резонанс's
-// own Start menu and Quick settings instead of Windows'. Done with low-level
-// keyboard and mouse hooks on a thread of their own (these hooks need a message
-// loop). Only the bare Win key, Win+A, the Start button and the tray cluster are
-// taken; every other shortcut (Win+E, Win+R…) passes straight through.
+// Резонанс для ПК — the Win key opens Резонанс's own Start menu and Quick
+// settings instead of Windows'. One low-level keyboard hook on a thread of its
+// own (the hook needs a message loop). Only the bare Win key (→ Пуск) and Win+A
+// (→ быстрые настройки) are taken; every other shortcut (Win+E, Win+R, Win+D…)
+// passes straight through, and nothing else — no mouse, no other keys — is
+// watched. The hook is live only while the app runs and is dropped on exit.
 
 using System;
 using System.Collections.Generic;
@@ -16,15 +17,12 @@ namespace Rezonans
         private static Thread _thread;
         private static uint _threadId;
         private static IntPtr _kb = IntPtr.Zero;
-        private static IntPtr _mouse = IntPtr.Zero;
         private static ShellNative.HookProc _kbProc; // kept alive against the GC
-        private static ShellNative.HookProc _mouseProc;
         private static volatile bool _on;
 
         private static bool _winDown;
         private static bool _combo;
         private static long _lastEmit;
-        private static bool _startBtn; // the taskbar's Start button could be located
 
         internal static void Install()
         {
@@ -32,7 +30,7 @@ namespace Rezonans
             _on = true;
             _thread = new Thread(Run) { IsBackground = true, Name = "hooks" };
             _thread.Start();
-            Program.Log("перехват: Win, Пуск и трей — Резонанс");
+            Program.Log("перехват: Win → Пуск, Win+A → быстрые настройки");
         }
 
         internal static void Remove()
@@ -47,21 +45,18 @@ namespace Rezonans
             _threadId = ShellNative.GetCurrentThreadId();
             var mod = ShellNative.GetModuleHandle(null);
             _kbProc = KbProc;
-            _mouseProc = MouseProc;
             _kb = ShellNative.SetWindowsHookEx(ShellNative.WH_KEYBOARD_LL, _kbProc, mod, 0);
-            _mouse = ShellNative.SetWindowsHookEx(ShellNative.WH_MOUSE_LL, _mouseProc, mod, 0);
-            if (_kb == IntPtr.Zero) Program.Log("перехват клавиш не встал");
+            if (_kb == IntPtr.Zero) Program.Log("перехват Win не встал");
             ShellNative.MSG msg;
             while (_on && ShellNative.GetMessage(out msg, IntPtr.Zero, 0, 0) > 0) { }
             if (_kb != IntPtr.Zero) ShellNative.UnhookWindowsHookEx(_kb);
-            if (_mouse != IntPtr.Zero) ShellNative.UnhookWindowsHookEx(_mouse);
-            _kb = _mouse = IntPtr.Zero;
+            _kb = IntPtr.Zero;
         }
 
         private static void Emit(string key)
         {
             var now = DateTime.UtcNow.Ticks / 10000;
-            if (now - _lastEmit < 200) return; // one open per click/press
+            if (now - _lastEmit < 200) return; // one open per press
             _lastEmit = now;
             Program.Send(new Dictionary<string, object> { { "type", "hotkey" }, { "key", key } });
         }
@@ -108,43 +103,6 @@ namespace Rezonans
                 }
             }
             return ShellNative.CallNextHookEx(_kb, code, wParam, lParam);
-        }
-
-        private static IntPtr MouseProc(int code, IntPtr wParam, IntPtr lParam)
-        {
-            if (code == ShellNative.HC_ACTION && wParam.ToInt32() == ShellNative.WM_LBUTTONDOWN)
-            {
-                try
-                {
-                    var info = (ShellNative.MSLLHOOK)Marshal.PtrToStructure(lParam, typeof(ShellNative.MSLLHOOK));
-                    int x = info.pt.X, y = info.pt.Y;
-                    var tray = ShellNative.FindWindow("Shell_TrayWnd", null);
-                    if (tray != IntPtr.Zero)
-                    {
-                        // the Start button, when it is a window we can find
-                        var start = ShellNative.FindWindowEx(tray, IntPtr.Zero, "Start", null);
-                        if (start != IntPtr.Zero && ShellNative.GetWindowRect(start, out var sr) && In(sr, x, y))
-                        {
-                            Emit("start");
-                            return new IntPtr(1);
-                        }
-                        // the clock / status cluster at the far end of the taskbar
-                        var notify = ShellNative.FindWindowEx(tray, IntPtr.Zero, "TrayNotifyWnd", null);
-                        if (notify != IntPtr.Zero && ShellNative.GetWindowRect(notify, out var nr) && In(nr, x, y))
-                        {
-                            Emit("quick");
-                            return new IntPtr(1);
-                        }
-                    }
-                }
-                catch { }
-            }
-            return ShellNative.CallNextHookEx(_mouse, code, wParam, lParam);
-        }
-
-        private static bool In(ShellNative.RECT r, int x, int y)
-        {
-            return x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom;
         }
     }
 }
