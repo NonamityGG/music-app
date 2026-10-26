@@ -248,7 +248,8 @@ function onHost(m) {
       break;
     }
     case 'appbar':
-      log(`строка заняла место: ${m.x},${m.y} ${m.w}×${m.h}`);
+      if (m.same) break;
+      log(`${m.edge === 'bottom' ? 'панель задач' : 'строка'} заняла место: ${m.x},${m.y} ${m.w}×${m.h}`);
       fixTopSoon();
       break;
     case 'media':
@@ -703,11 +704,11 @@ function createBar() {
   hookBar();
 }
 
-function registerAppBar() {
+function registerAppBar(fresh) {
   if (!bar || bar.isDestroyed()) return;
   const d = screen.getPrimaryDisplay();
   const r = screen.dipToScreenRect(null, d.bounds);
-  hostSend({ cmd: 'appbar', hwnd: hwndOf(bar), x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(BAR_H * d.scaleFactor) });
+  hostSend({ cmd: 'appbar', fresh: !!fresh, hwnd: hwndOf(bar), x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(BAR_H * d.scaleFactor) });
 }
 
 let hooked = null;
@@ -721,7 +722,7 @@ function hookBar() {
     if (code === 2) setTopHidden(num(lParam) !== 0, 'fullscreen'); // ABN_FULLSCREENAPP
   });
   // Explorer restarted: the app bar has to be registered again
-  bar.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerAppBar, 1500));
+  bar.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(() => registerAppBar(true), 1500));
 }
 
 // Why the bar and the island step aside: an anti-cheat game ('guard'), a
@@ -1217,11 +1218,11 @@ function createTaskbar() {
   hookTaskbar();
 }
 
-function registerTaskbar() {
+function registerTaskbar(fresh) {
   if (!taskbarWin || taskbarWin.isDestroyed()) return;
   const d = screen.getPrimaryDisplay();
   const r = screen.dipToScreenRect(null, d.bounds);
-  hostSend({ cmd: 'appbar', hwnd: hwndOf(taskbarWin), edge: 'bottom', x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(TASKBAR_H * d.scaleFactor) });
+  hostSend({ cmd: 'appbar', fresh: !!fresh, hwnd: hwndOf(taskbarWin), edge: 'bottom', x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(TASKBAR_H * d.scaleFactor) });
 }
 
 function hookTaskbar() {
@@ -1234,7 +1235,7 @@ function hookTaskbar() {
   // Explorer restarted: our strip again, and Windows' own taskbar back into auto-hide
   taskbarWin.hookWindowMessage(hostInfo.taskbarCreated, () =>
     setTimeout(() => {
-      registerTaskbar();
+      registerTaskbar(true);
       hostSend({ cmd: 'taskbarHide', on: true });
       hostSend({ cmd: 'taskpins' });
     }, 1500),
@@ -1641,6 +1642,7 @@ if (!app.requestSingleInstanceLock()) {
       } else if (cmd === 'showDesktop') {
         hideStart();
         hideQuick();
+        log('панель задач: свернуть всё');
         hostSend({ cmd: 'showDesktop' });
       }
       else if (cmd === 'openSettingsApp') hostSend({ cmd: 'launch', path: 'ms-settings:', args: '' });

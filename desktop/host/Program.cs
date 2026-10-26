@@ -180,12 +180,14 @@ namespace Rezonans
                 case "appbar":
                     {
                         uint edge = Str(c, "edge") == "bottom" ? Native.ABE_BOTTOM : Native.ABE_TOP;
+                        if (Bool(c, "fresh") == true) AppBar.Forget(Hwnd(Str(c, "hwnd"))); // Explorer restarted: register anew
                         var rc = AppBar.Set(Hwnd(Str(c, "hwnd")), Rect(c), Int(c, "height", 36), edge);
                         Send(new Dictionary<string, object>
                         {
                             { "type", "appbar" },
                             { "ok", true },
                             { "edge", edge == Native.ABE_BOTTOM ? "bottom" : "top" },
+                            { "same", AppBar.LastSame },
                             { "x", rc.Left }, { "y", rc.Top }, { "w", rc.Right - rc.Left }, { "h", rc.Bottom - rc.Top },
                         });
                         break;
@@ -477,6 +479,11 @@ namespace Rezonans
     {
         internal static readonly uint Msg = Native.RegisterWindowMessage("RezonansAppBar");
         private static readonly Dictionary<IntPtr, bool> _reg = new Dictionary<IntPtr, bool>();
+        // the strip each bar was last given: when it comes out the same, nothing is
+        // set again — two app bars of ours would otherwise keep telling each other
+        // "moved" (each SETPOS makes Windows notify the other) and bounce
+        private static readonly Dictionary<IntPtr, Native.RECT> _last = new Dictionary<IntPtr, Native.RECT>();
+        internal static bool LastSame;
 
         private static Native.APPBARDATA Data(IntPtr h)
         {
@@ -500,6 +507,9 @@ namespace Rezonans
             Native.SHAppBarMessage(Native.ABM_QUERYPOS, ref abd);
             if (edge == Native.ABE_BOTTOM) abd.rc.Top = abd.rc.Bottom - height;
             else abd.rc.Bottom = abd.rc.Top + height;
+            LastSame = _last.TryGetValue(h, out var was) && was.Left == abd.rc.Left && was.Top == abd.rc.Top && was.Right == abd.rc.Right && was.Bottom == abd.rc.Bottom;
+            if (LastSame) return abd.rc;
+            _last[h] = abd.rc;
             Native.SHAppBarMessage(Native.ABM_SETPOS, ref abd);
             Native.SetWindowPos(h, IntPtr.Zero, abd.rc.Left, abd.rc.Top, abd.rc.Right - abd.rc.Left, abd.rc.Bottom - abd.rc.Top, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
             return abd.rc;
@@ -511,6 +521,13 @@ namespace Rezonans
             var abd = Data(h);
             Native.SHAppBarMessage(Native.ABM_REMOVE, ref abd);
             _reg.Remove(h);
+            _last.Remove(h);
+        }
+
+        internal static void Forget(IntPtr h)
+        {
+            _reg.Remove(h);
+            _last.Remove(h);
         }
 
         internal static void RemoveAll()

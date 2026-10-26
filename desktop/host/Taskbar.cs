@@ -145,6 +145,11 @@ namespace Rezonans
                 ic = IntPtr.Zero;
             }
             if (ic == IntPtr.Zero) ic = GetClassLongPtr(h, -14 /* GCLP_HICON */);
+            return PngOf(ic); // the window owns the icon: never destroyed here
+        }
+
+        private static string PngOf(IntPtr ic)
+        {
             if (ic == IntPtr.Zero) return "";
             try
             {
@@ -160,7 +165,7 @@ namespace Rezonans
                     return "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
                 }
             }
-            catch { return ""; } // the window owns the icon: never destroyed here
+            catch { return ""; }
         }
 
         // ---------- the apps pinned to the Windows taskbar ----------
@@ -176,12 +181,13 @@ namespace Rezonans
                 files.Sort((a, b) => File.GetCreationTimeUtc(a).CompareTo(File.GetCreationTimeUtc(b)));
                 foreach (var f in files)
                 {
+                    Shortcut(f, out var target, out var iconLoc);
                     list.Add(new Dictionary<string, object>
                     {
                         { "name", Path.GetFileNameWithoutExtension(f) },
                         { "path", f },
-                        { "icon", Apps.IconOf(f) },
-                        { "target", Target(f) },
+                        { "icon", PinIcon(f, target, iconLoc) },
+                        { "target", target },
                     });
                 }
             }
@@ -189,17 +195,58 @@ namespace Rezonans
             return list;
         }
 
-        private static string Target(string lnk)
+        // the shortcut's own icon (without the shortcut arrow Windows adds to .lnk
+        // icons): its icon location if it names one, else the program's icon
+        private static string PinIcon(string lnk, string target, string iconLoc)
         {
+            try
+            {
+                if (!string.IsNullOrEmpty(iconLoc))
+                {
+                    int comma = iconLoc.LastIndexOf(',');
+                    var file = Environment.ExpandEnvironmentVariables(comma >= 0 ? iconLoc.Substring(0, comma) : iconLoc).Trim('"', ' ');
+                    int idx = 0;
+                    if (comma >= 0) int.TryParse(iconLoc.Substring(comma + 1), out idx);
+                    if (file.Length > 0 && File.Exists(file))
+                    {
+                        var large = new IntPtr[1];
+                        var small = new IntPtr[1];
+                        if (ExtractIconEx(file, idx, large, small, 1) > 0)
+                        {
+                            try
+                            {
+                                var png = PngOf(large[0] != IntPtr.Zero ? large[0] : small[0]);
+                                if (png.Length > 0) return png;
+                            }
+                            finally
+                            {
+                                if (large[0] != IntPtr.Zero) DestroyIcon(large[0]);
+                                if (small[0] != IntPtr.Zero) DestroyIcon(small[0]);
+                            }
+                        }
+                    }
+                }
+                if (!string.IsNullOrEmpty(target) && target.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(target)) return Apps.IconOf(target);
+            }
+            catch { }
+            return Apps.IconOf(lnk);
+        }
+
+        private static void Shortcut(string lnk, out string target, out string iconLoc)
+        {
+            target = "";
+            iconLoc = "";
             object sh = null, sc = null;
             try
             {
                 var t = Type.GetTypeFromProgID("WScript.Shell");
                 sh = Activator.CreateInstance(t);
                 sc = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
-                return (sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null) as string) ?? "";
+                target = (sc.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, sc, null) as string) ?? "";
+                var loc = (sc.GetType().InvokeMember("IconLocation", BindingFlags.GetProperty, null, sc, null) as string) ?? "";
+                iconLoc = loc.StartsWith(",") ? "" : loc; // ",0" = no icon of its own
             }
-            catch { return ""; }
+            catch { }
             finally
             {
                 if (sc != null) Marshal.FinalReleaseComObject(sc);
@@ -245,17 +292,29 @@ namespace Rezonans
             if (GetForegroundWindow() != h) SwitchToThisWindow(h, true);
         }
 
+        // the shell's "show desktop" (Win+D): wants a single-threaded COM apartment,
+        // so it gets a short thread of its own; Explorer's own command if that fails
         internal static void ToggleDesktop()
         {
-            object sh = null;
-            try
+            bool ok = false;
+            var t = new System.Threading.Thread(() =>
             {
-                var t = Type.GetTypeFromProgID("Shell.Application");
-                sh = Activator.CreateInstance(t);
-                t.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, sh, null);
-            }
-            catch (Exception e) { Program.Log("рабочий стол: " + e.Message); }
-            finally { if (sh != null) Marshal.FinalReleaseComObject(sh); }
+                object sh = null;
+                try
+                {
+                    var type = Type.GetTypeFromProgID("Shell.Application");
+                    sh = Activator.CreateInstance(type);
+                    type.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, sh, null);
+                    ok = true;
+                }
+                catch (Exception e) { Program.Log("рабочий стол: " + e.Message); }
+                finally { if (sh != null) Marshal.FinalReleaseComObject(sh); }
+            }) { IsBackground = true };
+            t.SetApartmentState(System.Threading.ApartmentState.STA);
+            t.Start();
+            t.Join(3000);
+            if (!ok) PostMessage(FindWindow("Shell_TrayWnd", null), 0x0111 /* WM_COMMAND */, new IntPtr(419) /* minimise all */, IntPtr.Zero);
+            Program.Log("рабочий стол: " + (ok ? "показан" : "свернул всё"));
         }
 
         // ---------- the Windows taskbar out of the way (reversible) ----------
@@ -344,6 +403,9 @@ namespace Rezonans
         [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr h);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(IntPtr proc, int flags, StringBuilder name, ref int size);
         [DllImport("shell32.dll")] private static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern uint ExtractIconEx(string file, int index, IntPtr[] large, IntPtr[] small, uint n);
+        [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr h);
+        [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct APPBARDATA
