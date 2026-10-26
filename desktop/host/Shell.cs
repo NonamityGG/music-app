@@ -50,7 +50,9 @@ namespace Rezonans
                     var dst = Path.Combine(target, name);
                     try
                     {
-                        File.Copy(src, dst, true);
+                        // already installed (and loaded by Windows, so locked): keep it
+                        bool same = File.Exists(dst) && new FileInfo(dst).Length == new FileInfo(src).Length;
+                        if (!same) File.Copy(src, dst, true);
                         ShellNative.AddFontResource(dst);
                         // the per-user Fonts key wants the file name, the title the face name
                         var title = Path.GetFileNameWithoutExtension(name).Replace("-", " ") + " (TrueType)";

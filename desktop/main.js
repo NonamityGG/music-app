@@ -482,6 +482,43 @@ const walls = new Map(); // display id -> { win, display, attached, paused }
 const preload = path.join(__dirname, 'preload.js');
 const webPrefs = { preload, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, spellcheck: false };
 
+// ---------- a window's page crashed, or the drawing process went down ----------
+// Seen on some PCs (a graphics-driver hiccup, two live wallpapers fighting over
+// the desktop): the window stays, but its page is gone — an empty frosted box,
+// the waves vanish. Log it and bring the page back instead of leaving it blank.
+function guardPage(win, name, recover) {
+  win.webContents.on('render-process-gone', (e, d) => {
+    log(`окно «${name}» потеряло страницу: ${d && d.reason} (код ${d && d.exitCode})`);
+    setTimeout(() => {
+      try {
+        recover();
+      } catch (er) {
+        log('восстановление: ' + er.message);
+      }
+    }, 300);
+  });
+  win.webContents.on('unresponsive', () => log(`окно «${name}» не отвечает`));
+}
+
+// a menu may open while its page is still loading (just created, or brought
+// back after a crash): its "open" goes out only when the page can hear it
+function whenLoaded(win, fn) {
+  if (!win || win.isDestroyed()) return;
+  if (win.webContents.isLoading()) win.webContents.once('did-finish-load', fn);
+  else fn();
+}
+
+// the drawing process itself went down: every page needs a fresh start
+let recoveredAt = 0;
+function recoverAll(why) {
+  // a driver that keeps falling over must not turn this into a rebuild loop
+  if (Date.now() - recoveredAt < 20000) return log('восстановление пропущено (было только что): ' + why);
+  recoveredAt = Date.now();
+  log('восстанавливаю окна: ' + why);
+  for (const w of [panel, startWin, quickWin]) if (w && !w.isDestroyed()) w.destroy();
+  scheduleRebuild(why);
+}
+
 function createWallpapers() {
   for (const d of screen.getAllDisplays()) createWall(d);
 }
@@ -509,6 +546,7 @@ function createWall(d) {
   });
   win.setIgnoreMouseEvents(true);
   win.loadFile(path.join(__dirname, 'app', 'wallpaper.html'), { query: { screen: String(d.id), primary: d.id === screen.getPrimaryDisplay().id ? '1' : '0' } });
+  guardPage(win, 'обои', () => scheduleRebuild('страница обоев упала'));
   win.once('ready-to-show', () => {
     attachWall(d.id);
     if (lastMedia) win.webContents.send('media', lastMedia);
@@ -576,6 +614,11 @@ function onForeground(m) {
 // topmost standing — on each foreground change and on a short timer — brings
 // them back. setAlwaysOnTop re-applies the topmost flag without any flicker, so
 // they climb back above a capture overlay that was itself topmost a moment ago.
+function liftTop() {
+  if (topHide.size !== 0) return;
+  for (const w of [bar, island]) if (w && !w.isDestroyed() && w.isVisible()) w.moveTop();
+}
+
 let lastAssert = 0;
 function assertTop(force) {
   if (topHide.size !== 0) return;
@@ -623,6 +666,7 @@ function createBar() {
     webPreferences: webPrefs,
   });
   bar.loadFile(path.join(__dirname, 'app', 'bar.html'));
+  guardPage(bar, 'строка', () => scheduleRebuild('страница строки упала'));
   bar.once('ready-to-show', () => {
     if (topHide.size === 0) bar.showInactive();
     barShown = true;
@@ -746,6 +790,7 @@ function createIsland() {
   island.setAlwaysOnTop(true, 'screen-saver');
   island.setIgnoreMouseEvents(true, { forward: true });
   island.loadFile(path.join(__dirname, 'app', 'island.html'));
+  guardPage(island, 'остров', () => scheduleRebuild('страница острова упала'));
   island.once('ready-to-show', () => {
     if (topHide.size === 0) island.showInactive();
     island.moveTop();
@@ -791,6 +836,12 @@ function createPanel() {
     webPreferences: webPrefs,
   });
   panel.loadFile(path.join(__dirname, 'app', 'panel.html'));
+  guardPage(panel, 'панель', () => {
+    const was = panel && !panel.isDestroyed() && panel.isVisible();
+    if (panel && !panel.isDestroyed()) panel.destroy();
+    panel = null;
+    if (was) showPanel('bar');
+  });
   panel.on('blur', () => {
     if (dialogOpen || SELFTEST_PANEL) return;
     // the click that opened it can arrive just after show and steal focus back
@@ -836,8 +887,14 @@ function showPanel(from = 'bar', tab) {
     y = wa.y + 8;
   }
   panel.setBounds({ x, y, width: PANEL_W, height: h });
-  panel.webContents.send('panel', { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null });
-  panel.webContents.send('info', info());
+  const openMsg = { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null };
+  const p = panel;
+  whenLoaded(p, () => {
+    if (p.isDestroyed()) return;
+    p.webContents.send('panel', openMsg);
+    p.webContents.send('info', info());
+    if (lastMedia) p.webContents.send('media', lastMedia);
+  });
   panel.show();
   panel.focus();
   panelShownAt = Date.now();
@@ -892,6 +949,12 @@ function styleShell(win) {
 function createStart() {
   startWin = createShellWindow(START_W, START_H);
   startWin.loadFile(path.join(__dirname, 'app', 'start.html'));
+  guardPage(startWin, 'Пуск', () => {
+    const was = startWin && !startWin.isDestroyed() && startWin.isVisible();
+    if (startWin && !startWin.isDestroyed()) startWin.destroy();
+    startWin = null;
+    if (was) showStart();
+  });
   startWin.on('blur', () => {
     if (SELFTEST_PANEL) return;
     hideStart();
@@ -905,6 +968,12 @@ function createStart() {
 function createQuick() {
   quickWin = createShellWindow(QUICK_W, QUICK_H);
   quickWin.loadFile(path.join(__dirname, 'app', 'quick.html'));
+  guardPage(quickWin, 'быстрые настройки', () => {
+    const was = quickWin && !quickWin.isDestroyed() && quickWin.isVisible();
+    if (quickWin && !quickWin.isDestroyed()) quickWin.destroy();
+    quickWin = null;
+    if (was) showQuick();
+  });
   quickWin.on('blur', () => {
     if (SELFTEST_PANEL) return;
     hideQuick();
@@ -943,7 +1012,10 @@ function showStart() {
   startWin.setBounds({ x, y, width: START_W, height: h });
   startWin.show();
   startWin.focus();
-  startWin.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
+  const sw = startWin;
+  whenLoaded(sw, () => {
+    if (!sw.isDestroyed()) sw.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
+  });
   refreshApps();
   if (island && !island.isDestroyed()) island.moveTop();
 }
@@ -959,7 +1031,10 @@ function showQuick() {
   quickWin.setBounds({ x, y, width: QUICK_W, height: h });
   quickWin.show();
   quickWin.focus();
-  quickWin.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
+  const qw = quickWin;
+  whenLoaded(qw, () => {
+    if (!qw.isDestroyed()) qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
+  });
   hostSend({ cmd: 'status' });
   if (island && !island.isDestroyed()) island.moveTop();
 }
@@ -1339,8 +1414,15 @@ if (!app.requestSingleInstanceLock()) {
     });
     // and now and then, in case something else moved them
     setInterval(fixTop, 5000);
-    // a short, flicker-free safety net so the bar never stays unclickable for long
-    setInterval(() => assertTop(true), 2500);
+    // a light safety net so the bar never stays unclickable for long (just a raise;
+    // the heavier topmost re-assert happens on real foreground changes)
+    setInterval(liftTop, 3000);
+    // the drawing process went down (graphics driver, another live wallpaper):
+    // give every page a fresh start instead of leaving empty frosted boxes
+    app.on('child-process-gone', (e, d) => {
+      log(`процесс ${d.type} упал: ${d.reason} (код ${d.exitCode})`);
+      if (d.type === 'GPU') recoverAll('упал процесс отрисовки');
+    });
     powerMonitor.on('resume', () => scheduleRebuild('после сна'));
   });
 
