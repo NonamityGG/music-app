@@ -67,6 +67,38 @@ namespace Rezonans
             catch (Exception e) { Program.Log("громкость: " + e.Message); }
         }
 
+        private static readonly object VolumeLock = new object();
+
+        // a volume key (taken by the hook): one step up or down, or mute on/off, as
+        // Windows does it (a step up or down also unmutes); then the pill is told
+        internal static void VolumeKey(int vk)
+        {
+            lock (VolumeLock)
+            {
+                try
+                {
+                    var v = Volume();
+                    if (v == null) return;
+                    if (vk == 0xAD)
+                    {
+                        v.GetMute(out var was);
+                        v.SetMute(!was, ref _ctx);
+                    }
+                    else
+                    {
+                        if (vk == 0xAF) v.VolumeStepUp(ref _ctx);
+                        else v.VolumeStepDown(ref _ctx);
+                        v.SetMute(false, ref _ctx);
+                    }
+                    var o = new Dictionary<string, object> { { "type", "osd" } };
+                    if (v.GetMasterVolumeLevelScalar(out var lvl) == 0) o["vol"] = (int)Math.Round(lvl * 100);
+                    if (v.GetMute(out var m) == 0) o["muted"] = m;
+                    Program.Send(o);
+                }
+                catch (Exception e) { Program.Log("клавиша громкости: " + e.Message); }
+            }
+        }
+
         internal static void SetMute(bool mute)
         {
             try { Volume()?.SetMute(mute, ref _ctx); }
@@ -126,9 +158,34 @@ namespace Rezonans
             catch (Exception e) { Program.Log("радио (переключить): " + e.Message); }
         }
 
+        // the connection to the internet: by cable, Wi-Fi or mobile, its name, and
+        // whether the internet is really there (or only the local network)
+        private static void ReadNetwork(Dictionary<string, object> o)
+        {
+            try
+            {
+                var p = Windows.Networking.Connectivity.NetworkInformation.GetInternetConnectionProfile();
+                if (p == null) { o["net"] = "none"; o["netLevel"] = "none"; return; }
+                string kind = p.IsWlanConnectionProfile ? "wifi" : p.IsWwanConnectionProfile ? "mobile" : "ethernet";
+                o["net"] = kind;
+                string name = p.ProfileName ?? "";
+                if (kind == "wifi")
+                {
+                    try { name = p.WlanConnectionProfileDetails.GetConnectedSsid() ?? name; } catch { }
+                }
+                o["netName"] = name;
+                var level = p.GetNetworkConnectivityLevel();
+                o["netLevel"] = level == Windows.Networking.Connectivity.NetworkConnectivityLevel.InternetAccess ? "internet"
+                    : level == Windows.Networking.Connectivity.NetworkConnectivityLevel.ConstrainedInternetAccess ? "limited"
+                    : level == Windows.Networking.Connectivity.NetworkConnectivityLevel.LocalAccess ? "local" : "none";
+            }
+            catch (Exception e) { Program.Log("сеть: " + e.Message); }
+        }
+
         internal static Dictionary<string, object> Snapshot()
         {
             var o = new Dictionary<string, object> { { "type", "status" } };
+            ReadNetwork(o);
             ReadVolume(o);
             ReadBattery(o);
             ReadRadios(o);

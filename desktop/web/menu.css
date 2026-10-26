@@ -1,0 +1,137 @@
+/* Резонанс для ПК — the menu of an app on the taskbar (its right click): the app,
+   its windows, new window, pin, close. Glass card above the button; Windows
+   draws acrylic behind, the tint keeps it plum. */
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: #f4f0ff;
+  font: 500 13.5px/1.25 'Onest', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+body {
+  --acc: #7c4dff;
+  --acc2: #ff6fd8;
+  --acc3: #c3a6ff;
+  --chip: rgba(255, 255, 255, 0.08);
+  --muted: rgba(234, 226, 255, 0.6);
+  --ease: cubic-bezier(0.22, 0.9, 0.26, 1);
+  --back: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.tint {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(165deg, rgba(26, 18, 46, 0.72), rgba(14, 10, 24, 0.88));
+}
+
+.menu {
+  position: relative;
+  padding: 8px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.14s var(--ease), transform 0.22s var(--back);
+}
+body.open .menu {
+  opacity: 1;
+  transform: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding: 0 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.head img,
+.head .ph {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+}
+.head .ph {
+  background: linear-gradient(160deg, var(--acc3), var(--acc));
+}
+.head span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    transform 0.16s var(--ease);
+}
+.item:hover,
+.item.kb {
+  background: var(--chip);
+}
+.item:active {
+  transform: scale(0.98);
+}
+.item svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  fill: currentColor;
+  opacity: 0.85;
+}
+.item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.item.window {
+  color: var(--muted);
+}
+.item.window::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+.item.window.on {
+  color: #f4f0ff;
+}
+.item.window.on::before {
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+  box-shadow: 0 0 6px color-mix(in srgb, var(--acc2) 60%, transparent);
+}
+.item.danger:hover {
+  background: rgba(255, 80, 110, 0.16);
+  color: #ffb3c2;
+}
+
+.sep {
+  height: 1px;
+  margin: 4px 10px;
+  background: rgba(255, 255, 255, 0.08);
+}

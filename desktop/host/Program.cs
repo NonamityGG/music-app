@@ -51,6 +51,7 @@ namespace Rezonans
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
                 try { Console.Error.WriteLine("crash: " + e.ExceptionObject); Console.Error.Flush(); } catch { }
+                try { Taskbar.ShowWindowsTaskbarNow(); } catch { } // never leave the PC without a taskbar
                 Environment.Exit(3);
             };
             _out = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
@@ -83,16 +84,36 @@ namespace Rezonans
         private static void Cleanup()
         {
             try { Hooks.Remove(); } catch { }
+            try { TrayHost.Stop(); } catch { }
             try { AppBar.RemoveAll(); } catch { }
             try { Taskbar.WindowsTaskbar(false); } catch { } // the Windows taskbar as it was
             try { Wallpaper.Refresh(); } catch { }
         }
+
+        // Nothing that sends ever waits for the app to read: the lines go into a
+        // queue and one thread of its own writes them out. (The tray window must
+        // never wait — the app itself may be waiting on it, inside Shell_NotifyIcon.)
+        private static readonly System.Collections.Concurrent.BlockingCollection<string> OutQueue = new System.Collections.Concurrent.BlockingCollection<string>();
+        private static Thread _writer;
 
         internal static void Send(Dictionary<string, object> o)
         {
             string s;
             try { s = Json.Serialize(o); } catch (Exception e) { s = "{\"type\":\"log\",\"msg\":\"serialize: " + e.Message.Replace("\"", "'") + "\"}"; }
             lock (OutLock)
+            {
+                if (_writer == null)
+                {
+                    _writer = new Thread(WriteOut) { IsBackground = true, Name = "out" };
+                    _writer.Start();
+                }
+            }
+            try { OutQueue.Add(s); } catch { }
+        }
+
+        private static void WriteOut()
+        {
+            foreach (var s in OutQueue.GetConsumingEnumerable())
             {
                 try
                 {
@@ -252,7 +273,10 @@ namespace Rezonans
                     Fonts.Restore();
                     break;
                 case "shellHooks":
-                    if (Bool(c, "on") == false) Hooks.Remove();
+                    Hooks.Keys = Bool(c, "on") != false;
+                    Hooks.Osd = Bool(c, "osd") == true;
+                    Hooks.AltTab = Bool(c, "alttab") == true;
+                    if (!Hooks.Keys && !Hooks.Osd && !Hooks.AltTab) Hooks.Remove();
                     else Hooks.Install();
                     break;
                 case "apps":
@@ -270,8 +294,41 @@ namespace Rezonans
                 case "activate":
                     if (long.TryParse(Str(c, "hwnd"), out var hw)) Taskbar.Activate(hw);
                     break;
+                case "front":
+                    // from the taskbar's menu: this window to the front (never minimised)
+                    if (long.TryParse(Str(c, "hwnd"), out var hf)) Taskbar.Front(hf);
+                    break;
+                case "closeWin":
+                    // the window is asked to close, as its own ✕ would (it may still ask to save)
+                    if (long.TryParse(Str(c, "hwnd"), out var hc)) Taskbar.Close(hc);
+                    break;
+                case "endTask":
+                    if (long.TryParse(Str(c, "hwnd"), out var he)) Taskbar.EndTask(he);
+                    break;
+                case "icons":
+                {
+                    // the programs' own icons, for apps Резонанс pins itself
+                    var map = new Dictionary<string, object>();
+                    if (c.TryGetValue("paths", out var ps) && ps is IEnumerable paths && !(ps is string))
+                        foreach (var p in paths)
+                        {
+                            var s = Convert.ToString(p);
+                            if (!string.IsNullOrEmpty(s) && !map.ContainsKey(s)) map[s] = Apps.IconOf(s);
+                        }
+                    Send(new Dictionary<string, object> { { "type", "icons" }, { "map", map } });
+                    break;
+                }
                 case "taskbarHide":
+                    // Резонанс's taskbar takes the place of Windows': its tray comes here
+                    if (Bool(c, "on") == true) TrayHost.Start();
+                    else TrayHost.Stop();
                     Taskbar.WindowsTaskbar(Bool(c, "on") == true);
+                    break;
+                case "tray":
+                    TrayHost.Resend();
+                    break;
+                case "trayClick":
+                    { var id = Str(c, "id"); var button = Str(c, "button", "left"); ThreadPool.QueueUserWorkItem(_ => TrayHost.Click(id, button)); }
                     break;
                 case "taskpins":
                     Send(new Dictionary<string, object> { { "type", "taskpins" }, { "list", Taskbar.Pins() } });
@@ -815,6 +872,7 @@ namespace Rezonans
             {
                 { "type", "fg" },
                 { "hwnd", h.ToInt64().ToString() },
+                { "visible", h != IntPtr.Zero && Native.IsWindowVisible(h) },
                 { "desktop", desktop },
                 { "full", full },
                 { "max", max },

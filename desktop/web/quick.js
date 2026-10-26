@@ -9,11 +9,11 @@ import * as shellwaves from './shellwaves.js';
 const $ = (id) => document.getElementById(id);
 const body = document.body;
 const canvas = $('waves');
-shellwaves.init(canvas, { y: 1.0, amp: 0.2 });
+shellwaves.init(canvas, { y: 1.0, amp: 0.2, name: 'быстрые настройки' });
 
 const ICON = {
   wifi: 'M12 21l3-3a4.2 4.2 0 0 0-6 0l3 3zm0-6a7.5 7.5 0 0 1 5.3 2.2l1.7-1.7a9.9 9.9 0 0 0-14 0l1.7 1.7A7.5 7.5 0 0 1 12 15zm0-5c2.9 0 5.6 1.1 7.6 3.1l1.7-1.7A13.4 13.4 0 0 0 12 5 13.4 13.4 0 0 0 2.7 11.4l1.7 1.7A10.6 10.6 0 0 1 12 10z',
-  bt: 'M14.88 12 17 9.88 12.71 5.6 11 7.3V2.3L6.7 6.6 9.59 9.5 6.7 12.38 11 16.7v-5l1.71 1.71L10.59 15 12 16.41l2.88-2.88zM13 5.83l1.17 1.17L13 8.17V5.83zm0 9l1.17 1.17L13 17.17v-2.34z',
+  bt: 'M17.71 7.71 12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z',
   waves: 'M3 10h2v4H3zm4-3h2v10H7zm4-4h2v18h-2zm4 4h2v10h-2zm4 3h2v4h-2z',
   moon: 'M12.3 2a1 1 0 0 0-.2 2 6 6 0 1 1-7.9 7.9 1 1 0 0 0-2 .2 8 8 0 1 0 10.1-10.1z',
   island: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7zm0 2a3 3 0 0 0 0 6h10a3 3 0 0 0 0-6H7zm10 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4z',
@@ -56,6 +56,7 @@ function colors(s) {
   body.style.setProperty('--acc3', c[1]);
   body.style.setProperty('--acc2', c[2]);
   shellwaves.look(settings.palette === 'cover' ? settings.lastPalette : settings.palette);
+  shellwaves.setMode(settings.shellWaves);
   renderTiles();
 }
 

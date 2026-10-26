@@ -54,11 +54,25 @@ function firstArtist(s) {
     .trim();
 }
 
+// LRCLIB is often busy for a moment (503) or the connection drops: try again a
+// couple of times before giving up
+const RETRY_MS = [1500, 4000, 8000];
+
 async function get(url) {
-  const r = await electron().net.fetch(url, { headers: { 'User-Agent': UA, 'Lrclib-Client': UA } });
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error('LRCLIB ' + r.status);
-  return r.json();
+  for (let i = 0; ; i++) {
+    let r;
+    try {
+      r = await electron().net.fetch(url, { headers: { 'User-Agent': UA, 'Lrclib-Client': UA } });
+    } catch (e) {
+      if (i >= RETRY_MS.length) throw e;
+    }
+    if (r) {
+      if (r.status === 404) return null;
+      if (r.ok) return r.json();
+      if (r.status < 500 || i >= RETRY_MS.length) throw new Error('LRCLIB ' + r.status);
+    }
+    await new Promise((res) => setTimeout(res, RETRY_MS[i]));
+  }
 }
 
 // [mm:ss.xx] lines -> [{ t, text }], sorted; several stamps on one line allowed
@@ -115,22 +129,43 @@ async function lookup(title, artist, album, sec) {
   return found;
 }
 
-// m: what Windows says is playing. Resolves to { synced, lines } or null.
-async function find(m) {
-  load();
-  let title = clean(m.title);
-  let artist = firstArtist(m.artist);
-  const sec = m.dur > 0 ? m.dur / 1000 : 0;
-  // a video in a browser: "Artist - Song" in the title, the channel as the artist
-  const dash = /^(.+?)\s+[-–—]\s+(.+)$/.exec(title);
-  const key = `${title.toLowerCase()}|${artist.toLowerCase()}|${Math.round(sec / 2)}`;
-  if (cache.has(key)) return cache.get(key);
-  let res = null;
-  if (title && artist) res = await lookup(title, artist, clean(m.album), sec);
-  if (!res && dash) res = await lookup(clean(dash[2]), firstArtist(dash[1]), '', sec);
-  cache.set(key, res);
-  save();
-  return res;
+// "not found" is kept for a day only: LRCLIB grows, and the song may get its words
+const MISS_TTL = 24 * 3600 * 1000;
+
+// a cache entry -> { hit, res }; misses saved before they had a time count as old
+function fromCache(entry, now) {
+  if (entry === undefined) return { hit: false };
+  if (entry === null || entry.miss !== undefined) return { hit: now - ((entry && entry.miss) || 0) < MISS_TTL, res: null };
+  return { hit: true, res: entry };
 }
 
-module.exports = { find, parseLrc, clean, firstArtist };
+const pending = new Map();
+
+// m: what Windows says is playing. Resolves to { synced, lines } or null.
+// fresh: ask LRCLIB again even if the answer is cached ("search again" button).
+function find(m, fresh = false) {
+  load();
+  const title = clean(m.title);
+  const artist = firstArtist(m.artist);
+  const sec = m.dur > 0 ? m.dur / 1000 : 0;
+  const key = `${title.toLowerCase()}|${artist.toLowerCase()}|${Math.round(sec / 2)}`;
+  const c = fresh ? { hit: false } : fromCache(cache.get(key), Date.now());
+  if (c.hit) return Promise.resolve(c.res);
+  // the same song asked twice while the first answer is on its way: one request
+  if (pending.has(key)) return pending.get(key);
+  const p = (async () => {
+    // a video in a browser: "Artist - Song" in the title, the channel as the artist
+    const dash = /^(.+?)\s+[-–—]\s+(.+)$/.exec(title);
+    let res = null;
+    if (title && artist) res = await lookup(title, artist, clean(m.album), sec);
+    if (!res && dash) res = await lookup(clean(dash[2]), firstArtist(dash[1]), '', sec);
+    cache.delete(key); // re-added at the end: the newest answers outlive the trim in save()
+    cache.set(key, res || { miss: Date.now() });
+    save();
+    return res;
+  })().finally(() => pending.delete(key));
+  pending.set(key, p);
+  return p;
+}
+
+module.exports = { find, fromCache, parseLrc, clean, firstArtist };

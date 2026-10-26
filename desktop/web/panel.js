@@ -19,6 +19,8 @@ const P = {
   text: 'M4 5h16v3.2h-2.2V7.2h-4.7v9.6h2.1V19H8.8v-2.2h2.1V7.2H6.2v1H4z',
   bar: 'M4 4h16a1 1 0 0 1 1 1v3H3V5a1 1 0 0 1 1-1zm-1 6h18v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1zm2 2v6h14v-6z',
   sys: 'M4 7h9v2H4zM17 7h3v2h-3zM13 5h4v6h-4zM4 15h3v2H4zM11 15h9v2h-9zM7 13h4v6H7z',
+  grid: 'M4 4h4v4H4zM10 4h4v4h-4zM16 4h4v4h-4zM4 10h4v4H4zM10 10h4v4h-4zM16 10h4v4h-4zM4 16h4v4H4zM10 16h4v4h-4zM16 16h4v4h-4z',
+  sliders: 'M4 6h10v2H4zM18 6h2v2h-2zM14 4h4v6h-4zM4 16h2v2H4zM10 16h10v2H10zM6 14h4v6H6z',
   monitor: 'M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h16V6zM8 19h8v2H8z',
   island: 'M8 8.5h8a3.5 3.5 0 0 1 0 7H8a3.5 3.5 0 0 1 0-7zm.2 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z',
   quote: 'M6 7h5v5c0 3-2 5-5 5v-2c1.7 0 3-1.3 3-3H6zm8 0h5v5c0 3-2 5-5 5v-2c1.7 0 3-1.3 3-3h-3z',
@@ -50,13 +52,14 @@ let S = {};
 let info = {};
 let tab = 'home';
 let binds = [];
+// [id, name, icon]
 const TABS = [
-  ['home', 'Главное'],
-  ['waves', 'Волны'],
-  ['bg', 'Фон'],
-  ['text', 'Текст'],
-  ['bar', 'Строка'],
-  ['sys', 'Система'],
+  ['home', 'Главное', 'home'],
+  ['waves', 'Волны', 'waves'],
+  ['bg', 'Фон', 'image'],
+  ['text', 'Текст', 'text'],
+  ['bar', 'Строка', 'bar'],
+  ['sys', 'Система', 'sys'],
 ];
 
 function el(tag, cls, text) {
@@ -632,10 +635,21 @@ const PAGES = {
         'Резонанс вместо Windows',
         card(
           row('Системный шрифт Onest', 'Меню, подсказки, заголовки окон и подписи под значками — одним аккуратным шрифтом', sw('winFont')),
-          row('Панель задач Резонанса', 'Снизу вместо панели Windows: «Пуск», закреплённые и открытые приложения, часы. Панель Windows с треем выезжает при наведении на самый нижний край', sw('taskbar')),
+          row('Панель задач Резонанса', 'Снизу вместо панели Windows: «Пуск», закреплённые и открытые приложения, значки программ из трея, часы. Панель Windows спрятана совсем и возвращается, если выключить этот пункт или выйти из Резонанса', sw('taskbar')),
           row('Пуск и быстрые настройки по клавишам', 'Win открывает «Пуск» Резонанса, Win+A — быстрые настройки', sw('shellKeys')),
+          row('Громкость Резонанса', 'Клавиши громкости показывают капсулу Резонанса над панелью задач вместо окошка Windows', sw('shellOsd')),
+          row('Alt+Tab Резонанса', 'Переключатель окон в стиле Резонанса вместо Windows: Tab — дальше, Shift+Tab — назад, Esc — отмена', sw('shellAltTab')),
+          row('Прозрачная панель задач', 'Над обоями — прозрачная, под открытым «Пуском» или развёрнутым окном — снова матовая', sw('taskbarClear')),
           row('Засыпать в CS2', 'Пока запущена игра, перехват Win выключается, а строка и панели уходят назад — чтобы не трогать анти-чит. FACEIT в трее не мешает', sw('guardGames')),
           row('Недавние файлы в «Пуске»', null, sw('startRecent')),
+          row(
+            'Волна в «Пуске» и быстрых настройках',
+            '«Музыка» — слышит звук компьютера, а в тишине движется сама. «Простая» — только плавное движение',
+            seg('shellWaves', [
+              ['music', 'Музыка'],
+              ['simple', 'Простая'],
+            ])
+          ),
           btnRow(button('Показать «Пуск»', 'grid', '', () => window.rez.shell('openStart')), button('Быстрые настройки', 'sliders', '', () => window.rez.shell('openQuick')))
         )
       ),
@@ -699,10 +713,10 @@ function paletteName(s) {
 const tabsEl = $('tabs');
 const ind = $('tabInd');
 const bodyEl = $('body');
-const tabBtns = TABS.map(([id, name]) => {
+const tabBtns = TABS.map(([id, name, iconName]) => {
   const b = el('button', 'tab');
   b.setAttribute('role', 'tab');
-  b.appendChild(ic(id, 18));
+  b.appendChild(ic(iconName, 18));
   b.appendChild(el('span', '', name));
   b.addEventListener('click', () => switchTab(id));
   tabsEl.appendChild(b);

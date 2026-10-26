@@ -30,6 +30,18 @@ test('titles lose the extras that break the lyrics search', () => {
   assert.equal(lyrics.firstArtist('Artist A feat. B'), 'Artist A');
 });
 
+test('found lyrics stay cached, "not found" is asked again after a day', () => {
+  const day = 24 * 3600 * 1000;
+  const now = 10 * day;
+  const words = { synced: true, lines: [] };
+  assert.deepEqual(lyrics.fromCache(undefined, now), { hit: false });
+  assert.deepEqual(lyrics.fromCache(words, now), { hit: true, res: words });
+  assert.deepEqual(lyrics.fromCache({ miss: now - 1000 }, now), { hit: true, res: null });
+  assert.equal(lyrics.fromCache({ miss: now - day - 1 }, now).hit, false);
+  // saved by older versions: a bare null, no time
+  assert.equal(lyrics.fromCache(null, now).hit, false);
+});
+
 test('Windows gets eight accent shades from the palette, the accent in the middle', () => {
   const c = colors.forPalette('violet');
   assert.equal(c.accent, '#7c4dff');

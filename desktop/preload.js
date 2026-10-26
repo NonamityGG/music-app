@@ -32,4 +32,7 @@ contextBridge.exposeInMainWorld('rez', {
   // the taskbar
   onWindows: on('windows'),
   onTaskpins: on('taskpins'),
+  onTray: on('tray'),
+  // the volume pill
+  onOsd: on('osd'),
 });

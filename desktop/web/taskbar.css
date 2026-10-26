@@ -79,6 +79,65 @@ svg {
   transition: background-color 0.4s ease;
 }
 
+/* The see-through taskbar (a setting). Windows' acrylic is left out then: the
+   frosted look is the page's own deep tint, on a layer of its own that fades out
+   over the wallpaper and back in under Start or a maximised window. */
+body.clearable .tb {
+  background: transparent;
+  isolation: isolate;
+  transition: box-shadow 0.45s ease;
+}
+body.clearable .tb::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 40%),
+    linear-gradient(90deg, color-mix(in srgb, var(--tint-c) 88%, #000), color-mix(in srgb, var(--tint-c) 80%, var(--c1) 6%) 50%, color-mix(in srgb, var(--tint-c) 88%, #000));
+  opacity: 0.94;
+  /* it opens out from the middle to the edges, and folds back to the middle */
+  clip-path: inset(0 0 0 0);
+  transition:
+    clip-path 0.6s var(--ease),
+    opacity 0.45s var(--ease);
+}
+body.clearable.clear .tb {
+  box-shadow: none;
+}
+body.clearable.clear .tb::before {
+  opacity: 0;
+  clip-path: inset(0 50% 0 50%);
+}
+body.clearable .line {
+  clip-path: inset(0 0 0 0);
+  transition:
+    clip-path 0.6s var(--ease),
+    opacity 0.45s ease;
+}
+body.clearable.clear .line {
+  opacity: 0;
+  clip-path: inset(0 50% 0 50%);
+}
+/* over the wallpaper the buttons get a soft shadow, so they stay readable */
+body.clearable .app img,
+body.clearable .start .mark,
+body.clearable .qi svg,
+body.clearable .tray svg,
+body.clearable .clock {
+  transition: filter 0.45s ease;
+}
+body.clearable.clear .app img,
+body.clearable.clear .start .mark,
+body.clearable.clear .qi svg,
+body.clearable.clear .tray svg,
+body.clearable.clear .clock {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75));
+}
+.line {
+  transition: opacity 0.45s ease;
+}
+
 .line {
   position: absolute;
   left: 0;
@@ -270,6 +329,16 @@ svg {
     transform 0.28s var(--back),
     opacity 0.2s ease;
 }
+/* a button being dragged into another place */
+.app.drag {
+  transition: none;
+  z-index: 2;
+  background: var(--chip-hover);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.app.drag img {
+  transform: scale(1.1);
+}
 .app.leaving {
   transform: scale(0.4);
   opacity: 0;
@@ -303,6 +372,40 @@ svg {
 .quick.open {
   background: var(--chip-hover);
 }
+/* the arrow with the programs' tray icons under it, by the Quick settings */
+.tray {
+  flex: none;
+  width: 30px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  transition:
+    background-color 0.15s ease,
+    transform 0.18s var(--ease);
+}
+.tray:hover {
+  background: var(--chip);
+}
+.tray:active {
+  transform: scale(0.92);
+}
+.tray.open {
+  background: var(--chip-hover);
+}
+.tray svg {
+  width: 18px;
+  height: 18px;
+  opacity: 0.9;
+  transition: transform 0.22s var(--ease);
+}
+.tray.open svg {
+  transform: rotate(180deg);
+}
+.tray.none {
+  opacity: 0.45;
+}
+
 .qi svg {
   width: 17px;
   height: 17px;

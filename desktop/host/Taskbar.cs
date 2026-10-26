@@ -271,6 +271,60 @@ namespace Rezonans
             Bring(h);
         }
 
+        internal static void Front(long hwnd)
+        {
+            var h = new IntPtr(hwnd);
+            if (!IsWindow(h)) return;
+            if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+            Bring(h);
+        }
+
+        internal static void Close(long hwnd)
+        {
+            var h = new IntPtr(hwnd);
+            if (IsWindow(h)) PostMessage(h, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        // "End task", as in Windows 11's taskbar menu: the app's process goes at once
+        // (nothing is asked, unsaved work is lost — the user chose that). A Store
+        // app's window belongs to the shared frame host: its own process is the one
+        // behind the frame's inner window. Explorer, Резонанс and the frame host
+        // itself are never ended.
+        private static readonly HashSet<string> NeverEnd = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "explorer", "Rezonans", "RezonansHost", "ApplicationFrameHost", "dwm", "csrss", "winlogon", "System", "svchost", "sihost", "ShellExperienceHost", "StartMenuExperienceHost",
+        };
+
+        internal static void EndTask(long hwnd)
+        {
+            var h = new IntPtr(hwnd);
+            if (!IsWindow(h)) return;
+            GetWindowThreadProcessId(h, out uint pid);
+            try
+            {
+                var p = System.Diagnostics.Process.GetProcessById((int)pid);
+                if (p.ProcessName.Equals("ApplicationFrameHost", StringComparison.OrdinalIgnoreCase))
+                {
+                    uint inner = 0;
+                    EnumChildWindows(h, (c, l) =>
+                    {
+                        GetWindowThreadProcessId(c, out uint cp);
+                        if (cp != pid) { inner = cp; return false; }
+                        return true;
+                    }, IntPtr.Zero);
+                    if (inner == 0) { Program.Log("завершить задачу: у окна приложения из Store не нашёлся процесс"); return; }
+                    p = System.Diagnostics.Process.GetProcessById((int)inner);
+                }
+                if (p.HasExited) return; // another window of the same app took it already
+                if (NeverEnd.Contains(p.ProcessName)) { Program.Log("завершить задачу: " + p.ProcessName + " не завершаю"); return; }
+                Program.Log("завершить задачу: " + p.ProcessName + " (" + p.Id + ")");
+                p.Kill();
+            }
+            catch (Exception e) { Program.Log("завершить задачу: " + e.Message); }
+        }
+
+        [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr l);
+
         // Windows only lets the app that has the input put a window in front; the
         // click went to Резонанс's bar, so the helper borrows the current front
         // window's input for a moment
@@ -290,6 +344,32 @@ namespace Rezonans
                 if (attached) AttachThreadInput(me, fgThread, false);
             }
             if (GetForegroundWindow() != h) SwitchToThisWindow(h, true);
+        }
+
+        // a tray program about to open its menu or window: let it come to the front
+        // (it may only if the one in front allows it — borrow the front window's
+        // input for a moment, as Bring does)
+        // The click was on Резонанс's window, so Windows won't let the program take
+        // the front by itself — and a menu that isn't in front never shows (or
+        // closes at once). Explorer hands the front to the program; so does this:
+        // its (hidden) tray window is put in front, the way Microsoft's own advice
+        // for tray menus does it.
+        internal static bool LetForeground(uint pid, IntPtr hwnd)
+        {
+            var fg = GetForegroundWindow();
+            uint fgThread = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, out _);
+            uint me = GetCurrentThreadId();
+            bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+            try
+            {
+                if (pid != 0) AllowSetForegroundWindow(pid);
+                if (hwnd != IntPtr.Zero) SetForegroundWindow(hwnd);
+            }
+            finally { if (attached) AttachThreadInput(me, fgThread, false); }
+            var now = GetForegroundWindow();
+            if (now == IntPtr.Zero) return false;
+            GetWindowThreadProcessId(now, out uint nowPid);
+            return nowPid == pid;
         }
 
         // "show desktop": every window down; pressed again with nothing restored in
@@ -323,7 +403,7 @@ namespace Rezonans
             t.SetApartmentState(System.Threading.ApartmentState.STA);
             t.Start();
             t.Join(3000);
-            if (!ok) PostMessage(FindWindow("Shell_TrayWnd", null), 0x0111 /* WM_COMMAND */, new IntPtr(verb == "MinimizeAll" ? 419 : 416), IntPtr.Zero);
+            if (!ok) PostMessage(TrayHost.FindExplorerTray(), 0x0111 /* WM_COMMAND */, new IntPtr(verb == "MinimizeAll" ? 419 : 416), IntPtr.Zero);
             _allDown = verb == "MinimizeAll";
             Program.Log("рабочий стол: " + (_allDown ? "всё свёрнуто" : "окна вернулись"));
         }
@@ -333,13 +413,54 @@ namespace Rezonans
         private const string StateKey = @"Software\Rezonans";
         private const string StateValue = "TaskbarState";
 
-        // on: the Windows taskbar's own state is saved once, then auto-hide.
-        // off: the saved state goes back (nothing happens if it was never changed).
+        // on: the Windows taskbar's own state is saved once, then auto-hide, and the
+        // taskbar is hidden altogether (on every screen), so it never slides up —
+        // Резонанс's taskbar has the tray now. Explorer shows it again now and then
+        // (Win+T, a restart of Explorer): a watch hides it again.
+        // off: shown again, and the saved state goes back.
+        private static System.Threading.Timer _hideWatch;
+        private static volatile bool _hidden;
+
         internal static void WindowsTaskbar(bool autohide)
+        {
+            AutoHide(autohide);
+            _hidden = autohide;
+            if (autohide)
+            {
+                HideAll();
+                if (_hideWatch == null) _hideWatch = new System.Threading.Timer(_ => { if (_hidden) HideAll(); }, null, 1500, 1500);
+                Program.Log("панель задач Windows: спрятана");
+            }
+            else
+            {
+                try { _hideWatch?.Dispose(); } catch { }
+                _hideWatch = null;
+                foreach (var h in TrayHost.ExplorerTaskbars()) ShowWindow(h, SW_SHOWNA);
+            }
+        }
+
+        private static void HideAll()
         {
             try
             {
-                var tray = FindWindow("Shell_TrayWnd", null);
+                foreach (var h in TrayHost.ExplorerTaskbars())
+                    if (IsWindowVisible(h)) ShowWindow(h, SW_HIDE);
+            }
+            catch { }
+        }
+
+        // the crash path: the Windows taskbar must come back whatever happens
+        internal static void ShowWindowsTaskbarNow()
+        {
+            _hidden = false;
+            try { foreach (var h in TrayHost.ExplorerTaskbars()) ShowWindow(h, SW_SHOWNA); } catch { }
+        }
+
+        private static void AutoHide(bool autohide)
+        {
+            try
+            {
+                var tray = TrayHost.FindExplorerTray();
                 using (var reg = Registry.CurrentUser.CreateSubKey(StateKey))
                 {
                     if (autohide)
@@ -383,6 +504,8 @@ namespace Rezonans
         private const int DWMWA_CLOAKED = 14;
         private const int SW_MINIMIZE = 6;
         private const int SW_RESTORE = 9;
+        private const int SW_HIDE = 0;
+        private const int SW_SHOWNA = 8;
         private const uint ABM_GETSTATE = 0x00000004;
         private const uint ABM_SETSTATE = 0x0000000A;
         private const int ABS_AUTOHIDE = 0x01;
@@ -395,6 +518,7 @@ namespace Rezonans
         [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr h);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
+        [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint pid);
         [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr h);
         [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr h, bool altTab);
         [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);

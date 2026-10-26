@@ -31,6 +31,11 @@ namespace Rezonans
         internal const int VK_LWIN = 0x5B;
         internal const int VK_RWIN = 0x5C;
         internal const int VK_A = 0x41;
+        internal const byte VK_MASK = 0xE8; // unassigned: a key Windows does nothing with
+        internal const uint KEYEVENTF_EXTENDEDKEY = 0x1;
+        internal const uint KEYEVENTF_KEYUP = 0x2;
+
+        [DllImport("user32.dll")] internal static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extraInfo);
 
         internal delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
 

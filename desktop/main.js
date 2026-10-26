@@ -83,6 +83,14 @@ const DEFAULTS = {
   guardGames: true, // sleep the shell (the Win-key hook; windows step aside) while CS2 runs
   taskbar: true, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
   startRecent: true, // the recent files on the Start menu
+  shellWaves: 'music', // the wave in Start and Quick settings: music (hears the PC) | simple (drifts)
+  shellOsd: true, // the volume keys show Резонанс's volume pill instead of Windows'
+  shellAltTab: true, // Alt+Tab shows Резонанс's window switcher instead of Windows'
+  taskbarClear: false, // a see-through taskbar (frosted again under Start or a maximised window)
+  // the taskbar, as the user arranged it (Windows' own pins are never touched):
+  pinsAdd: [], // apps pinned in Резонанс: [{ path, name }]
+  pinsHide: [], // Windows-pinned shortcuts unpinned in Резонанс: [lowercased .lnk path]
+  taskOrder: [], // the order of the buttons, by their key
   autostart: true,
   attachMode: 'auto',
   firstRun: true,
@@ -98,6 +106,7 @@ const CHOICES = {
   textFont: ['display', 'body', 'thin'],
   textPos: ['center', 'top'],
   attachMode: ['auto', 'child', 'layered', 'worker'],
+  shellWaves: ['music', 'simple'],
   fps: [30, 60, 144],
 };
 const RANGES = {
@@ -125,6 +134,13 @@ function sanitize(patch) {
     } else if (RANGES[k]) {
       const n = Number(v);
       if (Number.isFinite(n)) out[k] = Math.max(RANGES[k][0], Math.min(RANGES[k][1], n));
+    } else if (Array.isArray(DEFAULTS[k])) {
+      // lists of short strings, or of { path, name } (the pins)
+      if (!Array.isArray(v)) continue;
+      out[k] = v
+        .slice(0, 100)
+        .map((x) => (x && typeof x === 'object' ? { path: String(x.path || '').slice(0, 400), name: String(x.name || '').slice(0, 120) } : String(x).slice(0, 400)))
+        .filter((x) => (typeof x === 'string' ? x : x.path));
     } else if (typeof DEFAULTS[k] === 'boolean') out[k] = !!v;
     else if (typeof DEFAULTS[k] === 'string') out[k] = String(v).slice(0, 400);
   }
@@ -234,6 +250,7 @@ function onHost(m) {
       applyShell();
       hostSend({ cmd: 'wallpaperPath' });
       hostSend({ cmd: 'status' });
+      hostSend({ cmd: 'taskwins', force: true });
       break;
     case 'attached': {
       const w = walls.get(Number(m.id));
@@ -279,6 +296,10 @@ function onHost(m) {
       broadcastSettings();
       break;
     case 'hotkey':
+      if (/^switch/.test(m.key)) {
+        onSwitch(m.key, Number(m.dir) || 0);
+        break;
+      }
       log('горячая: ' + m.key);
       if (m.key === 'start') toggleStart();
       else if (m.key === 'quick') toggleQuick();
@@ -299,7 +320,11 @@ function onHost(m) {
       break;
     case 'taskpins':
       pinList = Array.isArray(m.list) ? m.list : [];
-      if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('taskpins', pinList);
+      sendPins();
+      break;
+    case 'icons':
+      Object.assign(pinIcons, m.map || {});
+      sendPins();
       break;
     case 'windows':
       winList = Array.isArray(m.list) ? m.list : [];
@@ -307,6 +332,22 @@ function onHost(m) {
       break;
     case 'fonts':
       log('шрифт системы: ' + (m.applied ? 'Onest' : 'как было'));
+      break;
+    case 'osd':
+      showOsd(m);
+      break;
+    case 'tray':
+      // Explorer's own volume icon: the Quick settings button does that
+      trayList = (Array.isArray(m.list) ? m.list : []).filter((t) => !(/^explorer\.exe$/i.test(t.exe || '') && /\d\s*%/.test(t.tip || '')));
+      if (trayList.length !== traySaid) {
+        traySaid = trayList.length;
+        log('трей: значков ' + trayList.length + (trayList.length ? ' (' + trayList.map((t) => t.exe || '?').join(', ') + ')' : ''));
+      }
+      if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('tray', trayList);
+      if (trayWin && !trayWin.isDestroyed() && trayWin.isVisible()) {
+        trayWin.webContents.send('tray', trayList);
+        placeTray();
+      }
       break;
     case 'guard':
       onGuard(!!m.on);
@@ -333,7 +374,7 @@ function sendOwn() {
 
 function allWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, startWin, quickWin, taskbarWin);
+  list.push(bar, island, panel, startWin, quickWin, taskbarWin, osdWin, trayWin, menuWin, switchWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -361,7 +402,7 @@ function applyShell() {
   if (!hostInfo) return;
   if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
   else hostSend({ cmd: 'fontsRestore' });
-  hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
+  sendHooks();
 }
 
 // ---------- anti-cheat: the shell sleeps while CS2 runs ----------
@@ -375,12 +416,22 @@ function shellKeysWanted() {
   return !!settings.shellKeys && !(acGuard && settings.guardGames);
 }
 
+// the volume keys show Резонанс's pill instead of Windows' flyout
+function osdWanted() {
+  return !!settings.shellOsd && !(acGuard && settings.guardGames);
+}
+
+function sendHooks() {
+  const alttab = !!settings.shellAltTab && !(acGuard && settings.guardGames);
+  hostSend({ cmd: 'shellHooks', on: shellKeysWanted(), osd: osdWanted(), alttab });
+}
+
 function onGuard(on) {
   if (on === acGuard) return;
   acGuard = on;
   if (!settings.guardGames) return; // the user keeps the shell on in games
   log(on ? 'запущена CS2 — оболочка засыпает (безопасно для анти-чита)' : 'CS2 закрыта — оболочка снова включена');
-  hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
+  sendHooks();
   setTopHidden(on, 'guard');
   for (const w of walls.values()) {
     if (w.win.isDestroyed()) continue;
@@ -426,11 +477,11 @@ function mediaWindows() {
   return list.filter((w) => w && !w.isDestroyed());
 }
 
-async function loadLyrics(key) {
+async function loadLyrics(key, fresh = false) {
   if (!lastMedia || key !== trackKey(lastMedia)) return;
   const m = lastMedia;
   try {
-    const r = await lyrics.find(m);
+    const r = await lyrics.find(m, fresh);
     if (key !== lyricKey) return;
     lyricData = r ? { key, ...r } : { key, none: true };
     log(`текст песни «${m.title}»: ${r ? (r.synced ? 'синхронный, строк ' + r.lines.length : r.instrumental ? 'без слов' : 'обычный') : 'не нашёлся'}`);
@@ -596,7 +647,20 @@ function closeWallpapers() {
 
 // rest while a window covers the whole screen (saves the graphics card)
 function onForeground(m) {
-  if (taskbarWin && !taskbarWin.isDestroyed()) hostSend({ cmd: 'taskwins' });
+  // the open windows: for the taskbar, and for Alt+Tab even without it
+  if ((taskbarWin && !taskbarWin.isDestroyed()) || settings.shellAltTab) hostSend({ cmd: 'taskwins' });
+  // a maximised window in front: the see-through taskbar turns frosted under it
+  const own = m.hwnd && allWindows().some((w) => hwndOf(w) === m.hwnd);
+  if (!own) {
+    fgMax = !!(m.max || m.full) && !m.desktop;
+    updateTaskbarClear();
+  }
+  // the card of tray icons stays while a program's menu is up (its hidden window
+  // in front); it goes when a real window or the desktop comes to the front
+  if (trayWin && !trayWin.isDestroyed() && trayWin.isVisible() && m.hwnd !== hwndOf(trayWin) && (m.visible || m.desktop) && Date.now() - trayClickAt > 400) {
+    const own = allWindows().some((w) => w !== taskbarWin && hwndOf(w) === m.hwnd);
+    if (!own) hideTray();
+  }
   // another window came to the front: the panel steps away (in case Windows
   // didn't give it the focus, so it never heard the click elsewhere)
   if (panel && !panel.isDestroyed() && panel.isVisible() && m.hwnd && m.hwnd !== hwndOf(panel) && Date.now() - panelShownAt > 700 && !dialogOpen && !SELFTEST_PANEL) {
@@ -1096,8 +1160,124 @@ let startHiddenAt = 0;
 let quickHiddenAt = 0;
 
 // the taskbar's Start and Quick buttons stay lit while their menu is open
+const menusOpen = { start: false, quick: false };
 function tbMenus(m) {
   if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('shell', m);
+  if ('start' in m) menusOpen.start = !!m.start;
+  if ('quick' in m) menusOpen.quick = !!m.quick;
+  updateTaskbarClear();
+}
+
+// The see-through taskbar (a setting): clear over the wallpaper, frosted again
+// while Start or Quick settings is open or a maximised window is in front.
+let fgMax = false;
+let tbClear = null;
+function updateTaskbarClear() {
+  if (!taskbarWin || taskbarWin.isDestroyed()) return;
+  const clear = !!settings.taskbarClear && !fgMax && !menusOpen.start && !menusOpen.quick;
+  if (clear === tbClear) return;
+  tbClear = clear;
+  taskbarWin.webContents.send('shell', { clear });
+}
+
+// ---------- the window switcher (Alt+Tab, instead of Windows') ----------
+// The helper takes Alt+Tab and says each step; the list is the open windows as
+// the taskbar knows them, front one first (the order windows were last used).
+// Alt let go: the chosen window comes to the front. It never takes the focus.
+
+let switchWin = null;
+let sw = null; // { list, i } while the switcher is up
+const SW_CARD = 148;
+const SW_COLS = 6;
+
+function createSwitcher() {
+  switchWin = new BrowserWindow({
+    width: 400,
+    height: 200,
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: true,
+    roundedCorners: true,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
+    title: 'Резонанс — окна',
+    webPreferences: webPrefs,
+  });
+  const w = switchWin;
+  w.setAlwaysOnTop(true, 'screen-saver');
+  w.loadFile(path.join(__dirname, 'app', 'switcher.html'));
+  guardPage(w, 'переключатель окон', () => {
+    if (switchWin === w) switchWin = null;
+    if (!w.isDestroyed()) w.destroy();
+  });
+  w.once('ready-to-show', () => {
+    styleShell(w);
+    sendOwn();
+  });
+  w.on('closed', () => {
+    if (switchWin === w) switchWin = null;
+  });
+}
+
+function onSwitch(key, dir) {
+  if (key === 'switchStart') {
+    const list = winList.slice(0, 24);
+    if (!list.length) return;
+    // the one in front is first: Alt+Tab goes to the one before it
+    const front = list.findIndex((w) => w.active);
+    const base = front === -1 ? -1 : front;
+    const i = ((dir < 0 ? base - 1 : base + 1) + list.length) % list.length;
+    sw = { list, i };
+    showSwitcher();
+    hostSend({ cmd: 'taskwins', force: true });
+  } else if (key === 'switchStep' && sw) {
+    sw.i = (sw.i + (dir < 0 ? -1 : 1) + sw.list.length) % sw.list.length;
+    sendSwitch();
+  } else if (key === 'switchDone' && sw) {
+    const w = sw.list[sw.i];
+    hideSwitcher();
+    if (w) hostSend({ cmd: 'front', hwnd: w.hwnd });
+  } else if (key === 'switchCancel') hideSwitcher();
+}
+
+function showSwitcher() {
+  if (!switchWin || switchWin.isDestroyed()) createSwitcher();
+  const n = sw.list.length;
+  const cols = Math.min(SW_COLS, n);
+  const rows = Math.ceil(n / SW_COLS);
+  const width = cols * SW_CARD + 32;
+  const height = rows * (SW_CARD + 8) + 32;
+  const d = screen.getPrimaryDisplay().workArea;
+  switchWin.setBounds({ x: Math.round(d.x + (d.width - width) / 2), y: Math.round(d.y + (d.height - height) / 2), width, height });
+  const w = switchWin;
+  whenLoaded(w, () => {
+    if (w.isDestroyed() || !sw) return;
+    // on screen first, then the tiles come in (so their animation is seen)
+    w.showInactive();
+    w.moveTop();
+    setTimeout(sendSwitch, 16);
+  });
+}
+
+function sendSwitch() {
+  if (!switchWin || switchWin.isDestroyed() || !sw) return;
+  switchWin.webContents.send('shell', { open: true, list: sw.list, i: sw.i });
+}
+
+function hideSwitcher() {
+  sw = null;
+  if (!switchWin || switchWin.isDestroyed()) return;
+  switchWin.webContents.send('shell', { open: false });
+  const w = switchWin;
+  setTimeout(() => !w.isDestroyed() && !sw && w.hide(), 90);
 }
 
 function hideStart() {
@@ -1156,6 +1336,138 @@ function showQuick() {
   if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
+// ---------- the volume pill (instead of Windows' volume flyout) ----------
+// The helper takes the volume keys, changes the volume itself and says what it
+// is now; the pill shows above the taskbar for a moment. It never takes the
+// mouse or the focus, so typing and games go on underneath.
+
+const OSD_W = 340;
+const OSD_H = 76;
+let osdWin = null;
+let osdTimer = 0;
+let osdHideTimer = 0;
+
+function createOsd() {
+  osdWin = new BrowserWindow({
+    width: OSD_W,
+    height: OSD_H,
+    frame: false,
+    show: false,
+    transparent: true,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    title: 'Резонанс — громкость',
+    webPreferences: webPrefs,
+  });
+  const w = osdWin;
+  w.setIgnoreMouseEvents(true);
+  w.setAlwaysOnTop(true, 'screen-saver');
+  w.loadFile(path.join(__dirname, 'app', 'osd.html'));
+  guardPage(w, 'громкость', () => {
+    if (osdWin === w) osdWin = null;
+    if (!w.isDestroyed()) w.destroy();
+  });
+  w.once('ready-to-show', () => sendOwn());
+  w.on('closed', () => {
+    if (osdWin === w) osdWin = null;
+  });
+}
+
+function showOsd(m) {
+  if (!osdWin || osdWin.isDestroyed()) createOsd();
+  const w = osdWin;
+  const wa = screen.getPrimaryDisplay().workArea;
+  w.setBounds({ x: Math.round(wa.x + (wa.width - OSD_W) / 2), y: wa.y + wa.height - OSD_H - 14, width: OSD_W, height: OSD_H });
+  clearTimeout(osdTimer);
+  clearTimeout(osdHideTimer);
+  whenLoaded(w, () => {
+    if (w.isDestroyed()) return;
+    if (!w.isVisible()) w.showInactive();
+    w.moveTop();
+    w.webContents.send('osd', { vol: m.vol, muted: m.muted });
+  });
+  osdTimer = setTimeout(() => {
+    if (w.isDestroyed()) return;
+    w.webContents.send('osd', { open: false });
+    osdHideTimer = setTimeout(() => !w.isDestroyed() && w.hide(), 220);
+  }, 1600);
+}
+
+// ---------- the card of tray icons above the arrow on the taskbar ----------
+
+const TRAY_COLS = 5;
+const TRAY_CELL = 40;
+let trayWin = null;
+let trayX = 0;
+let trayHiddenAt = 0;
+let trayClickAt = 0;
+
+function createTray() {
+  trayWin = createShellWindow(TRAY_CELL * TRAY_COLS + 20, TRAY_CELL + 20);
+  const w = trayWin;
+  w.loadFile(path.join(__dirname, 'app', 'tray.html'));
+  guardPage(w, 'значки', () => {
+    if (trayWin === w) trayWin = null;
+    if (!w.isDestroyed()) w.destroy();
+  });
+  // a click elsewhere closes it — but not the program taking the front for the
+  // menu just asked for (onForeground decides then)
+  w.on('blur', () => {
+    if (Date.now() - trayClickAt > 1500) hideTray();
+  });
+  w.on('closed', () => {
+    if (trayWin === w) trayWin = null;
+  });
+  w.once('ready-to-show', () => {
+    styleShell(w);
+    sendOwn();
+  });
+}
+
+// the card's size follows the number of icons; it sits above the arrow
+function placeTray() {
+  if (!trayWin || trayWin.isDestroyed()) return;
+  const n = Math.max(1, trayList.length);
+  const cols = Math.min(TRAY_COLS, n);
+  const width = Math.max(140, cols * TRAY_CELL + 20);
+  const height = (trayList.length ? Math.ceil(n / TRAY_COLS) * TRAY_CELL : 32) + 20;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const x = Math.round(Math.max(wa.x + 8, Math.min(wa.x + wa.width - width - 8, trayX - width / 2)));
+  trayWin.setBounds({ x, y: wa.y + wa.height - height - 10, width, height });
+}
+
+function toggleTray(x) {
+  if (trayWin && !trayWin.isDestroyed() && trayWin.isVisible()) return hideTray();
+  if (Date.now() - trayHiddenAt < 250) return; // the click on the arrow that just closed it
+  if (!trayWin || trayWin.isDestroyed()) createTray();
+  trayX = Number(x) || screen.getPrimaryDisplay().workArea.width - 200;
+  placeTray();
+  trayWin.show();
+  trayWin.focus();
+  tbMenus({ tray: true });
+  const w = trayWin;
+  whenLoaded(w, () => !w.isDestroyed() && w.webContents.send('shell', { open: true, list: trayList }));
+  hostSend({ cmd: 'tray' });
+}
+
+function hideTray() {
+  if (!trayWin || trayWin.isDestroyed() || !trayWin.isVisible()) return;
+  trayHiddenAt = Date.now();
+  tbMenus({ tray: false });
+  trayWin.webContents.send('shell', { open: false });
+  const w = trayWin;
+  setTimeout(() => !w.isDestroyed() && w.hide(), 140);
+}
+
 // ---------- the Резонанс taskbar (at the bottom, instead of Windows') ----------
 // Start, the apps pinned to the Windows taskbar and the open windows (grouped by
 // app), the Quick settings and the clock. The Windows taskbar goes into auto-hide
@@ -1167,6 +1479,9 @@ let taskbarStatus = 0;
 let hookedTB = null;
 let winList = [];
 let pinList = [];
+const pinIcons = {}; // exe -> icon, for the apps pinned in Резонанс
+let trayList = []; // the programs' tray icons (the helper keeps them now)
+let traySaid = -1;
 
 function taskbarBounds() {
   const d = screen.getPrimaryDisplay();
@@ -1188,8 +1503,12 @@ function createTaskbar() {
     focusable: false,
     hasShadow: false,
     thickFrame: false,
+    // see-through underneath. With the see-through taskbar on, Windows' acrylic is
+    // left out altogether (taking it away at run time leaves the window white, and
+    // it can't fade): the page draws its own frosted tint and fades it.
+    transparent: true,
     backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
+    ...(settings.taskbarClear ? {} : { backgroundMaterial: 'acrylic' }),
     title: 'Rezonans taskbar',
     webPreferences: webPrefs,
   });
@@ -1202,13 +1521,28 @@ function createTaskbar() {
   tb.once('ready-to-show', () => {
     tb._ready = true;
     placeTop(tb);
+    // a see-through window shown at start can stay blank until it is resized:
+    // nudge it by a pixel and back, and ask for a fresh picture, a few times
+    for (const ms of [200, 900, 2500]) {
+      setTimeout(() => {
+        if (tb.isDestroyed()) return;
+        const b = tb.getBounds();
+        tb.setBounds({ ...b, height: b.height - 1 });
+        tb.setBounds(b);
+        tb.webContents.invalidate();
+      }, ms);
+    }
     registerTaskbar();
     sendOwn();
     styleWindows();
     tb.webContents.send('settings', view());
     if (lastStatus) tb.webContents.send('status', lastStatus);
-    if (pinList.length) tb.webContents.send('taskpins', pinList);
+    sendPins();
+    tbClear = null;
+    updateTaskbarClear();
+    if (trayList.length) tb.webContents.send('tray', trayList);
     hostSend({ cmd: 'taskpins' });
+    hostSend({ cmd: 'tray' });
     hostSend({ cmd: 'taskwins', force: true });
     fixTopSoon();
   });
@@ -1240,6 +1574,133 @@ function hookTaskbar() {
       hostSend({ cmd: 'taskpins' });
     }, 1500),
   );
+}
+
+// The pins the taskbar shows: Windows' own (less the ones unpinned in Резонанс)
+// and those pinned in Резонанс, then the order the user dragged them into.
+function pinsView() {
+  const hide = new Set((settings.pinsHide || []).map((p) => String(p).toLowerCase()));
+  const list = pinList.filter((p) => !hide.has(String(p.path || '').toLowerCase()));
+  const have = new Set(list.map((p) => String(p.target || '').toLowerCase()));
+  const need = [];
+  for (const a of settings.pinsAdd || []) {
+    const exe = String(a.path || '');
+    if (!exe || have.has(exe.toLowerCase())) continue;
+    have.add(exe.toLowerCase());
+    if (pinIcons[exe] === undefined) need.push(exe);
+    list.push({ name: a.name || path.basename(exe, path.extname(exe)), path: exe, target: exe, icon: pinIcons[exe] || '', own: true });
+  }
+  if (need.length) {
+    for (const p of need) pinIcons[p] = ''; // asked once
+    hostSend({ cmd: 'icons', paths: need });
+  }
+  return list;
+}
+
+function sendPins() {
+  if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('taskpins', pinsView());
+}
+
+// a pin from the menu: an app pinned in Резонанс, or a Windows pin hidden
+function setPinned(g, on) {
+  const exe = g.exe || '';
+  if (on) {
+    if (!exe) return;
+    const add = (settings.pinsAdd || []).filter((a) => a.path.toLowerCase() !== exe.toLowerCase());
+    add.push({ path: exe, name: g.name || '' });
+    const hide = (settings.pinsHide || []).filter((p) => !pinList.some((w) => String(w.path).toLowerCase() === p && String(w.target || '').toLowerCase() === exe.toLowerCase()));
+    saveSettingsPatch({ pinsAdd: add, pinsHide: hide });
+  } else {
+    const add = (settings.pinsAdd || []).filter((a) => !exe || a.path.toLowerCase() !== exe.toLowerCase());
+    const hide = [...(settings.pinsHide || [])];
+    if (g.pinPath && !g.pinOwn && !hide.includes(g.pinPath.toLowerCase())) hide.push(g.pinPath.toLowerCase());
+    saveSettingsPatch({ pinsAdd: add, pinsHide: hide });
+  }
+  log(`панель задач: ${on ? 'закреплено' : 'откреплено'} ${g.name || exe}`);
+  sendPins();
+}
+
+// ---------- the menu of an app on the taskbar (its right click) ----------
+
+let menuWin = null;
+let menuHiddenAt = 0;
+let menuFor = null; // the app the menu is for
+
+const MENU_W = 280;
+
+function createMenu() {
+  menuWin = createShellWindow(MENU_W, 200);
+  const w = menuWin;
+  w.loadFile(path.join(__dirname, 'app', 'menu.html'));
+  guardPage(w, 'меню', () => {
+    if (menuWin === w) menuWin = null;
+    if (!w.isDestroyed()) w.destroy();
+  });
+  w.on('blur', () => hideMenu());
+  w.on('closed', () => {
+    if (menuWin === w) menuWin = null;
+  });
+  w.once('ready-to-show', () => {
+    styleShell(w);
+    sendOwn();
+  });
+}
+
+function appMenuItems(g) {
+  const items = [{ head: true, label: g.name || 'Приложение', icon: g.icon || '' }];
+  if (g.wins.length > 1) {
+    for (const w of g.wins.slice(0, 8)) items.push({ id: 'win:' + w.hwnd, label: w.title || 'Окно', kind: 'window', on: !!w.active });
+    items.push({ sep: true });
+  }
+  if (g.launch) items.push({ id: 'new', label: g.wins.length ? 'Новое окно' : 'Открыть', icon: 'plus' });
+  if (g.exe || g.pinPath) items.push({ id: g.pinned ? 'unpin' : 'pin', label: g.pinned ? 'Открепить от панели задач' : 'Закрепить на панели задач', icon: g.pinned ? 'unpin' : 'pin' });
+  if (g.wins.length) {
+    items.push({ sep: true });
+    items.push({ id: 'close', label: g.wins.length > 1 ? `Закрыть все окна (${g.wins.length})` : 'Закрыть окно', icon: 'close', danger: true });
+    items.push({ id: 'kill', label: 'Завершить задачу', icon: 'kill', danger: true });
+  }
+  return items;
+}
+
+function showAppMenu(g, x) {
+  if (menuWin && !menuWin.isDestroyed() && menuWin.isVisible() && menuFor && menuFor.key === g.key) return hideMenu();
+  if (Date.now() - menuHiddenAt < 250 && menuFor && menuFor.key === g.key) return;
+  if (!menuWin || menuWin.isDestroyed()) createMenu();
+  menuFor = g;
+  const items = appMenuItems(g);
+  const height = 16 + items.reduce((h, it) => h + (it.head ? 46 : it.sep ? 9 : 38), 0);
+  const wa = screen.getPrimaryDisplay().workArea;
+  const left = Math.round(Math.max(wa.x + 8, Math.min(wa.x + wa.width - MENU_W - 8, (Number(x) || wa.width / 2) - MENU_W / 2)));
+  menuWin.setBounds({ x: left, y: wa.y + wa.height - height - 10, width: MENU_W, height });
+  menuWin.show();
+  menuWin.focus();
+  const w = menuWin;
+  whenLoaded(w, () => !w.isDestroyed() && w.webContents.send('shell', { open: true, items }));
+}
+
+function hideMenu() {
+  if (!menuWin || menuWin.isDestroyed() || !menuWin.isVisible()) return;
+  menuHiddenAt = Date.now();
+  menuWin.webContents.send('shell', { open: false });
+  const w = menuWin;
+  setTimeout(() => !w.isDestroyed() && w.hide(), 120);
+}
+
+function onMenuPick(id) {
+  const g = menuFor;
+  hideMenu();
+  if (!g || !id) return;
+  if (id.startsWith('win:')) hostSend({ cmd: 'front', hwnd: id.slice(4) });
+  else if (id === 'new' && g.launch) hostSend({ cmd: 'launch', path: g.launch, args: '' });
+  else if (id === 'pin') setPinned(g, true);
+  else if (id === 'unpin') setPinned(g, false);
+  else if (id === 'close') {
+    log(`панель задач: закрыть ${g.name || ''} (окон: ${g.wins.length})`);
+    for (const w of g.wins) hostSend({ cmd: 'closeWin', hwnd: w.hwnd });
+  } else if (id === 'kill') {
+    // the app's process (one per window: a Store app's windows can be separate apps)
+    for (const w of g.wins) hostSend({ cmd: 'endTask', hwnd: w.hwnd });
+  }
 }
 
 function closeTaskbar() {
@@ -1409,7 +1870,12 @@ function saveSettingsPatch(patch) {
     if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
     else hostSend({ cmd: 'fontsRestore' });
   }
-  if (changed('shellKeys') || changed('guardGames')) hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
+  if (changed('shellKeys') || changed('guardGames') || changed('shellOsd') || changed('shellAltTab')) sendHooks();
+  // the window is made with or without Windows' acrylic: make it again
+  if (changed('taskbarClear') && settings.taskbar) {
+    closeTaskbar();
+    enableTaskbar(true);
+  }
   if (changed('attachMode')) rebuild('другой способ встраивания');
   if (changed('palette') || changed('winAccent') || changed('winDark') || changed('winPrevalence')) applyWinColors();
   if (changed('bg') && settings.bg === 'windows') hostSend({ cmd: 'wallpaperPath' });
@@ -1600,7 +2066,7 @@ if (!app.requestSingleInstanceLock()) {
       else if (name === 'reattach') rebuild('встроить обои заново');
       else if (name === 'restoreColors') restoreAllColors();
       else if (name === 'applyColors') applyWinColors(true);
-      else if (name === 'lyricsAgain' && lyricKey) loadLyrics(lyricKey);
+      else if (name === 'lyricsAgain' && lyricKey) loadLyrics(lyricKey, true);
     });
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
     ipcMain.on('shell', (e, cmd, arg) => {
@@ -1646,6 +2112,39 @@ if (!app.requestSingleInstanceLock()) {
         hostSend({ cmd: 'showDesktop' });
       }
       else if (cmd === 'openSettingsApp') hostSend({ cmd: 'launch', path: 'ms-settings:', args: '' });
+      else if (cmd === 'trayClick') {
+        hideStart();
+        hideQuick();
+        // the card stays: the program's menu comes over it (onForeground closes it later)
+        trayClickAt = Date.now();
+        hostSend({ cmd: 'trayClick', id: String((arg && arg.id) || ''), button: (arg && arg.button) || 'left' });
+      } else if (cmd === 'appMenu' && arg && arg.g) {
+        hideTray();
+        const g = arg.g;
+        showAppMenu(
+          {
+            key: String(g.key || ''),
+            name: String(g.name || ''),
+            icon: String(g.icon || ''),
+            exe: String(g.exe || ''),
+            launch: String(g.launch || ''),
+            pinPath: String(g.pinPath || ''),
+            pinOwn: !!g.pinOwn,
+            pinned: !!g.pinned,
+            wins: (Array.isArray(g.wins) ? g.wins : []).map((w) => ({ hwnd: String(w.hwnd || ''), title: String(w.title || ''), active: !!w.active })),
+          },
+          arg.x,
+        );
+      } else if (cmd === 'switchPick' && sw) {
+        // a click on a card: that window
+        const i = sw.list.findIndex((w) => w.hwnd === String(arg || ''));
+        if (i >= 0) sw.i = i;
+        onSwitch('switchDone', 0);
+      } else if (cmd === 'menuPick') onMenuPick(String(arg || ''));
+      else if (cmd === 'menuClose') hideMenu();
+      else if (cmd === 'taskOrder' && Array.isArray(arg)) saveSettingsPatch({ taskOrder: arg });
+      else if (cmd === 'trayOpen') toggleTray(arg && arg.x);
+      else if (cmd === 'trayClose') hideTray();
     });
 
     tray = new Tray(app.isPackaged ? path.join(process.resourcesPath, 'tray.ico') : path.join(__dirname, 'build', 'tray.ico'));
