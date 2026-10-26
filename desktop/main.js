@@ -298,6 +298,9 @@ function onHost(m) {
     case 'guard':
       onGuard(!!m.on);
       break;
+    case 'probe':
+      onProbe(m);
+      break;
     case 'log':
       log('помощник: ' + m.msg);
       break;
@@ -617,6 +620,7 @@ function onForeground(m) {
 function liftTop() {
   if (topHide.size !== 0) return;
   for (const w of [bar, island]) if (w && !w.isDestroyed() && w.isVisible()) w.moveTop();
+  probeBar();
 }
 
 let lastAssert = 0;
@@ -668,13 +672,14 @@ function createBar() {
   bar.loadFile(path.join(__dirname, 'app', 'bar.html'));
   guardPage(bar, 'строка', () => scheduleRebuild('страница строки упала'));
   bar.once('ready-to-show', () => {
-    if (topHide.size === 0) bar.showInactive();
+    bar._ready = true;
+    placeTop(bar);
     barShown = true;
     registerAppBar();
     sendOwn();
     if (lastMedia) bar.webContents.send('media', lastMedia);
     // the island stays above the bar
-    if (island && !island.isDestroyed()) island.moveTop();
+    if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
   });
   bar.on('closed', () => {
     bar = null;
@@ -704,15 +709,86 @@ function hookBar() {
   bar.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerAppBar, 1500));
 }
 
+// Why the bar and the island step aside. An anti-cheat game ('guard') hides
+// them outright. A full-screen window ('fg', 'fullscreen': a game, a video, the
+// overlay a screenshot tool puts up for a moment) only sends them to the back —
+// they are never hidden for it: a window that never takes the focus, hidden and
+// shown again, could come back deaf to clicks (the logo after a snip).
 function setTopHidden(hide, why) {
+  const before = [...topHide].join(', ');
   if (hide) topHide.add(why);
   else topHide.delete(why);
-  const show = topHide.size === 0;
-  for (const w of [bar, island]) {
-    if (!w || w.isDestroyed()) continue;
-    if (show && !w.isVisible()) w.showInactive();
-    if (!show && w.isVisible()) w.hide();
+  const now = [...topHide].join(', ');
+  if (now !== before) log('строка и остров: ' + (now ? 'в стороне (' + now + ')' : 'снова сверху'));
+  placeTop(bar);
+  placeTop(island);
+  if (topHide.size === 0) {
+    if (island && !island.isDestroyed()) island.moveTop();
+    probeSoon();
   }
+}
+
+function placeTop(w) {
+  if (!w || w.isDestroyed() || !w._ready) return;
+  if (topHide.has('guard')) {
+    if (w.isVisible()) w.hide();
+    return;
+  }
+  if (!w.isVisible()) w.showInactive();
+  if (topHide.size !== 0) {
+    hostSend({ cmd: 'toBack', hwnd: hwndOf(w) });
+    return;
+  }
+  try {
+    w.setAlwaysOnTop(true, 'screen-saver');
+    w.moveTop();
+  } catch {}
+}
+
+// ---------- is the logo really reachable? ----------
+// Now and then the helper says which window sits under the logo. When it isn't
+// the bar (a capture overlay left behind, a window in a higher layer), or the bar
+// lost its "always on top", lets clicks through or was hidden by the system, the
+// bar is put back on top — and the log says what was there.
+let probeSaid = '';
+function probeBar() {
+  if (!bar || bar.isDestroyed() || !bar._ready || topHide.size !== 0 || !bar.isVisible()) return;
+  const b = bar.getBounds();
+  const p = screen.dipToScreenPoint({ x: b.x + 44, y: b.y + Math.round(BAR_H / 2) });
+  hostSend({ cmd: 'probe', hwnd: hwndOf(bar), x: Math.round(p.x), y: Math.round(p.y) });
+}
+
+let probeTimers = [];
+function probeSoon() {
+  for (const t of probeTimers) clearTimeout(t);
+  probeTimers = [400, 1500].map((ms) => setTimeout(probeBar, ms));
+}
+
+function onProbe(m) {
+  if (!bar || bar.isDestroyed() || topHide.size !== 0) return;
+  // another app's menu or tooltip over the logo goes away by itself
+  const passing = /^(#32768|tooltips_class32|SysShadow)$/.test(m.cls || '');
+  const ok = (m.mine || passing) && m.topmost && !m.transparent && !m.cloaked;
+  const said = ok
+    ? 'логотип доступен'
+    : 'логотип недоступен:' +
+      (m.mine || passing ? '' : ` сверху «${m.cls || 'ничего'}» (${m.exe || '?'}${m.own ? ', наше окно' : ''})`) +
+      (m.topmost ? '' : ', строка не поверх всех') +
+      (m.transparent ? ', строка пропускает клики' : '') +
+      (m.cloaked ? ', строка спрятана системой' : '') +
+      (m.visible ? '' : ', строка не видна');
+  if (said !== probeSaid) {
+    log('проверка строки: ' + said);
+    probeSaid = said;
+  }
+  if (ok) return;
+  if (m.transparent) bar.setIgnoreMouseEvents(false);
+  try {
+    bar.setAlwaysOnTop(false);
+    bar.setAlwaysOnTop(true, 'screen-saver');
+    bar.moveTop();
+  } catch {}
+  if (island && !island.isDestroyed() && island.isVisible()) island.moveTop();
 }
 
 // When the bar takes its strip, the work area shrinks and Chromium "helpfully"
@@ -792,8 +868,8 @@ function createIsland() {
   island.loadFile(path.join(__dirname, 'app', 'island.html'));
   guardPage(island, 'остров', () => scheduleRebuild('страница острова упала'));
   island.once('ready-to-show', () => {
-    if (topHide.size === 0) island.showInactive();
-    island.moveTop();
+    island._ready = true;
+    placeTop(island);
     fixTopSoon();
     sendOwn();
     if (lastMedia) island.webContents.send('media', lastMedia);
@@ -898,13 +974,17 @@ function showPanel(from = 'bar', tab) {
   panel.show();
   panel.focus();
   panelShownAt = Date.now();
-  if (island && !island.isDestroyed()) island.moveTop();
+  if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
 function togglePanel(from, tab) {
-  if (panel && !panel.isDestroyed() && panel.isVisible()) return hidePanel();
+  if (panel && !panel.isDestroyed() && panel.isVisible()) {
+    log('панель: закрываю (' + from + ')');
+    return hidePanel();
+  }
   // the click that took the focus away from the panel has just closed it
-  if (Date.now() - panelHiddenAt < 350) return;
+  if (Date.now() - panelHiddenAt < 350) return log('панель: только что закрылась — не открываю снова');
+  log('панель: открываю (' + from + ')');
   showPanel(from, tab);
 }
 
@@ -1017,7 +1097,7 @@ function showStart() {
     if (!sw.isDestroyed()) sw.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
   });
   refreshApps();
-  if (island && !island.isDestroyed()) island.moveTop();
+  if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
 function showQuick() {
@@ -1036,7 +1116,7 @@ function showQuick() {
     if (!qw.isDestroyed()) qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
   });
   hostSend({ cmd: 'status' });
-  if (island && !island.isDestroyed()) island.moveTop();
+  if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
 let appsAt = 0;

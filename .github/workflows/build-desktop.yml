@@ -151,6 +151,43 @@ jobs:
           Start-Process "ms-settings:colors" -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 7
           Shot "9-settings-colors"
+          # the logo has to keep opening the panel: clicked for real, as by hand —
+          # first as is, then after a full-screen overlay (what a screenshot tool
+          # puts up), then after a game put the shell to sleep and it woke up
+          function Click($x, $y) {
+            [Mouse]::SetCursorPos($b.Left + $x, $b.Top + $y) | Out-Null
+            Start-Sleep -Milliseconds 150
+            [Mouse]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 60
+            [Mouse]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+          }
+          function LogoTest($name) {
+            Click 40 18
+            Start-Sleep -Seconds 2
+            Shot $name
+            Click ([int]($b.Width * 0.6)) ([int]($b.Height * 0.8))
+            Start-Sleep -Seconds 1
+          }
+          LogoTest "12-logo"
+          $f = New-Object System.Windows.Forms.Form
+          $f.FormBorderStyle = 'None'; $f.TopMost = $true; $f.ShowInTaskbar = $false; $f.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 30)
+          $f.StartPosition = 'Manual'; $f.Bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $f.Show()
+          for ($i = 0; $i -lt 5; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
+          Click ([int]($b.Width / 2)) ([int]($b.Height / 2))
+          for ($i = 0; $i -lt 30; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
+          Shot "13a-overlay"
+          $f.Close(); $f.Dispose()
+          Start-Sleep -Seconds 3
+          LogoTest "13-logo-after-overlay"
+          $fake = Join-Path $env:RUNNER_TEMP "cs2.exe"
+          Copy-Item "$env:WINDIR\System32\PING.EXE" $fake -Force
+          $g = Start-Process $fake -ArgumentList "-n 60 127.0.0.1" -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 5
+          Shot "14a-guard"
+          Stop-Process -Id $g.Id -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+          LogoTest "14-logo-after-guard"
           Copy-Item "$env:APPDATA/Rezonans/rezonans.log" smoke/ -ErrorAction SilentlyContinue
           Copy-Item "$env:APPDATA/Rezonans/settings.json" smoke/ -ErrorAction SilentlyContinue
           Get-Process Rezonans, RezonansHost -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowTitle | Out-String | Set-Content smoke/processes.txt

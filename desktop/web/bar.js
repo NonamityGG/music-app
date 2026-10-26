@@ -49,6 +49,21 @@ function paintColors() {
 
 $('brand').addEventListener('click', () => window.rez.panel('toggle'));
 
+// a click that reached the bar goes to the log (at most one every two seconds):
+// tells "the clicks don't arrive" apart from "the panel didn't open"
+let lastTap = 0;
+document.addEventListener(
+  'pointerdown',
+  (e) => {
+    const now = Date.now();
+    if (now - lastTap < 2000) return;
+    lastTap = now;
+    const t = e.target && e.target.closest ? e.target.closest('[id]') : null;
+    window.rez.log('строка: нажатие (' + (t ? t.id : 'фон') + ')');
+  },
+  true,
+);
+
 // ---------- what's playing ----------
 
 let media = { status: 'none' };

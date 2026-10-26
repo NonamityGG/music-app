@@ -190,6 +190,12 @@ namespace Rezonans
                 case "appbarRemove":
                     AppBar.Remove();
                     break;
+                case "probe":
+                    Probe.At(Hwnd(Str(c, "hwnd")), Int(c, "x"), Int(c, "y"));
+                    break;
+                case "toBack":
+                    Probe.ToBack(Hwnd(Str(c, "hwnd")));
+                    break;
                 case "media":
                     Media.Command(Str(c, "action"), Int(c, "pos", -1));
                     break;
