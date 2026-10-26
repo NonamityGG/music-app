@@ -197,6 +197,17 @@ jobs:
           Stop-Process -Id $g.Id -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 5
           LogoTest "14-logo-after-guard"
+          # Резонанс's taskbar along the bottom: the clock opens Quick settings, the
+          # sliver at the far right shows the desktop
+          Shot "15-taskbar"
+          Click ($b.Width - 50) ($b.Height - 26)
+          Start-Sleep -Seconds 2
+          Shot "16-quick-from-taskbar"
+          Click ($b.Width - 50) ($b.Height - 26)
+          Start-Sleep -Seconds 1
+          Click ($b.Width - 4) ($b.Height - 26)
+          Start-Sleep -Seconds 2
+          Shot "17-show-desktop"
           Copy-Item "$env:APPDATA/Rezonans/rezonans.log" smoke/ -ErrorAction SilentlyContinue
           Copy-Item "$env:APPDATA/Rezonans/settings.json" smoke/ -ErrorAction SilentlyContinue
           Get-Process Rezonans, RezonansHost -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowTitle | Out-String | Set-Content smoke/processes.txt

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'" />
+    <title>Резонанс — панель задач</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="taskbar.css" />
+  </head>
+  <body data-bg="glass-violet">
+    <div class="tb">
+      <i class="line" aria-hidden="true"></i>
+      <div class="side left"></div>
+
+      <nav class="dock">
+        <button class="start" id="start" title="Пуск">
+          <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        </button>
+        <span class="sep" aria-hidden="true"></span>
+        <div class="apps" id="apps"></div>
+      </nav>
+
+      <div class="side right">
+        <button class="quick" id="quick" title="Быстрые настройки">
+          <span class="qi" id="qWifi"></span>
+          <span class="qi" id="qVol"></span>
+          <span class="qi bat hidden" id="qBat"></span>
+        </button>
+        <button class="clock" id="clock" title="Быстрые настройки">
+          <span class="time" id="time"></span>
+          <span class="date" id="date"></span>
+        </button>
+        <button class="desk" id="desk" title="Свернуть всё" aria-label="Свернуть всё"></button>
+      </div>
+    </div>
+    <script src="taskbar.js"></script>
+  </body>
+</html>

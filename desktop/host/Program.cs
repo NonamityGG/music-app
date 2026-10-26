@@ -84,6 +84,7 @@ namespace Rezonans
         {
             try { Hooks.Remove(); } catch { }
             try { AppBar.RemoveAll(); } catch { }
+            try { Taskbar.WindowsTaskbar(false); } catch { } // the Windows taskbar as it was
             try { Wallpaper.Refresh(); } catch { }
         }
 
@@ -269,6 +270,12 @@ namespace Rezonans
                     break;
                 case "taskbarHide":
                     Taskbar.WindowsTaskbar(Bool(c, "on") == true);
+                    break;
+                case "taskpins":
+                    Send(new Dictionary<string, object> { { "type", "taskpins" }, { "list", Taskbar.Pins() } });
+                    break;
+                case "showDesktop":
+                    Taskbar.ToggleDesktop();
                     break;
                 case "launch":
                     Apps.Launch(Str(c, "path"), Str(c, "args"));
@@ -724,31 +731,33 @@ namespace Rezonans
             t.Start();
         }
 
-        // An anti-cheat game or client is running: Резонанс should sleep (the main
-        // process drops the Win-key hooks and hides its windows). Matched by
-        // process name so it fires as the anti-cheat starts, not only in-game.
-        private static readonly string[] GuardNames = { "cs2", "csgo", "faceit" };
+        // The game itself is running (CS2, or CS:GO): Резонанс should sleep (the main
+        // process drops the Win-key hook). Only the game counts — the FACEIT client
+        // and its anti-cheat service sit in the tray all day, and the shell must not
+        // sleep all day with them. Exact process names, so nothing else matches.
+        private static readonly string[] GuardNames = { "cs2", "csgo" };
         private static bool _guard;
 
         private static void CheckGuard()
         {
-            bool found = false;
+            string found = null;
             var procs = System.Diagnostics.Process.GetProcesses();
             foreach (var p in procs)
             {
                 try
                 {
                     var nm = p.ProcessName.ToLowerInvariant();
-                    foreach (var g in GuardNames) if (nm.Contains(g)) { found = true; break; }
+                    foreach (var g in GuardNames) if (nm == g) { found = p.ProcessName; break; }
                 }
                 catch { }
                 finally { p.Dispose(); }
-                if (found) break;
+                if (found != null) break;
             }
-            if (found == _guard) return;
-            _guard = found;
-            Program.Send(new Dictionary<string, object> { { "type", "guard" }, { "on", found } });
-            Program.Log(found ? "замечена CS2/FACEIT" : "CS2/FACEIT закрыта");
+            bool on = found != null;
+            if (on == _guard) return;
+            _guard = on;
+            Program.Send(new Dictionary<string, object> { { "type", "guard" }, { "on", on } });
+            Program.Log(on ? "запущена игра: " + found : "игра закрыта");
         }
 
         private static string ClassOf(IntPtr h)

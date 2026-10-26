@@ -80,8 +80,8 @@ const DEFAULTS = {
   winPrevalence: false,
   winFont: true, // Onest for the whole of Windows
   shellKeys: true, // the Win key, the Start button and the tray open Резонанс
-  guardGames: true, // sleep the shell (hooks + windows) while CS2 / FACEIT runs
-  taskbar: false, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
+  guardGames: true, // sleep the shell (the Win-key hook; windows step aside) while CS2 runs
+  taskbar: true, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
   startRecent: true, // the recent files on the Start menu
   autostart: true,
   attachMode: 'auto',
@@ -225,6 +225,7 @@ function onHost(m) {
       hostInfo = m;
       log(`помощник готов: ${m.os}, рабочий стол ${m.raised ? 'нового типа (24H2+)' : 'классический'}, акцент: ${m.immersive}`);
       hookBar();
+      hookTaskbar();
       for (const id of walls.keys()) attachWall(id);
       if (bar && barShown) registerAppBar();
       styleWindows();
@@ -293,6 +294,11 @@ function onHost(m) {
       lastStatus = m;
       if (quickWin && !quickWin.isDestroyed()) quickWin.webContents.send('status', m);
       if (bar && !bar.isDestroyed()) bar.webContents.send('status', m);
+      if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('status', m);
+      break;
+    case 'taskpins':
+      pinList = Array.isArray(m.list) ? m.list : [];
+      if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('taskpins', pinList);
       break;
     case 'windows':
       winList = Array.isArray(m.list) ? m.list : [];
@@ -357,7 +363,7 @@ function applyShell() {
   hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
 }
 
-// ---------- anti-cheat: the shell sleeps while CS2 or FACEIT runs ----------
+// ---------- anti-cheat: the shell sleeps while CS2 runs ----------
 // The helper watches for those processes and says so; Резонанс then drops the
 // Win-key/Start hooks (what an anti-cheat might take for a cheat) and hides its
 // own windows, so nothing of ours is in the way during a match. It all comes
@@ -372,7 +378,7 @@ function onGuard(on) {
   if (on === acGuard) return;
   acGuard = on;
   if (!settings.guardGames) return; // the user keeps the shell on in games
-  log(on ? 'запущена CS2/FACEIT — оболочка засыпает (безопасно для анти-чита)' : 'CS2/FACEIT закрыта — оболочка снова включена');
+  log(on ? 'запущена CS2 — оболочка засыпает (безопасно для анти-чита)' : 'CS2 закрыта — оболочка снова включена');
   hostSend({ cmd: 'shellHooks', on: shellKeysWanted() });
   setTopHidden(on, 'guard');
   for (const w of walls.values()) {
@@ -589,6 +595,7 @@ function closeWallpapers() {
 
 // rest while a window covers the whole screen (saves the graphics card)
 function onForeground(m) {
+  if (taskbarWin && !taskbarWin.isDestroyed()) hostSend({ cmd: 'taskwins' });
   // another window came to the front: the panel steps away (in case Windows
   // didn't give it the focus, so it never heard the click elsewhere)
   if (panel && !panel.isDestroyed() && panel.isVisible() && m.hwnd && m.hwnd !== hwndOf(panel) && Date.now() - panelShownAt > 700 && !dialogOpen && !SELFTEST_PANEL) {
@@ -626,6 +633,7 @@ function onForeground(m) {
 function liftTop() {
   if (topHide.size !== 0) return;
   for (const w of [bar, island]) if (w && !w.isDestroyed() && w.isVisible()) w.moveTop();
+  if (taskbarWin && !taskbarWin.isDestroyed() && taskbarWin.isVisible()) taskbarWin.setAlwaysOnTop(true, 'floating');
   probeBar();
 }
 
@@ -643,6 +651,7 @@ function assertTop(force) {
       w.moveTop();
     } catch {}
   }
+  placeTop(taskbarWin);
 }
 
 // ---------- the bar ----------
@@ -729,6 +738,7 @@ function setTopHidden(hide, why) {
   if (now !== before) log('строка и остров: ' + (now ? 'в стороне (' + now + ')' : 'снова сверху'));
   placeTop(bar);
   placeTop(island);
+  placeTop(taskbarWin);
   if (topHide.size === 0) {
     if (island && !island.isDestroyed()) island.moveTop();
     probeSoon();
@@ -744,8 +754,11 @@ function placeTop(w) {
   }
   if (!w.isVisible()) w.showInactive();
   try {
-    w.setAlwaysOnTop(true, 'screen-saver');
-    w.moveTop();
+    if (w === taskbarWin) w.setAlwaysOnTop(true, 'floating');
+    else {
+      w.setAlwaysOnTop(true, 'screen-saver');
+      w.moveTop();
+    }
   } catch {}
 }
 
@@ -813,6 +826,14 @@ function fixTop() {
     const b = island.getBounds();
     if (Math.abs(b.x - want.x) > 2 || Math.abs(b.y - want.y) > 2) island.setBounds(want);
   }
+  if (taskbarWin && !taskbarWin.isDestroyed()) {
+    const want = taskbarBounds();
+    const b = taskbarWin.getBounds();
+    if (Math.abs(b.x - want.x) > 2 || Math.abs(b.y - want.y) > 2 || Math.abs(b.width - want.width) > 4 || Math.abs(b.height - want.height) > 3) {
+      log(`панель задач съехала: ${b.x},${b.y} ${b.width}×${b.height} — возвращаю вниз`);
+      taskbarWin.setBounds(want);
+    }
+  }
   // keep the bar and the island above Explorer, which can draw over them after a
   // reboot — otherwise the logo stops taking clicks
   if (topHide.size === 0) {
@@ -831,8 +852,10 @@ function fixTopSoon() {
 }
 
 function closeBar() {
-  hostSend({ cmd: 'appbarRemove' });
-  if (bar && !bar.isDestroyed()) bar.destroy();
+  if (bar && !bar.isDestroyed()) {
+    hostSend({ cmd: 'appbarRemove', hwnd: hwndOf(bar) });
+    bar.destroy();
+  }
   bar = null;
   barShown = false;
   hooked = null;
@@ -1071,16 +1094,23 @@ function createQuick() {
 let startHiddenAt = 0;
 let quickHiddenAt = 0;
 
+// the taskbar's Start and Quick buttons stay lit while their menu is open
+function tbMenus(m) {
+  if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('shell', m);
+}
+
 function hideStart() {
   if (!startWin || startWin.isDestroyed() || !startWin.isVisible()) return;
   startHiddenAt = Date.now();
   startWin.webContents.send('shell', { open: false });
+  tbMenus({ start: false });
   setTimeout(() => startWin && !startWin.isDestroyed() && !startWin._reopen && startWin.hide(), 180);
 }
 function hideQuick() {
   if (!quickWin || quickWin.isDestroyed() || !quickWin.isVisible()) return;
   quickHiddenAt = Date.now();
   quickWin.webContents.send('shell', { open: false });
+  tbMenus({ quick: false });
   setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && quickWin.hide(), 180);
 }
 
@@ -1096,6 +1126,7 @@ function showStart() {
   startWin.setBounds({ x, y, width: START_W, height: h });
   startWin.show();
   startWin.focus();
+  tbMenus({ start: true });
   const sw = startWin;
   whenLoaded(sw, () => {
     if (!sw.isDestroyed()) sw.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
@@ -1115,6 +1146,7 @@ function showQuick() {
   quickWin.setBounds({ x, y, width: QUICK_W, height: h });
   quickWin.show();
   quickWin.focus();
+  tbMenus({ quick: true });
   const qw = quickWin;
   whenLoaded(qw, () => {
     if (!qw.isDestroyed()) qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
@@ -1124,20 +1156,25 @@ function showQuick() {
 }
 
 // ---------- the Резонанс taskbar (at the bottom, instead of Windows') ----------
+// Start, the apps pinned to the Windows taskbar and the open windows (grouped by
+// app), the Quick settings and the clock. The Windows taskbar goes into auto-hide
+// and sits just above ours: a hover at the very bottom slides it up, tray and all.
 
 let taskbarWin = null;
-let taskbarShown = false;
 let taskbarPoll = 0;
+let taskbarStatus = 0;
 let hookedTB = null;
 let winList = [];
+let pinList = [];
+
+function taskbarBounds() {
+  const d = screen.getPrimaryDisplay();
+  return { x: d.bounds.x, y: d.bounds.y + d.bounds.height - TASKBAR_H, width: d.bounds.width, height: TASKBAR_H };
+}
 
 function createTaskbar() {
-  const d = screen.getPrimaryDisplay();
   taskbarWin = new BrowserWindow({
-    x: d.bounds.x,
-    y: d.bounds.y + d.bounds.height - TASKBAR_H,
-    width: d.bounds.width,
-    height: TASKBAR_H,
+    ...taskbarBounds(),
     frame: false,
     show: false,
     skipTaskbar: true,
@@ -1155,19 +1192,27 @@ function createTaskbar() {
     title: 'Rezonans taskbar',
     webPreferences: webPrefs,
   });
-  taskbarWin.loadFile(path.join(__dirname, 'app', 'taskbar.html'));
-  taskbarWin.once('ready-to-show', () => {
-    if (topHide.size === 0) taskbarWin.showInactive();
-    taskbarShown = true;
+  const tb = taskbarWin;
+  tb.loadFile(path.join(__dirname, 'app', 'taskbar.html'));
+  guardPage(tb, 'панель задач', () => {
+    closeTaskbar();
+    if (settings.taskbar) enableTaskbar(true);
+  });
+  tb.once('ready-to-show', () => {
+    tb._ready = true;
+    placeTop(tb);
     registerTaskbar();
     sendOwn();
-    taskbarWin.webContents.send('settings', view());
-    if (lastStatus) taskbarWin.webContents.send('status', lastStatus);
+    styleWindows();
+    tb.webContents.send('settings', view());
+    if (lastStatus) tb.webContents.send('status', lastStatus);
+    if (pinList.length) tb.webContents.send('taskpins', pinList);
+    hostSend({ cmd: 'taskpins' });
     hostSend({ cmd: 'taskwins', force: true });
+    fixTopSoon();
   });
-  taskbarWin.on('closed', () => {
-    taskbarWin = null;
-    taskbarShown = false;
+  tb.on('closed', () => {
+    if (taskbarWin === tb) taskbarWin = null;
   });
   hookTaskbar();
 }
@@ -1180,36 +1225,50 @@ function registerTaskbar() {
 }
 
 function hookTaskbar() {
-  if (!taskbarWin || !hostInfo || hookedTB === taskbarWin) return;
+  if (!taskbarWin || taskbarWin.isDestroyed() || !hostInfo || hookedTB === taskbarWin) return;
   hookedTB = taskbarWin;
   const num = (b) => (b && b.length >= 8 ? Number(b.readBigInt64LE(0)) : b && b.length >= 4 ? b.readInt32LE(0) : 0);
   taskbarWin.hookWindowMessage(hostInfo.appbarMsg, (wParam) => {
-    if (num(wParam) === 1) registerTaskbar();
+    if (num(wParam) === 1) registerTaskbar(); // ABN_POSCHANGED
   });
-  taskbarWin.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerTaskbar, 1500));
+  // Explorer restarted: our strip again, and Windows' own taskbar back into auto-hide
+  taskbarWin.hookWindowMessage(hostInfo.taskbarCreated, () =>
+    setTimeout(() => {
+      registerTaskbar();
+      hostSend({ cmd: 'taskbarHide', on: true });
+      hostSend({ cmd: 'taskpins' });
+    }, 1500),
+  );
 }
 
 function closeTaskbar() {
   clearInterval(taskbarPoll);
+  clearInterval(taskbarStatus);
   taskbarPoll = 0;
+  taskbarStatus = 0;
   if (taskbarWin && !taskbarWin.isDestroyed()) {
     hostSend({ cmd: 'appbarRemove', hwnd: hwndOf(taskbarWin) });
     taskbarWin.destroy();
   }
   taskbarWin = null;
-  taskbarShown = false;
   hookedTB = null;
 }
 
 // on: our bar takes the bottom and the Windows taskbar slips into auto-hide
-// (the real tray slides up on a hover at the very bottom). off: everything back.
+// (its state is saved and put back by the helper). off: everything as it was.
 function enableTaskbar(on) {
   if (on) {
+    log('панель задач Резонанса: включена');
     hostSend({ cmd: 'taskbarHide', on: true });
     if (!taskbarWin || taskbarWin.isDestroyed()) createTaskbar();
     clearInterval(taskbarPoll);
-    taskbarPoll = setInterval(() => host && hostSend({ cmd: 'taskwins' }), 1200);
+    clearInterval(taskbarStatus);
+    // new windows and titles (the front one follows each foreground change at once)
+    taskbarPoll = setInterval(() => hostSend({ cmd: 'taskwins' }), 1200);
+    // Wi-Fi, volume and battery for the icons by the clock
+    taskbarStatus = setInterval(() => hostSend({ cmd: 'status' }), 20000);
   } else {
+    log('панель задач Резонанса: выключена');
     closeTaskbar();
     hostSend({ cmd: 'taskbarHide', on: false });
   }
@@ -1343,6 +1402,7 @@ function saveSettingsPatch(patch) {
     if (settings.island) createIsland();
     else closeIsland();
   }
+  if (changed('taskbar')) enableTaskbar(!!settings.taskbar);
   if (changed('autostart')) setAutostart(settings.autostart);
   if (changed('winFont')) {
     if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
@@ -1402,6 +1462,10 @@ function rebuild(why) {
   if (settings.island) {
     closeIsland();
     createIsland();
+  }
+  if (settings.taskbar) {
+    closeTaskbar();
+    enableTaskbar(true);
   }
 }
 
@@ -1556,6 +1620,29 @@ if (!app.requestSingleInstanceLock()) {
       else if (cmd === 'settings') showPanel('center', arg && arg.tab);
       else if (cmd === 'openStart') showStart();
       else if (cmd === 'openQuick') showQuick();
+      // from the taskbar (it never takes the focus, so the menus don't hear the
+      // click as "focus went elsewhere": the button closes what it opened)
+      else if (cmd === 'toggleStart') {
+        if (startWin && !startWin.isDestroyed() && startWin.isVisible()) hideStart();
+        else {
+          hideQuick();
+          showStart();
+        }
+      } else if (cmd === 'toggleQuick') {
+        if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible()) hideQuick();
+        else {
+          hideStart();
+          showQuick();
+        }
+      } else if (cmd === 'activate') {
+        hideStart();
+        hideQuick();
+        hostSend({ cmd: 'activate', hwnd: String((arg && arg.hwnd) || '') });
+      } else if (cmd === 'showDesktop') {
+        hideStart();
+        hideQuick();
+        hostSend({ cmd: 'showDesktop' });
+      }
       else if (cmd === 'openSettingsApp') hostSend({ cmd: 'launch', path: 'ms-settings:', args: '' });
     });
 
@@ -1569,6 +1656,7 @@ if (!app.requestSingleInstanceLock()) {
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
     if (settings.island) createIsland();
+    if (settings.taskbar) enableTaskbar(true);
     // Explorer can draw over the bar and the island for a few seconds after a
     // reboot: keep nudging them back on top, so the logo takes clicks at once
     fixTopSoon();
@@ -1609,6 +1697,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     quitting = true;
     hostSend({ cmd: 'appbarRemove' });
+    hostSend({ cmd: 'taskbarHide', on: false });
     hostSend({ cmd: 'refreshWallpaper' });
     hostSend({ cmd: 'quit' });
   });

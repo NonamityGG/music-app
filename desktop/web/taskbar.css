@@ -1,0 +1,346 @@
+/* Резонанс для ПК — the taskbar along the bottom, the same look as the top bar:
+   Windows draws acrylic behind, the page adds the tint of the chosen look, a thin
+   palette line along the top edge. Start, the apps in the middle, Quick settings
+   and the clock on the right. */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: #fff;
+  font: 500 13px/1 'Onest', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+body {
+  --tint-c: rgb(36, 18, 72);
+  --tint-a: 0.42;
+  --tint: color-mix(in srgb, var(--tint-c) calc(var(--tint-a) * 100%), transparent);
+  --c1: #7c4dff;
+  --c2: #c3a6ff;
+  --c3: #ff6fd8;
+  --line: rgba(255, 255, 255, 0.09);
+  --chip: rgba(255, 255, 255, 0.08);
+  --chip-hover: rgba(255, 255, 255, 0.14);
+  --ease: cubic-bezier(0.22, 0.9, 0.26, 1);
+  --back: cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+
+body[data-bg='glass-black'],
+body[data-bg='windows'],
+body[data-bg='image'] {
+  --tint-c: rgb(8, 8, 12);
+}
+body[data-bg='dark'] {
+  --tint-c: rgb(20, 15, 31);
+}
+body[data-bg='amoled'] {
+  --tint-c: rgb(0, 0, 0);
+}
+body[data-bg='aurora'] {
+  --tint-c: rgb(6, 30, 40);
+}
+body[data-bg='ember'] {
+  --tint-c: rgb(48, 12, 18);
+}
+body[data-bg='glass-palette'] {
+  --tint-c: color-mix(in srgb, var(--c1) 28%, rgb(10, 6, 20));
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+svg {
+  display: block;
+}
+.hidden {
+  display: none !important;
+}
+
+.tb {
+  position: relative;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 0 0 12px;
+  background: var(--tint);
+  box-shadow: inset 0 1px 0 var(--line);
+  transition: background-color 0.4s ease;
+}
+
+.line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--c1) 20%, var(--c2) 50%, var(--c3) 80%, transparent);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+.right {
+  justify-self: end;
+  gap: 4px;
+}
+
+/* ---------- the dock: Start and the apps ---------- */
+
+.dock {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.start,
+.app {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 42px;
+  border-radius: 10px;
+  transition:
+    background-color 0.15s ease,
+    transform 0.18s var(--ease);
+}
+.start:hover,
+.app:hover {
+  background: var(--chip);
+}
+.start:active,
+.app:active,
+.app.press {
+  transform: scale(0.9);
+}
+
+.start .mark {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 22px;
+}
+.start .mark i {
+  width: 4px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(var(--c2), var(--c1));
+  transform: scaleY(var(--h));
+  transform-origin: center;
+  transition: transform 0.3s var(--back);
+}
+.start .mark i:nth-child(1) {
+  --h: 0.45;
+}
+.start .mark i:nth-child(2) {
+  --h: 0.85;
+}
+.start .mark i:nth-child(3) {
+  --h: 0.6;
+}
+.start .mark i:nth-child(4) {
+  --h: 0.35;
+}
+.start:hover .mark i {
+  animation: bounce 0.9s var(--ease) infinite alternate;
+}
+.start:hover .mark i:nth-child(2) {
+  animation-delay: -0.3s;
+}
+.start:hover .mark i:nth-child(3) {
+  animation-delay: -0.55s;
+}
+.start:hover .mark i:nth-child(4) {
+  animation-delay: -0.15s;
+}
+.start.open {
+  background: var(--chip-hover);
+}
+.start.open .mark i {
+  background: linear-gradient(var(--c3), var(--c1));
+}
+@keyframes bounce {
+  from {
+    transform: scaleY(calc(var(--h) * 0.55));
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background: var(--line);
+}
+
+.apps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.app img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  pointer-events: none;
+  transition:
+    transform 0.2s var(--back),
+    opacity 0.2s ease;
+}
+.app .ph {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, var(--c2), var(--c1));
+  opacity: 0.8;
+}
+.app:hover img {
+  transform: translateY(-1px);
+}
+.app.active {
+  background: var(--chip);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.app.active:hover {
+  background: var(--chip-hover);
+}
+
+/* the dot under a running app; longer and in the palette for the one in front */
+.app .dot {
+  position: absolute;
+  left: 50%;
+  bottom: 1px;
+  width: 6px;
+  height: 3px;
+  margin-left: -3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition:
+    opacity 0.2s ease,
+    width 0.25s var(--ease),
+    margin-left 0.25s var(--ease),
+    transform 0.25s var(--back),
+    background-color 0.2s ease;
+}
+.app.running .dot {
+  opacity: 1;
+  transform: none;
+}
+.app.active .dot {
+  width: 16px;
+  margin-left: -8px;
+  background: linear-gradient(90deg, var(--c1), var(--c3));
+}
+.app.min:not(.active) img {
+  opacity: 0.78;
+}
+
+/* a window opening / closing */
+.app.enter {
+  transform: scale(0.4);
+  opacity: 0;
+}
+.app {
+  transition:
+    background-color 0.15s ease,
+    transform 0.28s var(--back),
+    opacity 0.2s ease;
+}
+.app.leaving {
+  transform: scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Quick settings and the clock ---------- */
+
+.quick,
+.clock {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border-radius: 10px;
+  transition:
+    background-color 0.15s ease,
+    transform 0.18s var(--ease);
+}
+.quick {
+  gap: 10px;
+  padding: 0 12px;
+}
+.quick:hover,
+.clock:hover {
+  background: var(--chip);
+}
+.quick:active,
+.clock:active {
+  transform: scale(0.96);
+}
+.quick.open {
+  background: var(--chip-hover);
+}
+.qi svg {
+  width: 17px;
+  height: 17px;
+  opacity: 0.92;
+}
+.qi.bat {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock {
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 12px;
+  font-variant-numeric: tabular-nums;
+}
+.time {
+  font-weight: 600;
+  font-size: 13px;
+}
+.date {
+  font-size: 11.5px;
+  opacity: 0.68;
+}
+
+/* the sliver at the very right: everything minimised (as in Windows) */
+.desk {
+  width: 8px;
+  height: 100%;
+  margin-left: 4px;
+  border-left: 1px solid var(--line);
+  transition: background-color 0.15s ease;
+}
+.desk:hover {
+  background: var(--chip);
+}
