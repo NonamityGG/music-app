@@ -709,11 +709,12 @@ function hookBar() {
   bar.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerAppBar, 1500));
 }
 
-// Why the bar and the island step aside. An anti-cheat game ('guard') hides
-// them outright. A full-screen window ('fg', 'fullscreen': a game, a video, the
-// overlay a screenshot tool puts up for a moment) only sends them to the back —
-// they are never hidden for it: a window that never takes the focus, hidden and
-// shown again, could come back deaf to clicks (the logo after a snip).
+// Why the bar and the island step aside: an anti-cheat game ('guard'), a
+// full-screen window ('fg', 'fullscreen': a game, a video, the overlay a
+// screenshot tool puts up for a moment). They go to the very back, below the
+// desktop, and come back on top after — but are never hidden: the bar never
+// takes the focus, and such a window hidden and shown again comes back deaf to
+// clicks (the logo after a snip or a game; reproduced on the build machine).
 function setTopHidden(hide, why) {
   const before = [...topHide].join(', ');
   if (hide) topHide.add(why);
@@ -730,15 +731,12 @@ function setTopHidden(hide, why) {
 
 function placeTop(w) {
   if (!w || w.isDestroyed() || !w._ready) return;
-  if (topHide.has('guard')) {
-    if (w.isVisible()) w.hide();
+  if (topHide.size !== 0) {
+    // a window not shown yet just waits: its first showing is a normal one
+    if (w.isVisible()) hostSend({ cmd: 'toBack', hwnd: hwndOf(w) });
     return;
   }
   if (!w.isVisible()) w.showInactive();
-  if (topHide.size !== 0) {
-    hostSend({ cmd: 'toBack', hwnd: hwndOf(w) });
-    return;
-  }
   try {
     w.setAlwaysOnTop(true, 'screen-saver');
     w.moveTop();
