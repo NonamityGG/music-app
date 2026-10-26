@@ -937,8 +937,9 @@ function showStart() {
   const d = screen.getPrimaryDisplay();
   const wa = d.workArea;
   const h = Math.min(START_H, wa.height - 12);
-  const x = wa.x + 12;
-  const y = wa.y + wa.height - h - 12; // above the taskbar, bottom-left
+  // above the taskbar, centred — where Windows 11 opens Start on a centred taskbar
+  const x = Math.round(Math.max(wa.x + 12, Math.min(wa.x + wa.width - START_W - 12, wa.x + (wa.width - START_W) / 2)));
+  const y = wa.y + wa.height - h - 12;
   startWin.setBounds({ x, y, width: START_W, height: h });
   startWin.show();
   startWin.focus();
