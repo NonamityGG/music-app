@@ -39,6 +39,7 @@ const START_W = 680;
 const START_H = 760;
 const QUICK_W = 400;
 const QUICK_H = 600;
+const TASKBAR_H = 52; // DIP — the Резонанс taskbar along the bottom
 const SELFTEST = process.env.REZONANS_SELFTEST === '1';
 
 // ---------- settings and log ----------
@@ -80,6 +81,7 @@ const DEFAULTS = {
   winFont: true, // Onest for the whole of Windows
   shellKeys: true, // the Win key, the Start button and the tray open Резонанс
   guardGames: true, // sleep the shell (hooks + windows) while CS2 / FACEIT runs
+  taskbar: false, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
   startRecent: true, // the recent files on the Start menu
   autostart: true,
   attachMode: 'auto',
@@ -292,6 +294,10 @@ function onHost(m) {
       if (quickWin && !quickWin.isDestroyed()) quickWin.webContents.send('status', m);
       if (bar && !bar.isDestroyed()) bar.webContents.send('status', m);
       break;
+    case 'windows':
+      winList = Array.isArray(m.list) ? m.list : [];
+      if (taskbarWin && !taskbarWin.isDestroyed()) taskbarWin.webContents.send('windows', winList);
+      break;
     case 'fonts':
       log('шрифт системы: ' + (m.applied ? 'Onest' : 'как было'));
       break;
@@ -320,7 +326,7 @@ function sendOwn() {
 
 function allWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, startWin, quickWin);
+  list.push(bar, island, panel, startWin, quickWin, taskbarWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -1115,6 +1121,98 @@ function showQuick() {
   });
   hostSend({ cmd: 'status' });
   if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
+}
+
+// ---------- the Резонанс taskbar (at the bottom, instead of Windows') ----------
+
+let taskbarWin = null;
+let taskbarShown = false;
+let taskbarPoll = 0;
+let hookedTB = null;
+let winList = [];
+
+function createTaskbar() {
+  const d = screen.getPrimaryDisplay();
+  taskbarWin = new BrowserWindow({
+    x: d.bounds.x,
+    y: d.bounds.y + d.bounds.height - TASKBAR_H,
+    width: d.bounds.width,
+    height: TASKBAR_H,
+    frame: false,
+    show: false,
+    skipTaskbar: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    focusable: false,
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#00000000',
+    backgroundMaterial: 'acrylic',
+    title: 'Rezonans taskbar',
+    webPreferences: webPrefs,
+  });
+  taskbarWin.loadFile(path.join(__dirname, 'app', 'taskbar.html'));
+  taskbarWin.once('ready-to-show', () => {
+    if (topHide.size === 0) taskbarWin.showInactive();
+    taskbarShown = true;
+    registerTaskbar();
+    sendOwn();
+    taskbarWin.webContents.send('settings', view());
+    if (lastStatus) taskbarWin.webContents.send('status', lastStatus);
+    hostSend({ cmd: 'taskwins', force: true });
+  });
+  taskbarWin.on('closed', () => {
+    taskbarWin = null;
+    taskbarShown = false;
+  });
+  hookTaskbar();
+}
+
+function registerTaskbar() {
+  if (!taskbarWin || taskbarWin.isDestroyed()) return;
+  const d = screen.getPrimaryDisplay();
+  const r = screen.dipToScreenRect(null, d.bounds);
+  hostSend({ cmd: 'appbar', hwnd: hwndOf(taskbarWin), edge: 'bottom', x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(TASKBAR_H * d.scaleFactor) });
+}
+
+function hookTaskbar() {
+  if (!taskbarWin || !hostInfo || hookedTB === taskbarWin) return;
+  hookedTB = taskbarWin;
+  const num = (b) => (b && b.length >= 8 ? Number(b.readBigInt64LE(0)) : b && b.length >= 4 ? b.readInt32LE(0) : 0);
+  taskbarWin.hookWindowMessage(hostInfo.appbarMsg, (wParam) => {
+    if (num(wParam) === 1) registerTaskbar();
+  });
+  taskbarWin.hookWindowMessage(hostInfo.taskbarCreated, () => setTimeout(registerTaskbar, 1500));
+}
+
+function closeTaskbar() {
+  clearInterval(taskbarPoll);
+  taskbarPoll = 0;
+  if (taskbarWin && !taskbarWin.isDestroyed()) {
+    hostSend({ cmd: 'appbarRemove', hwnd: hwndOf(taskbarWin) });
+    taskbarWin.destroy();
+  }
+  taskbarWin = null;
+  taskbarShown = false;
+  hookedTB = null;
+}
+
+// on: our bar takes the bottom and the Windows taskbar slips into auto-hide
+// (the real tray slides up on a hover at the very bottom). off: everything back.
+function enableTaskbar(on) {
+  if (on) {
+    hostSend({ cmd: 'taskbarHide', on: true });
+    if (!taskbarWin || taskbarWin.isDestroyed()) createTaskbar();
+    clearInterval(taskbarPoll);
+    taskbarPoll = setInterval(() => host && hostSend({ cmd: 'taskwins' }), 1200);
+  } else {
+    closeTaskbar();
+    hostSend({ cmd: 'taskbarHide', on: false });
+  }
 }
 
 let appsAt = 0;

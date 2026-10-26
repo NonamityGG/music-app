@@ -83,7 +83,7 @@ namespace Rezonans
         private static void Cleanup()
         {
             try { Hooks.Remove(); } catch { }
-            try { AppBar.Remove(); } catch { }
+            try { AppBar.RemoveAll(); } catch { }
             try { Wallpaper.Refresh(); } catch { }
         }
 
@@ -178,18 +178,24 @@ namespace Rezonans
                     break;
                 case "appbar":
                     {
-                        var rc = AppBar.Set(Hwnd(Str(c, "hwnd")), Rect(c), Int(c, "height", 36));
+                        uint edge = Str(c, "edge") == "bottom" ? Native.ABE_BOTTOM : Native.ABE_TOP;
+                        var rc = AppBar.Set(Hwnd(Str(c, "hwnd")), Rect(c), Int(c, "height", 36), edge);
                         Send(new Dictionary<string, object>
                         {
                             { "type", "appbar" },
                             { "ok", true },
+                            { "edge", edge == Native.ABE_BOTTOM ? "bottom" : "top" },
                             { "x", rc.Left }, { "y", rc.Top }, { "w", rc.Right - rc.Left }, { "h", rc.Bottom - rc.Top },
                         });
                         break;
                     }
                 case "appbarRemove":
-                    AppBar.Remove();
-                    break;
+                    {
+                        var hs = Str(c, "hwnd");
+                        if (string.IsNullOrEmpty(hs)) AppBar.RemoveAll();
+                        else AppBar.Remove(Hwnd(hs));
+                        break;
+                    }
                 case "probe":
                     Probe.At(Hwnd(Str(c, "hwnd")), Int(c, "x"), Int(c, "y"));
                     break;
@@ -251,6 +257,18 @@ namespace Rezonans
                     break;
                 case "recent":
                     Send(new Dictionary<string, object> { { "type", "recent" }, { "list", Apps.Recent() } });
+                    break;
+                case "taskwins":
+                {
+                    var wins = Taskbar.Windows();
+                    if (Bool(c, "force") == true || Taskbar.Changed(wins)) Send(new Dictionary<string, object> { { "type", "windows" }, { "list", wins } });
+                    break;
+                }
+                case "activate":
+                    if (long.TryParse(Str(c, "hwnd"), out var hw)) Taskbar.Activate(hw);
+                    break;
+                case "taskbarHide":
+                    Taskbar.WindowsTaskbar(Bool(c, "on") == true);
                     break;
                 case "launch":
                     Apps.Launch(Str(c, "path"), Str(c, "args"));
@@ -446,43 +464,51 @@ namespace Rezonans
     // ---------------------------------------------------------------------------
     // The top bar as an app bar: Windows keeps maximised windows below it
     // ---------------------------------------------------------------------------
+    // Our reserved strips: the bar at the top and, when it is on, the taskbar at
+    // the bottom. Each window registers its own appbar (kept by hwnd).
     internal static class AppBar
     {
         internal static readonly uint Msg = Native.RegisterWindowMessage("RezonansAppBar");
-        private static IntPtr _hwnd = IntPtr.Zero;
-        private static bool _registered;
+        private static readonly Dictionary<IntPtr, bool> _reg = new Dictionary<IntPtr, bool>();
 
         private static Native.APPBARDATA Data(IntPtr h)
         {
             return new Native.APPBARDATA { cbSize = (uint)Marshal.SizeOf(typeof(Native.APPBARDATA)), hWnd = h };
         }
 
-        internal static Native.RECT Set(IntPtr h, Native.RECT monitor, int height)
+        internal static Native.RECT Set(IntPtr h, Native.RECT monitor, int height, uint edge)
         {
-            if (_registered && _hwnd != h) Remove();
             var abd = Data(h);
-            if (!_registered)
+            if (!_reg.ContainsKey(h))
             {
                 abd.uCallbackMessage = Msg;
                 Native.SHAppBarMessage(Native.ABM_NEW, ref abd);
-                _registered = true;
-                _hwnd = h;
+                _reg[h] = true;
             }
-            abd.uEdge = Native.ABE_TOP;
-            abd.rc = new Native.RECT { Left = monitor.Left, Top = monitor.Top, Right = monitor.Right, Bottom = monitor.Top + height };
+            abd.uEdge = edge;
+            if (edge == Native.ABE_BOTTOM)
+                abd.rc = new Native.RECT { Left = monitor.Left, Top = monitor.Bottom - height, Right = monitor.Right, Bottom = monitor.Bottom };
+            else
+                abd.rc = new Native.RECT { Left = monitor.Left, Top = monitor.Top, Right = monitor.Right, Bottom = monitor.Top + height };
             Native.SHAppBarMessage(Native.ABM_QUERYPOS, ref abd);
-            abd.rc.Bottom = abd.rc.Top + height;
+            if (edge == Native.ABE_BOTTOM) abd.rc.Top = abd.rc.Bottom - height;
+            else abd.rc.Bottom = abd.rc.Top + height;
             Native.SHAppBarMessage(Native.ABM_SETPOS, ref abd);
-            Native.SetWindowPos(h, IntPtr.Zero, abd.rc.Left, abd.rc.Top, abd.rc.Right - abd.rc.Left, height, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+            Native.SetWindowPos(h, IntPtr.Zero, abd.rc.Left, abd.rc.Top, abd.rc.Right - abd.rc.Left, abd.rc.Bottom - abd.rc.Top, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
             return abd.rc;
         }
 
-        internal static void Remove()
+        internal static void Remove(IntPtr h)
         {
-            if (!_registered) return;
-            var abd = Data(_hwnd);
+            if (!_reg.ContainsKey(h)) return;
+            var abd = Data(h);
             Native.SHAppBarMessage(Native.ABM_REMOVE, ref abd);
-            _registered = false;
+            _reg.Remove(h);
+        }
+
+        internal static void RemoveAll()
+        {
+            foreach (var h in new List<IntPtr>(_reg.Keys)) Remove(h);
         }
     }
 
@@ -1257,7 +1283,7 @@ namespace Rezonans
         internal static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
         internal const uint SPI_SETDESKWALLPAPER = 0x0014, SPI_GETDESKWALLPAPER = 0x0073, SPIF_SENDCHANGE = 0x02;
         internal const uint ABM_NEW = 0x0, ABM_REMOVE = 0x1, ABM_QUERYPOS = 0x2, ABM_SETPOS = 0x3;
-        internal const uint ABE_TOP = 1;
+        internal const uint ABE_TOP = 1, ABE_BOTTOM = 3;
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct POINT { public int X, Y; }

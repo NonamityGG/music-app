@@ -56,7 +56,7 @@ namespace Rezonans
         }
 
         // the shell icon of a shortcut as a base64 PNG (48×48)
-        private static string IconOf(string path)
+        internal static string IconOf(string path)
         {
             IntPtr hIcon = IntPtr.Zero;
             try
