@@ -292,10 +292,20 @@ namespace Rezonans
             if (GetForegroundWindow() != h) SwitchToThisWindow(h, true);
         }
 
-        // the shell's "show desktop" (Win+D): wants a single-threaded COM apartment,
-        // so it gets a short thread of its own; Explorer's own command if that fails
+        // "show desktop": every window down; pressed again with nothing restored in
+        // between, they all come back (the shell's own minimise-all / undo, run in
+        // a short single-threaded COM apartment of its own)
+        private static bool _allDown;
+
         internal static void ToggleDesktop()
         {
+            bool anyUp = false;
+            EnumWindows((h, l) =>
+            {
+                try { if (Taskworthy(h) && !IsIconic(h)) anyUp = true; } catch { }
+                return !anyUp;
+            }, IntPtr.Zero);
+            string verb = anyUp || !_allDown ? "MinimizeAll" : "UndoMinimizeALL";
             bool ok = false;
             var t = new System.Threading.Thread(() =>
             {
@@ -304,7 +314,7 @@ namespace Rezonans
                 {
                     var type = Type.GetTypeFromProgID("Shell.Application");
                     sh = Activator.CreateInstance(type);
-                    type.InvokeMember("ToggleDesktop", BindingFlags.InvokeMethod, null, sh, null);
+                    type.InvokeMember(verb, BindingFlags.InvokeMethod, null, sh, null);
                     ok = true;
                 }
                 catch (Exception e) { Program.Log("рабочий стол: " + e.Message); }
@@ -313,8 +323,9 @@ namespace Rezonans
             t.SetApartmentState(System.Threading.ApartmentState.STA);
             t.Start();
             t.Join(3000);
-            if (!ok) PostMessage(FindWindow("Shell_TrayWnd", null), 0x0111 /* WM_COMMAND */, new IntPtr(419) /* minimise all */, IntPtr.Zero);
-            Program.Log("рабочий стол: " + (ok ? "показан" : "свернул всё"));
+            if (!ok) PostMessage(FindWindow("Shell_TrayWnd", null), 0x0111 /* WM_COMMAND */, new IntPtr(verb == "MinimizeAll" ? 419 : 416), IntPtr.Zero);
+            _allDown = verb == "MinimizeAll";
+            Program.Log("рабочий стол: " + (_allDown ? "всё свёрнуто" : "окна вернулись"));
         }
 
         // ---------- the Windows taskbar out of the way (reversible) ----------
