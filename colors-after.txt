@@ -1,0 +1,29 @@
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM
+    Composition    REG_DWORD    0x1
+    AccentColor    REG_DWORD    0xffff4d7c
+    ColorPrevalence    REG_DWORD    0x0
+    ColorizationColor    REG_DWORD    0xc47c4dff
+    ColorizationColorBalance    REG_DWORD    0x59
+    ColorizationAfterglow    REG_DWORD    0xc47c4dff
+    ColorizationAfterglowBalance    REG_DWORD    0xa
+    ColorizationBlurBalance    REG_DWORD    0x1
+    EnableWindowColorization    REG_DWORD    0x0
+    ColorizationGlassAttribute    REG_DWORD    0x1
+    EnableAeroPeek    REG_DWORD    0x0
+    AlwaysHibernateThumbnails    REG_DWORD    0x0
+
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent
+    AccentPalette    REG_BINARY    E8C1FF00C9A0FF009366FF007F50FF005320FF002500E4000B009E0088179800
+    StartColorMenu    REG_DWORD    0xffff2053
+    AccentColorMenu    REG_DWORD    0xffff4d7c
+
+
+HKEY_CURRENT_USER\Control Panel\Colors
+    Hilight    REG_SZ    99 62 204
+
+
+HKEY_CURRENT_USER\Control Panel\Colors
+    HotTrackingColor    REG_SZ    124 77 255
+

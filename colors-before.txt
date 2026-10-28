@@ -1,0 +1,19 @@
+
+HKEY_CURRENT_USER\Software\Microsoft\Windows\DWM
+    Composition    REG_DWORD    0x1
+    AccentColor    REG_DWORD    0xffd47800
+    ColorPrevalence    REG_DWORD    0x0
+    ColorizationColor    REG_DWORD    0xc40078d4
+    ColorizationColorBalance    REG_DWORD    0x59
+    ColorizationAfterglow    REG_DWORD    0xc40078d4
+    ColorizationAfterglowBalance    REG_DWORD    0xa
+    ColorizationBlurBalance    REG_DWORD    0x1
+    EnableWindowColorization    REG_DWORD    0x0
+    ColorizationGlassAttribute    REG_DWORD    0x1
+    EnableAeroPeek    REG_DWORD    0x0
+    AlwaysHibernateThumbnails    REG_DWORD    0x0
+
+
+HKEY_CURRENT_USER\Control Panel\Colors
+    Hilight    REG_SZ    0 120 212
+
