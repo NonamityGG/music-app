@@ -509,6 +509,33 @@ body.noglow .aura {
   transform: scale(0.9);
 }
 
+/* repeat and shuffle at the sides: quieter, lit in the palette while on */
+.ctl button.side {
+  width: 36px;
+  height: 36px;
+  opacity: 0.6;
+}
+.ctl button.side:hover {
+  opacity: 1;
+}
+.ctl button.side.on {
+  opacity: 1;
+  color: var(--acc3, #c3a6ff);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--acc, #7c4dff) 70%, transparent));
+}
+.ctl button.side.on::after {
+  content: '';
+  position: absolute;
+  margin-top: 30px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ctl button.side:disabled {
+  opacity: 0.18;
+}
+
 .ctl button:disabled {
   opacity: 0.28;
   pointer-events: none;

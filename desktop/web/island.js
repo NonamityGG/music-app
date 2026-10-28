@@ -22,9 +22,13 @@ const tDur = $('tDur');
 const playBtn = $('play');
 const prevBtn = $('prev');
 const nextBtn = $('next');
+const repBtn = $('rep');
+const shufBtn = $('shuf');
 
 prevBtn.append(icon('prev', 22));
 nextBtn.append(icon('next', 22));
+repBtn.append(icon('repeat', 19));
+shufBtn.append(icon('shuffle', 19));
 playBtn.append(icon('play', 24));
 
 let settings = {};
@@ -92,6 +96,15 @@ function onMedia(st, fromWindows) {
   setIcon(playBtn, media.playing() ? 'pause' : 'play', 24);
   prevBtn.disabled = !st.canPrev;
   nextBtn.disabled = !st.canNext;
+  // repeat and shuffle: lit while on (repeat one track shows a "1"); dimmed when
+  // the player doesn't let them be changed
+  repBtn.disabled = !st.canRepeat;
+  shufBtn.disabled = !st.canShuffle;
+  repBtn.classList.toggle('on', st.repeat === 'list' || st.repeat === 'track');
+  shufBtn.classList.toggle('on', !!st.shuffle);
+  setIcon(repBtn, st.repeat === 'track' ? 'repeatOne' : 'repeat', 19);
+  repBtn.title = st.repeat === 'track' ? 'Повтор песни' : st.repeat === 'list' ? 'Повтор списка' : 'Повтор выключен';
+  shufBtn.title = st.shuffle ? 'Перемешивание включено' : 'Перемешать';
   isl.classList.toggle('nodur', !(st.dur > 0));
   paintProgress();
   loop();
@@ -209,6 +222,15 @@ playBtn.addEventListener('click', () => {
 });
 prevBtn.addEventListener('click', () => window.rez.media('prev'));
 nextBtn.addEventListener('click', () => window.rez.media('next'));
+repBtn.addEventListener('click', () => {
+  const next = { none: 'list', list: 'track', track: 'none' }[media.st.repeat || 'none'];
+  media.setLocal({ repeat: next }); // at once; Windows confirms a moment later
+  window.rez.media('repeat');
+});
+shufBtn.addEventListener('click', () => {
+  media.setLocal({ shuffle: !media.st.shuffle });
+  window.rez.media('shuffle');
+});
 isl.addEventListener('click', (e) => {
   // a click on the small pill opens it at once
   if (!isl.classList.contains('open') && !e.target.closest('button')) setOpen(true);

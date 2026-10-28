@@ -79,6 +79,7 @@ const DEFAULTS = {
   winDark: false,
   winPrevalence: false,
   winFont: true, // Onest for the whole of Windows
+  winCursors: true, // the mouse pointers in Резонанс's look, in the palette's colours
   shellKeys: true, // the Win key, the Start button and the tray open Резонанс
   guardGames: true, // sleep the shell (the Win-key hook; windows step aside) while CS2 runs
   taskbar: true, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
@@ -402,7 +403,26 @@ function applyShell() {
   if (!hostInfo) return;
   if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
   else hostSend({ cmd: 'fontsRestore' });
+  applyCursors();
   sendHooks();
+}
+
+// the pointers, drawn by the helper in the palette's colours ("from the cover":
+// the last fixed palette, so they don't change with every song)
+let cursorsSent = '';
+function applyCursors(force) {
+  if (!hostInfo) return;
+  if (!settings.winCursors) {
+    if (cursorsSent !== 'off') hostSend({ cmd: 'cursorsRestore' });
+    cursorsSent = 'off';
+    return;
+  }
+  const pal = settings.palette === 'cover' ? settings.lastPalette : settings.palette;
+  const [c1, c2, c3] = colors.PALETTES[pal] || colors.PALETTES.violet;
+  const sig = [c1, c2, c3].join();
+  if (!force && sig === cursorsSent) return;
+  cursorsSent = sig;
+  hostSend({ cmd: 'cursorsSet', c1, c2, c3 });
 }
 
 // ---------- anti-cheat: the shell sleeps while CS2 runs ----------
@@ -959,9 +979,11 @@ function createIsland() {
   island.setIgnoreMouseEvents(true, { forward: true });
   island.loadFile(path.join(__dirname, 'app', 'island.html'));
   guardPage(island, 'остров', () => scheduleRebuild('страница острова упала'));
+  const isl = island;
   island.once('ready-to-show', () => {
     island._ready = true;
     placeTop(island);
+    nudgePaint(isl);
     fixTopSoon();
     sendOwn();
     if (lastMedia) island.webContents.send('media', lastMedia);
@@ -969,6 +991,22 @@ function createIsland() {
   island.on('closed', () => {
     island = null;
   });
+}
+
+// A see-through window shown at start can stay blank (nothing on screen at all)
+// until it is resized: nudge it by a pixel and back, and ask for a fresh
+// picture, a few times while everything else is still starting.
+function nudgePaint(win) {
+  for (const ms of [200, 900, 2500, 6000]) {
+    setTimeout(() => {
+      if (!win || win.isDestroyed()) return;
+      const b = win.getBounds();
+      win.setBounds({ ...b, height: b.height - 1 });
+      win.setBounds(b);
+      if (!win.isVisible() && topHide.size === 0) win.showInactive();
+      win.webContents.invalidate();
+    }, ms);
+  }
 }
 
 function closeIsland() {
@@ -1521,17 +1559,7 @@ function createTaskbar() {
   tb.once('ready-to-show', () => {
     tb._ready = true;
     placeTop(tb);
-    // a see-through window shown at start can stay blank until it is resized:
-    // nudge it by a pixel and back, and ask for a fresh picture, a few times
-    for (const ms of [200, 900, 2500]) {
-      setTimeout(() => {
-        if (tb.isDestroyed()) return;
-        const b = tb.getBounds();
-        tb.setBounds({ ...b, height: b.height - 1 });
-        tb.setBounds(b);
-        tb.webContents.invalidate();
-      }, ms);
-    }
+    nudgePaint(tb);
     registerTaskbar();
     sendOwn();
     styleWindows();
@@ -1878,6 +1906,7 @@ function saveSettingsPatch(patch) {
   }
   if (changed('attachMode')) rebuild('другой способ встраивания');
   if (changed('palette') || changed('winAccent') || changed('winDark') || changed('winPrevalence')) applyWinColors();
+  if (changed('palette') || changed('winCursors')) applyCursors();
   if (changed('bg') && settings.bg === 'windows') hostSend({ cmd: 'wallpaperPath' });
   if (changed('bgImage')) bgStamp = Date.now();
   if (changed('text') && settings.text === 'lyrics' && lyricKey && !lyricData) loadLyrics(lyricKey);
@@ -2162,6 +2191,21 @@ if (!app.requestSingleInstanceLock()) {
     // reboot: keep nudging them back on top, so the logo takes clicks at once
     fixTopSoon();
     for (const ms of [2500, 5000, 9000]) setTimeout(fixTop, ms);
+    // The see-through windows (the island, the see-through taskbar) made while
+    // everything is starting can stay empty on screen for good, though Windows
+    // says they're shown — made again a moment later, they draw. So: once.
+    setTimeout(() => {
+      if (settings.island && island && !island.isDestroyed()) {
+        log('остров: создаю заново после запуска');
+        closeIsland();
+        createIsland();
+      }
+      if (settings.taskbar && settings.taskbarClear && taskbarWin && !taskbarWin.isDestroyed()) {
+        log('панель задач: создаю заново после запуска');
+        closeTaskbar();
+        enableTaskbar(true);
+      }
+    }, 5000);
     if (SELFTEST) setTimeout(selftest, 3000);
     else if (settings.seen !== app.getVersion()) {
       // a new version: show the new panel once
@@ -2189,6 +2233,37 @@ if (!app.requestSingleInstanceLock()) {
       if (d.type === 'GPU') recoverAll('упал процесс отрисовки');
     });
     powerMonitor.on('resume', () => scheduleRebuild('после сна'));
+    // the drawing can also hang without falling over (another heavy GPU app, a
+    // driver hiccup): every window is then an empty frosted box and the taskbar
+    // is gone. Ask the bar for a picture now and then; twice no answer — start over.
+    let drawMisses = 0;
+    setInterval(() => {
+      if (!bar || bar.isDestroyed() || !bar.isVisible() || topHide.size !== 0) return (drawMisses = 0);
+      let answered = false;
+      const timer = setTimeout(() => {
+        if (answered) return;
+        drawMisses++;
+        log(`строка не рисуется (${drawMisses})`);
+        if (drawMisses >= 2) {
+          log('отрисовка зависла — перезапускаю Резонанс');
+          app.relaunch();
+          app.exit(0);
+        }
+      }, 5000);
+      bar.webContents
+        .capturePage({ x: 0, y: 0, width: 40, height: 20 })
+        .then((img) => {
+          answered = true;
+          clearTimeout(timer);
+          drawMisses = img && !img.isEmpty() ? 0 : drawMisses + 1;
+          if (drawMisses >= 2) {
+            log('строка пустая — перезапускаю Резонанс');
+            app.relaunch();
+            app.exit(0);
+          }
+        })
+        .catch(() => {});
+    }, 20000);
   });
 
   app.on('window-all-closed', () => {

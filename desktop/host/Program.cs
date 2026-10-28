@@ -45,8 +45,15 @@ namespace Rezonans
         internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
 
         [MTAThread]
-        private static int Main()
+        private static int Main(string[] args)
         {
+            // RezonansHost --cursor-sheet out.png #c1 #c2 #c3: every pointer on one picture
+            // (and the files beside it), to look at them without switching anything
+            if (args.Length >= 2 && args[0] == "--cursor-sheet")
+            {
+                Cursors.Sheet(args[1], args.Length > 2 ? args[2] : "", args.Length > 3 ? args[3] : "", args.Length > 4 ? args[4] : "");
+                return 0;
+            }
             // a crash must not hang on the Windows error dialog: report and leave
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
@@ -271,6 +278,12 @@ namespace Rezonans
                     break;
                 case "fontsRestore":
                     Fonts.Restore();
+                    break;
+                case "cursorsSet":
+                    { var a = Str(c, "c1"); var b = Str(c, "c2"); var d = Str(c, "c3"); ThreadPool.QueueUserWorkItem(_ => Cursors.Apply(a, b, d)); }
+                    break;
+                case "cursorsRestore":
+                    ThreadPool.QueueUserWorkItem(_ => Cursors.Restore());
                     break;
                 case "shellHooks":
                     Hooks.Keys = Bool(c, "on") != false;
@@ -564,9 +577,12 @@ namespace Rezonans
             Native.SHAppBarMessage(Native.ABM_QUERYPOS, ref abd);
             if (edge == Native.ABE_BOTTOM) abd.rc.Top = abd.rc.Bottom - height;
             else abd.rc.Bottom = abd.rc.Top + height;
-            LastSame = _last.TryGetValue(h, out var was) && was.Left == abd.rc.Left && was.Top == abd.rc.Top && was.Right == abd.rc.Right && was.Bottom == abd.rc.Bottom;
-            if (LastSame) return abd.rc;
-            _last[h] = abd.rc;
+            lock (_last)
+            {
+                LastSame = _last.TryGetValue(h, out var was) && was.Left == abd.rc.Left && was.Top == abd.rc.Top && was.Right == abd.rc.Right && was.Bottom == abd.rc.Bottom;
+                if (LastSame) return abd.rc;
+                _last[h] = abd.rc;
+            }
             Native.SHAppBarMessage(Native.ABM_SETPOS, ref abd);
             Native.SetWindowPos(h, IntPtr.Zero, abd.rc.Left, abd.rc.Top, abd.rc.Right - abd.rc.Left, abd.rc.Bottom - abd.rc.Top, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
             return abd.rc;
@@ -578,13 +594,19 @@ namespace Rezonans
             var abd = Data(h);
             Native.SHAppBarMessage(Native.ABM_REMOVE, ref abd);
             _reg.Remove(h);
-            _last.Remove(h);
+            lock (_last) _last.Remove(h);
         }
 
         internal static void Forget(IntPtr h)
         {
             _reg.Remove(h);
-            _last.Remove(h);
+            lock (_last) _last.Remove(h);
+        }
+
+        // the strips our bars hold now (for the work area while Windows' taskbar is hidden)
+        internal static List<KeyValuePair<IntPtr, Native.RECT>> Strips()
+        {
+            lock (_last) return new List<KeyValuePair<IntPtr, Native.RECT>>(_last);
         }
 
         internal static void RemoveAll()
@@ -717,7 +739,13 @@ namespace Rezonans
             }
             var ctl = info != null ? info.Controls : null;
             bool canNext = ctl != null && ctl.IsNextEnabled, canPrev = ctl != null && ctl.IsPreviousEnabled;
-            var sig = _key + "|" + status + "|" + canNext + "|" + canPrev + "|" + Math.Round(durMs / 1000);
+            // shuffle and repeat, when the player has them
+            bool canShuffle = ctl != null && ctl.IsShuffleEnabled, canRepeat = ctl != null && ctl.IsRepeatEnabled;
+            bool shuffle = info != null && info.IsShuffleActive == true;
+            string repeat = info == null || info.AutoRepeatMode == null ? "none"
+                : info.AutoRepeatMode == Windows.Media.MediaPlaybackAutoRepeatMode.Track ? "track"
+                : info.AutoRepeatMode == Windows.Media.MediaPlaybackAutoRepeatMode.List ? "list" : "none";
+            var sig = _key + "|" + status + "|" + canNext + "|" + canPrev + "|" + Math.Round(durMs / 1000) + "|" + canShuffle + shuffle + "|" + canRepeat + repeat;
             var now = DateTime.UtcNow;
             // position every second while playing; everything else only when it changes
             if (!force && sig == _sent && !(playing && (now - _lastPos).TotalMilliseconds >= 1000)) return;
@@ -735,6 +763,10 @@ namespace Rezonans
                 { "dur", Math.Round(durMs) },
                 { "canNext", canNext },
                 { "canPrev", canPrev },
+                { "canShuffle", canShuffle },
+                { "shuffle", shuffle },
+                { "canRepeat", canRepeat },
+                { "repeat", repeat },
             };
             if (thumb != null) o["thumb"] = thumb;
             Program.Send(o);
@@ -767,6 +799,23 @@ namespace Rezonans
                 case "pause": s.TryPauseAsync().AsTask().GetAwaiter().GetResult(); break;
                 case "next": s.TrySkipNextAsync().AsTask().GetAwaiter().GetResult(); break;
                 case "prev": s.TrySkipPreviousAsync().AsTask().GetAwaiter().GetResult(); break;
+                case "shuffle":
+                {
+                    var info = s.GetPlaybackInfo();
+                    s.TryChangeShuffleActiveAsync(!(info != null && info.IsShuffleActive == true)).AsTask().GetAwaiter().GetResult();
+                    break;
+                }
+                case "repeat":
+                {
+                    // off → the whole list → this track → off, as players do
+                    var info = s.GetPlaybackInfo();
+                    var m = info != null && info.AutoRepeatMode != null ? info.AutoRepeatMode.Value : Windows.Media.MediaPlaybackAutoRepeatMode.None;
+                    var next = m == Windows.Media.MediaPlaybackAutoRepeatMode.None ? Windows.Media.MediaPlaybackAutoRepeatMode.List
+                        : m == Windows.Media.MediaPlaybackAutoRepeatMode.List ? Windows.Media.MediaPlaybackAutoRepeatMode.Track
+                        : Windows.Media.MediaPlaybackAutoRepeatMode.None;
+                    s.TryChangeAutoRepeatModeAsync(next).AsTask().GetAwaiter().GetResult();
+                    break;
+                }
                 case "seek":
                     if (posMs >= 0)
                     {

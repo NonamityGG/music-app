@@ -436,6 +436,7 @@ namespace Rezonans
                 try { _hideWatch?.Dispose(); } catch { }
                 _hideWatch = null;
                 foreach (var h in TrayHost.ExplorerTaskbars()) ShowWindow(h, SW_SHOWNA);
+                WorkAreaForWindows();
             }
         }
 
@@ -447,13 +448,150 @@ namespace Rezonans
                     if (IsWindowVisible(h)) ShowWindow(h, SW_HIDE);
             }
             catch { }
+            FixWorkArea();
         }
+
+        // The work area while Windows' taskbar is hidden: the whole screen less our
+        // own strips (the bar at the top, our taskbar at the bottom). Windows itself
+        // may keep counting its hidden taskbar — on any edge, e.g. a taskbar on the
+        // right that won't auto-hide leaves a dead strip there — or forget our
+        // strips, so maximised windows go under them and can't be reached.
+        private static string _workSaid = "";
+
+        internal static void FixWorkArea()
+        {
+            if (!_hidden) return;
+            try
+            {
+                var strips = AppBar.Strips();
+                if (strips.Count == 0) return;
+                var mon = Native.MonitorFromWindow(strips[0].Key, 2);
+                var mi = new Native.MONITORINFO { cbSize = Marshal.SizeOf(typeof(Native.MONITORINFO)) };
+                if (!Native.GetMonitorInfo(mon, ref mi)) return;
+                var m = mi.rcMonitor;
+                var want = m;
+                foreach (var s in strips)
+                {
+                    var r = s.Value;
+                    if (r.Right <= m.Left || r.Left >= m.Right || r.Bottom <= m.Top || r.Top >= m.Bottom) continue; // another screen
+                    if (r.Top <= m.Top + 1) want.Top = Math.Max(want.Top, r.Bottom);
+                    else if (r.Bottom >= m.Bottom - 1) want.Bottom = Math.Min(want.Bottom, r.Top);
+                }
+                var now = mi.rcWork;
+                if (now.Left == want.Left && now.Top == want.Top && now.Right == want.Right && now.Bottom == want.Bottom) return;
+                // set quietly: told about it, Explorer counts the work area again its
+                // own way at once (with its hidden taskbar, without our strips)
+                SystemParametersInfoRect(0x002F /* SPI_SETWORKAREA */, 0, ref want, 0);
+                var fit = want;
+                System.Threading.ThreadPool.QueueUserWorkItem(_ => RefitMaximized(fit));
+                var said = want.Left + "," + want.Top + "–" + want.Right + "," + want.Bottom;
+                if (said != _workSaid)
+                {
+                    // the desktop lays its icons out by the work area: tell it alone (once
+                    // per new work area), so the icons move out from under our strips
+                    TellDesktop();
+                    _workSaid = said;
+                    Program.Log("рабочая область: " + said + " (было " + now.Left + "," + now.Top + "–" + now.Right + "," + now.Bottom + ")");
+                }
+            }
+            catch (Exception e) { Program.Log("рабочая область: " + e.Message); }
+        }
+
+        private static void TellDesktop()
+        {
+            try
+            {
+                var progman = Native.FindWindow("Progman", null);
+                var def = progman == IntPtr.Zero ? IntPtr.Zero : Native.FindWindowEx(progman, IntPtr.Zero, "SHELLDLL_DefView", null);
+                if (def == IntPtr.Zero)
+                {
+                    // the classic desktop keeps the icons in a WorkerW
+                    IntPtr w = IntPtr.Zero;
+                    while ((w = Native.FindWindowEx(IntPtr.Zero, w, "WorkerW", null)) != IntPtr.Zero)
+                        if ((def = Native.FindWindowEx(w, IntPtr.Zero, "SHELLDLL_DefView", null)) != IntPtr.Zero) break;
+                }
+                foreach (var h in new[] { progman, def })
+                    if (h != IntPtr.Zero) Native.SendMessageTimeoutStr(h, 0x001A /* WM_SETTINGCHANGE */, new IntPtr(0x002F), "", 0x2 /* ABORTIFHUNG */, 1000, out _);
+                // and refresh it (as F5 on the desktop does), so it lays the icons out
+                // in the work area again
+                if (def != IntPtr.Zero) PostMessage(def, 0x0111 /* WM_COMMAND */, new IntPtr(0x7103), IntPtr.Zero);
+                Program.Log("рабочий стол: значки — по рабочей области" + (def == IntPtr.Zero ? " (окно значков не найдено)" : ""));
+            }
+            catch { }
+        }
+
+        // Windows only fits maximised windows to a new work area when everyone is
+        // told (which Explorer would undo): the windows that stick out of it are
+        // maximised again here, and the one in front stays in front.
+        private static void RefitMaximized(Native.RECT wa)
+        {
+            try
+            {
+                var fg = GetForegroundWindow();
+                var redo = new List<IntPtr>();
+                EnumWindows((h, l) =>
+                {
+                    try
+                    {
+                        if (!IsWindowVisible(h) || !Native.IsZoomed(h) || Foreground.Own.Contains(h.ToInt64())) return true;
+                        if (ShellClasses.Contains(ClassOf(h))) return true;
+                        if (!Native.GetWindowRect(h, out var r)) return true;
+                        // on this screen at all?
+                        if (r.Right <= wa.Left || r.Left >= wa.Right) return true;
+                        const int slack = 12; // a maximised window's frame hangs over by a few pixels
+                        if (r.Top < wa.Top - slack || r.Bottom > wa.Bottom + slack || r.Left < wa.Left - slack || r.Right > wa.Right + slack ||
+                            r.Bottom < wa.Bottom - slack || r.Right < wa.Right - slack)
+                            redo.Add(h);
+                    }
+                    catch { }
+                    return true;
+                }, IntPtr.Zero);
+                foreach (var h in redo)
+                {
+                    ShowWindow(h, SW_RESTORE);
+                    ShowWindow(h, 3 /* SW_MAXIMIZE */);
+                }
+                if (redo.Count > 0)
+                {
+                    if (fg != IntPtr.Zero && IsWindow(fg)) Bring(fg);
+                    Program.Log("рабочая область: развёрнутых окон подогнано: " + redo.Count);
+                }
+            }
+            catch (Exception e) { Program.Log("подогнать окна: " + e.Message); }
+        }
+
+        // Windows' taskbar is back: the work area by it again (Windows recounts it
+        // only when an app bar moves, so it is set here once)
+        private static void WorkAreaForWindows()
+        {
+            try
+            {
+                var tray = TrayHost.FindExplorerTray();
+                if (tray == IntPtr.Zero) return;
+                var mon = Native.MonitorFromWindow(tray, 2);
+                var mi = new Native.MONITORINFO { cbSize = Marshal.SizeOf(typeof(Native.MONITORINFO)) };
+                if (!Native.GetMonitorInfo(mon, ref mi)) return;
+                var want = mi.rcMonitor;
+                var st = Data(tray, 0);
+                bool autohide = ((int)SHAppBarMessage(ABM_GETSTATE, ref st).ToInt64() & ABS_AUTOHIDE) != 0;
+                if (!autohide && Native.GetWindowRect(tray, out var r))
+                {
+                    if (r.Bottom - r.Top > r.Right - r.Left) { if (r.Left <= want.Left + 1) want.Left = r.Right; else want.Right = r.Left; }
+                    else { if (r.Top <= want.Top + 1) want.Top = r.Bottom; else want.Bottom = r.Top; }
+                }
+                SystemParametersInfoRect(0x002F, 0, ref want, 0x02);
+            }
+            catch { }
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfoW")] private static extern bool SystemParametersInfoRect(uint action, uint param, ref Native.RECT r, uint winIni);
 
         // the crash path: the Windows taskbar must come back whatever happens
         internal static void ShowWindowsTaskbarNow()
         {
             _hidden = false;
             try { foreach (var h in TrayHost.ExplorerTaskbars()) ShowWindow(h, SW_SHOWNA); } catch { }
+            WorkAreaForWindows();
         }
 
         private static void AutoHide(bool autohide)
