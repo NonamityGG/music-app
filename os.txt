@@ -1,0 +1,6 @@
+
+ProductName                    DisplayVersion CurrentBuild
+-----------                    -------------- ------------
+Windows Server 2025 Datacenter 24H2           26100
+
+

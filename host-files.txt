@@ -1,0 +1,8 @@
+
+Name                    Length
+----                    ------
+RezonansHost.exe         99328
+RezonansHost.exe.config    174
+RezonansHost.pdb         44804
+
+

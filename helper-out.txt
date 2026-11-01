@@ -1,0 +1,4 @@
+{"type":"fg","hwnd":"131586","visible":true,"desktop":false,"full":false,"max":false,"mx":0,"my":0,"mw":1024,"mh":768}
+{"type":"hello","appbarMsg":49476,"taskbarCreated":49262,"raised":true,"os":"Microsoft Windows NT 10.0.26100.0","immersive":"ordinal"}
+{"type":"media","status":"none"}
+exit code: 0
