@@ -279,6 +279,10 @@ function onHost(m) {
     case 'audio':
       log('звук: ' + (m.event === 'default' ? 'выбрано другое устройство вывода' : 'устройства изменились (' + m.event + ')'));
       for (const w of allWindows()) w.webContents.send('audio', m);
+      hostSend({ cmd: 'outputs' });
+      break;
+    case 'outputs':
+      if (quickWin && !quickWin.isDestroyed()) quickWin.webContents.send('outputs', Array.isArray(m.list) ? m.list : []);
       break;
     case 'winColorsBackup':
       winBackup = { values: m.values, applied: { accent: false, dark: false, prev: false }, at: new Date().toISOString() };
@@ -1371,6 +1375,7 @@ function showQuick() {
     if (!qw.isDestroyed()) qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
   });
   hostSend({ cmd: 'status' });
+  hostSend({ cmd: 'outputs' });
   if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
@@ -2110,6 +2115,7 @@ if (!app.requestSingleInstanceLock()) {
       } else if (cmd === 'power') hostSend({ cmd: 'power', action: arg && arg.action });
       else if (cmd === 'volume') hostSend({ cmd: 'volume', level: arg && arg.level });
       else if (cmd === 'mute') hostSend({ cmd: 'mute', on: !!(arg && arg.on) });
+      else if (cmd === 'output') hostSend({ cmd: 'setOutput', id: arg && arg.id });
       else if (cmd === 'radio') hostSend({ cmd: 'radio', kind: arg && arg.kind, on: !!(arg && arg.on) });
       else if (cmd === 'status') hostSend({ cmd: 'status' });
       else if (cmd === 'media') hostSend({ cmd: 'media', action: arg && arg.action, pos: -1 });

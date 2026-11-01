@@ -26,6 +26,7 @@ const ICON = {
   sleep: 'M12.3 2a1 1 0 0 0-.2 2 6 6 0 1 1-7.9 7.9 1 1 0 0 0-2 .2 8 8 0 1 0 10.1-10.1z',
   restart: 'M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
   lock: 'M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-6 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm3-9H9V6a3 3 0 0 1 6 0v2z',
+  monitor: 'M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7v2H8v2h8v-2h-2v-2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18v12z',
   out: 'M17 8l-1.41 1.41L17.17 11H9v2h8.17l-1.58 1.58L17 16l4-4-4-4zM5 5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7v-2H5V5z',
   play: 'M8 5.14v13.72a1 1 0 0 0 1.52.85l10.6-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14z',
   pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
@@ -97,6 +98,46 @@ vol.addEventListener('input', () => {
   window.rez.shell('volume', { level: Number(vol.value) });
 });
 $('volIc').addEventListener('click', () => window.rez.shell('mute', { on: !status.muted }));
+
+// ---------- sound output: which device the sound goes to ----------
+
+let outputs = [];
+const outBtn = $('outCur');
+outBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = $('outList').classList.toggle('hidden') === false;
+  outBtn.setAttribute('aria-expanded', String(open));
+  outBtn.classList.toggle('open', open);
+});
+
+function renderOutputs() {
+  const cur = outputs.find((o) => o.def) || outputs[0];
+  $('outRow').classList.toggle('hidden', outputs.length === 0);
+  clear($('outIc')).appendChild(svg('monitor'));
+  $('outName').textContent = cur ? cur.name : 'Вывод звука';
+  $('outChev').textContent = '';
+  const list = clear($('outList'));
+  for (const o of outputs) {
+    list.appendChild(
+      h(
+        'button',
+        {
+          class: 'out-item' + (o.def ? ' on' : ''),
+          title: o.name,
+          onclick: (e) => {
+            e.stopPropagation();
+            if (!o.def) window.rez.shell('output', { id: o.id });
+            list.classList.add('hidden');
+            outBtn.classList.remove('open');
+            outBtn.setAttribute('aria-expanded', 'false');
+          },
+        },
+        h('span', { class: 'out-dot' }),
+        h('span', { class: 'out-t' }, o.name)
+      )
+    );
+  }
+}
 
 // ---------- battery ----------
 
@@ -188,6 +229,10 @@ function applyStatus(s) {
 }
 
 window.rez.onStatus(applyStatus);
+window.rez.onOutputs((list) => {
+  outputs = Array.isArray(list) ? list : [];
+  renderOutputs();
+});
 window.rez.onSettings(colors);
 window.rez.onMedia((m) => {
   if (!m) return;
@@ -209,6 +254,8 @@ window.rez.onShell((d) => {
     shellwaves.show(true);
   } else {
     body.classList.remove('open');
+    $('outList').classList.add('hidden');
+    outBtn.classList.remove('open');
     shellwaves.show(false);
     clearTimeout(clockTimer);
     pwMenu.classList.add('hidden');

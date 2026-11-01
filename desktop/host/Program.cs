@@ -369,6 +369,17 @@ namespace Rezonans
                     Status.SetMute(Bool(c, "on") == true);
                     Send(Status.Snapshot());
                     break;
+                case "outputs":
+                    new Thread(() => Send(new Dictionary<string, object> { { "type", "outputs" }, { "list", Outputs.List() } })) { IsBackground = true }.Start();
+                    break;
+                case "setOutput":
+                    new Thread(() =>
+                    {
+                        Outputs.Set(Str(c, "id"));
+                        Thread.Sleep(250);
+                        Send(new Dictionary<string, object> { { "type", "outputs" }, { "list", Outputs.List() } });
+                    }) { IsBackground = true }.Start();
+                    break;
                 case "radio":
                     new Thread(() => { Status.SetRadio(Str(c, "kind"), Bool(c, "on") == true); Send(Status.Snapshot()); }) { IsBackground = true }.Start();
                     break;

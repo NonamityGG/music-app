@@ -349,6 +349,106 @@ body.open .foot {
 
 /* ---------- battery ---------- */
 
+.outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.out-cur {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  transition: background 0.18s ease;
+}
+.out-cur:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.out-ic {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--acc3);
+}
+.out-ic svg {
+  width: 16px;
+  height: 16px;
+}
+.out-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.out-chev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 0.2s var(--ease);
+}
+.out-cur.open .out-chev {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+.out-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(20, 14, 34, 0.55);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  max-height: 180px;
+  overflow-y: auto;
+}
+.out-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  text-align: left;
+  color: var(--muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.out-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+.out-item.on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--acc) 22%, transparent);
+}
+.out-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.out-item.on .out-dot {
+  background: linear-gradient(var(--acc3), var(--acc2));
+}
+.out-t {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .battery {
   display: flex;
   align-items: center;

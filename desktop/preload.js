@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('rez', {
   onApps: on('apps'),
   onRecent: on('recent'),
   onStatus: on('status'),
+  onOutputs: on('outputs'),
   // the taskbar
   onWindows: on('windows'),
   onTaskpins: on('taskpins'),
