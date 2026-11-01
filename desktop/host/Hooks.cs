@@ -25,7 +25,8 @@ namespace Rezonans
         internal static volatile bool Osd;
         internal static volatile bool AltTab;
 
-        private static bool _switching; // Alt+Tab: the switcher is up
+        private static bool _switching; // Alt+Tab or Win+Tab: the switcher is up
+        private static bool _switchWin; // ...and it was opened with Win+Tab (Win picks, not Alt)
         private static bool _maskAlt; // Alt's release must not reach Windows bare
         private static bool _eatEscUp;
         private const int VK_TAB = 0x09, VK_ESCAPE = 0x1B, VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
@@ -47,7 +48,7 @@ namespace Rezonans
             var what = new List<string>();
             if (Keys) what.Add("Win → Пуск, Win+A → быстрые настройки");
             if (Osd) what.Add("клавиши громкости → громкость Резонанса");
-            if (AltTab) what.Add("Alt+Tab → переключатель Резонанса");
+            if (AltTab) what.Add("Alt+Tab и Win+Tab → переключатель Резонанса");
             Program.Log("перехват: " + string.Join("; ", what));
             if (_on) return;
             _on = true;
@@ -124,7 +125,12 @@ namespace Rezonans
                     }
                     if (_switching)
                     {
-                        if (vk == VK_TAB) return new IntPtr(1); // its release
+                        // Win+Tab: each further Tab steps (Alt+Tab steps in the branch above)
+                        if (vk == VK_TAB)
+                        {
+                            if (Down(m) && _switchWin) Switch("switchStep", (ShellNative.GetAsyncKeyState(0x10) & 0x8000) != 0 ? -1 : 1);
+                            return new IntPtr(1);
+                        }
                         if (Down(m) && (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN))
                         {
                             Switch("switchStep", vk == VK_LEFT || vk == VK_UP ? -1 : 1);
@@ -171,10 +177,33 @@ namespace Rezonans
                             Emit("quick"); // Win+A: our Quick settings, not Windows'
                             return new IntPtr(1);
                         }
+                        // Win+Tab: Резонанс's window switcher, not Task View. Win stays
+                        // held while Tab steps; letting Win go picks the window. Ctrl+Win+Tab
+                        // (virtual desktops) is left to Windows.
+                        if (vk == VK_TAB && AltTab && !ctrl && !_switching)
+                        {
+                            Switch("switchStart", shift ? -1 : 1);
+                            _switching = true;
+                            _switchWin = true;
+                            _ate = true;
+                            return new IntPtr(1);
+                        }
                     }
                 }
                 else if (Up(m) && win)
                 {
+                    if (_switching && _switchWin)
+                    {
+                        // Win let go while Win+Tab is up: the window is picked
+                        Switch("switchDone", 0);
+                        _switching = false;
+                        _switchWin = false;
+                        _winDown = false;
+                        _ate = false;
+                        Release((byte)vk, (info.flags & 0x1) != 0);
+                        return new IntPtr(1);
+                    }
+                    _switchWin = false;
                     bool lone = _winDown && !_combo;
                     bool ate = _ate;
                     _winDown = false;

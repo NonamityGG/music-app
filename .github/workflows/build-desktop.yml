@@ -208,6 +208,23 @@ jobs:
           Click ($b.Width - 4) ($b.Height - 26)
           Start-Sleep -Seconds 2
           Shot "17-show-desktop"
+          # Win+Tab: Резонанс's window switcher opens while Win is held (not Task View)
+          Add-Type @"
+          using System; using System.Runtime.InteropServices;
+          public static class Keys {
+            [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+          }
+"@
+          [Keys]::keybd_event(0x5B, 0, 0, [UIntPtr]::Zero)
+          Start-Sleep -Milliseconds 200
+          [Keys]::keybd_event(0x09, 0, 0, [UIntPtr]::Zero)
+          Start-Sleep -Milliseconds 80
+          [Keys]::keybd_event(0x09, 0, 2, [UIntPtr]::Zero)
+          Start-Sleep -Milliseconds 1200
+          Shot "18-winTab-open"
+          [Keys]::keybd_event(0x5B, 0, 2, [UIntPtr]::Zero)
+          Start-Sleep -Seconds 2
+          Shot "19-winTab-picked"
           Copy-Item "$env:APPDATA/Rezonans/rezonans.log" smoke/ -ErrorAction SilentlyContinue
           Copy-Item "$env:APPDATA/Rezonans/settings.json" smoke/ -ErrorAction SilentlyContinue
           Get-Process Rezonans, RezonansHost -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, MainWindowTitle | Out-String | Set-Content smoke/processes.txt
