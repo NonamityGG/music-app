@@ -214,7 +214,7 @@ jobs:
           public static class Keys {
             [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
           }
-"@
+          "@
           [Keys]::keybd_event(0x5B, 0, 0, [UIntPtr]::Zero)
           Start-Sleep -Milliseconds 200
           [Keys]::keybd_event(0x09, 0, 0, [UIntPtr]::Zero)
