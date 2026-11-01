@@ -1229,8 +1229,7 @@ function updateTaskbarClear() {
 
 let switchWin = null;
 let sw = null; // { list, i } while the switcher is up
-const SW_CARD = 148;
-const SW_COLS = 6;
+const SW_COLS = 5; // at most this many cards in a row
 
 function createSwitcher() {
   switchWin = new BrowserWindow({
@@ -1277,11 +1276,16 @@ function onSwitch(key, dir) {
     const front = list.findIndex((w) => w.active);
     const base = front === -1 ? -1 : front;
     const i = ((dir < 0 ? base - 1 : base + 1) + list.length) % list.length;
-    sw = { list, i };
+    sw = { list, i, cols: 1, token: Date.now() };
     showSwitcher();
     hostSend({ cmd: 'taskwins', force: true });
+    captureThumbs(sw.token);
   } else if (key === 'switchStep' && sw) {
     sw.i = (sw.i + (dir < 0 ? -1 : 1) + sw.list.length) % sw.list.length;
+    sendSwitch();
+  } else if (key === 'switchRow' && sw) {
+    const n = sw.list.length;
+    sw.i = (((sw.i + dir * sw.cols) % n) + n) % n;
     sendSwitch();
   } else if (key === 'switchDone' && sw) {
     const w = sw.list[sw.i];
@@ -1290,28 +1294,55 @@ function onSwitch(key, dir) {
   } else if (key === 'switchCancel') hideSwitcher();
 }
 
+// Task View's look: the whole screen, dimmed, with a live picture of each window
+// (a capture of the window itself, taken as the switcher opens) in a grid.
 function showSwitcher() {
   if (!switchWin || switchWin.isDestroyed()) createSwitcher();
-  const n = sw.list.length;
-  const cols = Math.min(SW_COLS, n);
-  const rows = Math.ceil(n / SW_COLS);
-  const width = cols * SW_CARD + 32;
-  const height = rows * (SW_CARD + 8) + 32;
-  const d = screen.getPrimaryDisplay().workArea;
-  switchWin.setBounds({ x: Math.round(d.x + (d.width - width) / 2), y: Math.round(d.y + (d.height - height) / 2), width, height });
+  const full = screen.getPrimaryDisplay().bounds;
+  // as many columns as fit, at most SW_COLS: up/down move by a row of these
+  const fit = Math.max(1, Math.floor((full.width - 120) / 284));
+  sw.cols = Math.max(1, Math.min(SW_COLS, fit, sw.list.length));
+  switchWin.setBounds(full);
   const w = switchWin;
   whenLoaded(w, () => {
     if (w.isDestroyed() || !sw) return;
-    // on screen first, then the tiles come in (so their animation is seen)
+    // on screen first, then the cards come in (so their animation is seen)
     w.showInactive();
     w.moveTop();
     setTimeout(sendSwitch, 16);
   });
 }
 
+// The window pictures: Electron's own capture of each window, matched to the
+// window by its handle. Arrives a moment after the cards; minimised windows (and
+// any that can't be captured) keep their app icon.
+async function captureThumbs(token) {
+  let srcs = [];
+  try {
+    srcs = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 512, height: 320 }, fetchWindowIcons: false });
+  } catch (e) {
+    log('переключатель: снимки окон не получились: ' + e.message);
+    return;
+  }
+  if (!sw || sw.token !== token) return;
+  const byHwnd = new Map();
+  for (const s of srcs) {
+    const hw = String(s.id).split(':')[1];
+    if (hw && !s.thumbnail.isEmpty()) byHwnd.set(hw, s.thumbnail);
+  }
+  let any = false;
+  for (const w of sw.list) {
+    const img = byHwnd.get(w.hwnd);
+    if (!img) continue;
+    w.thumb = 'data:image/jpeg;base64,' + img.toJPEG(80).toString('base64');
+    any = true;
+  }
+  if (any) sendSwitch();
+}
+
 function sendSwitch() {
   if (!switchWin || switchWin.isDestroyed() || !sw) return;
-  switchWin.webContents.send('shell', { open: true, list: sw.list, i: sw.i });
+  switchWin.webContents.send('shell', { open: true, list: sw.list, i: sw.i, cols: sw.cols });
 }
 
 function hideSwitcher() {
@@ -2175,6 +2206,15 @@ if (!app.requestSingleInstanceLock()) {
         const i = sw.list.findIndex((w) => w.hwnd === String(arg || ''));
         if (i >= 0) sw.i = i;
         onSwitch('switchDone', 0);
+      } else if (cmd === 'switchHover' && sw) {
+        // the pointer over a card: it is the one to pick
+        const i = sw.list.findIndex((w) => w.hwnd === String(arg || ''));
+        if (i >= 0 && i !== sw.i) {
+          sw.i = i;
+          sendSwitch();
+        }
+      } else if (cmd === 'switchCancel' && sw) {
+        onSwitch('switchCancel', 0);
       } else if (cmd === 'menuPick') onMenuPick(String(arg || ''));
       else if (cmd === 'menuClose') hideMenu();
       else if (cmd === 'taskOrder' && Array.isArray(arg)) saveSettingsPatch({ taskOrder: arg });

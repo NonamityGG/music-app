@@ -133,7 +133,9 @@ namespace Rezonans
                         }
                         if (Down(m) && (vk == VK_LEFT || vk == VK_RIGHT || vk == VK_UP || vk == VK_DOWN))
                         {
-                            Switch("switchStep", vk == VK_LEFT || vk == VK_UP ? -1 : 1);
+                            // up and down move a whole row of the grid, left and right a card
+                            if (vk == VK_UP || vk == VK_DOWN) Switch("switchRow", vk == VK_UP ? -1 : 1);
+                            else Switch("switchStep", vk == VK_LEFT ? -1 : 1);
                             return new IntPtr(1);
                         }
                         if (vk == VK_ESCAPE && Down(m))
