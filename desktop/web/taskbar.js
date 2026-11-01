@@ -66,6 +66,8 @@ function apply(s) {
   body.style.setProperty('--tint-a', String(s.barTint ?? 0.42));
   const c = s.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
   c.forEach((v, i) => body.style.setProperty(`--c${i + 1}`, v));
+  // the bar takes the colour chosen in the app: its palette's first colour, darkened
+  body.style.setProperty('--tint-c', `color-mix(in srgb, ${c[0]} 34%, rgb(10, 6, 20))`);
 }
 window.rez.settings().then(apply);
 window.rez.onSettings(apply);
