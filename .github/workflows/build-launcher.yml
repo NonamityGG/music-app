@@ -103,6 +103,7 @@ jobs:
           dir="$RUNNER_TEMP/smoke-launcher-repo"
           mkdir -p "$dir"
           cp -r smoke-launcher/* "$dir/" 2>/dev/null || true
+          cp Rezonans-Launcher-*.apk "$dir/" 2>/dev/null || true
           echo "run ${{ github.run_number }} ${{ github.sha }}" > "$dir/run.txt"
           cd "$dir"
           git init -q
