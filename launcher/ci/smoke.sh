@@ -55,3 +55,5 @@ shot 7-page-left
 adb logcat -d -s RezL:* > "$OUT/rezl.txt"
 adb logcat -d -s chromium:* AndroidRuntime:* | tail -80 > "$OUT/logcat.txt"
 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" > "$OUT/top.txt"
+adb logcat -d -b events | grep -iE "rezonans|relaunch|finish_activity|destroy_activity|config" | tail -60 > "$OUT/events.txt"
+adb logcat -d -b all | grep -iE "ActivityTaskManager|ActivityManager" | grep -i rezonans | tail -60 > "$OUT/atm.txt"
