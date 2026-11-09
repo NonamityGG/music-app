@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Резонанс Лаунчер</string>
+    <string name="media_listener">Резонанс — что сейчас играет и значки уведомлений</string>
+    <string name="wall_name">Резонанс — живые волны</string>
+    <string name="wall_about">Волны Резонанса за главным экраном и экраном блокировки: в цветах выбранной палитры, двигаются вместе со страницами и слышат музыку.</string>
+</resources>
