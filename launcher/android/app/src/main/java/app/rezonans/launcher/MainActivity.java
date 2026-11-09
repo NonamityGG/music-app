@@ -49,6 +49,7 @@ public class MainActivity extends Activity implements Page {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Log.i(TAG, "onCreate, saved state " + (state != null));
         current = this;
         edgeToEdge();
 
@@ -222,6 +223,7 @@ public class MainActivity extends Activity implements Page {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        Log.i(TAG, "onNewIntent " + intent);
         // the Home button while Резонанс is already in front: back to the first page
         if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) emit("key", "\"home\"");
     }

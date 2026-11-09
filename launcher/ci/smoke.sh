@@ -24,7 +24,7 @@ adb logcat -c
 adb shell am start -n $PKG/.MainActivity
 sleep 4
 shot 0-intro
-sleep 12
+sleep 26
 shot 1-home
 key KEYCODE_HOME 2
 shot 2-home-pressed

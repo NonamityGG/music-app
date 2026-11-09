@@ -47,7 +47,6 @@
 
         <activity
             android:name=".MainActivity"
-            android:clearTaskOnLaunch="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|colorMode"
             android:exported="true"
             android:launchMode="singleTask"
