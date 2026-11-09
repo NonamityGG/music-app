@@ -16,7 +16,12 @@ export const KINDS = {
   waves: { name: 'Волны', hint: 'живая полоса', sizes: [[4, 1], [4, 2]], glyph: 'waves' },
 };
 
-export const sizeOf = (item) => [item.c || KINDS[item.t].sizes[0][0], item.r || KINDS[item.t].sizes[0][1]];
+// the grid the desktop has now: a wide widget on a phone takes the whole width
+export const dims = { cols: 4 };
+export const sizeOf = (item) => {
+  const c = item.c || KINDS[item.t].sizes[0][0];
+  return [c >= 4 && dims.cols <= 6 ? dims.cols : c, item.r || KINDS[item.t].sizes[0][1]];
+};
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);

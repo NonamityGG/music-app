@@ -395,6 +395,12 @@ function boot() {
   rez.orientation(S.orient);
   rez.log(`Резонанс Лаунчер запущен: ${apps.all().length} приложений, ${home.geo.W}×${home.geo.H}, сетка ${home.geo.cols}×${home.geo.rows}, ${(navigator.userAgent.match(/Chrome\/[\d.]+/) || [''])[0]}`);
 
+  setTimeout(() => {
+    const first = document.querySelector('#pager .item.app');
+    const r = first && first.getBoundingClientRect();
+    rez.log(`экран: страниц ${L.pages.map((p) => p.length).join('+')}, значков в DOM ${document.querySelectorAll('#pager .item.app').length}, первый ${r ? [r.x, r.y, r.width, r.height].map(Math.round) : 'нет'}, виджетов ${document.querySelectorAll('.item.w').length}, видимых приложений ${apps.visible().length}`);
+  }, 2500);
+
   const afterIntro = () => {
     if (!S.homeAsked && !INFO.home && INFO.app) setTimeout(showHello, 1200);
   };

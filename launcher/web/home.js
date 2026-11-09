@@ -64,6 +64,7 @@ export function measure() {
     cols = Math.max(3, Math.min(9, +m[1]));
     rows = Math.max(3, Math.min(9, +m[2]));
   }
+  widgets.dims.cols = cols;
   Object.assign(geo, { W, H, cols, rows, is, ch, tablet, landscape, split, feedW, dockMax: Math.max(4, Math.min(cols, tablet ? 7 : 5)), feedOn: !!S.feed });
   const st = homeEl.style;
   st.setProperty('--is', is + 'px');

@@ -24,7 +24,7 @@ adb logcat -c
 adb shell am start -n $PKG/.MainActivity
 sleep 4
 shot 0-intro
-sleep 5
+sleep 12
 shot 1-home
 key KEYCODE_HOME 2
 shot 2-home-pressed
@@ -52,5 +52,6 @@ adb shell input swipe $((W * 10 / 100)) $((H / 2)) $((W * 85 / 100)) $((H / 2)) 
 sleep 1
 shot 7-page-left
 # what the page and the system said
-adb logcat -d -s Rezonans:* chromium:W '*:E' | tail -150 > "$OUT/logcat.txt"
+adb logcat -d -s RezL:* > "$OUT/rezl.txt"
+adb logcat -d -s chromium:* AndroidRuntime:* | tail -80 > "$OUT/logcat.txt"
 adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" > "$OUT/top.txt"
