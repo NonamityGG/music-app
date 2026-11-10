@@ -1461,12 +1461,14 @@ body.wp-system .drawer {
 }
 .mi-sizes {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
+  max-width: 260px;
 }
 .mi-sizes span {
-  flex: 1;
+  flex: 1 0 100%;
   font-size: 14px;
   color: var(--muted);
 }

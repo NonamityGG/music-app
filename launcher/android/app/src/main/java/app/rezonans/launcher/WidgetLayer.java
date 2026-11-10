@@ -320,67 +320,78 @@ public class WidgetLayer extends FrameLayout {
             setVisibility(View.VISIBLE);
         }
 
-        @Override
-        public boolean onInterceptTouchEvent(MotionEvent e) {
+        // The widget may or may not use the touch. Either way this cell sees every
+        // event (through the intercept when a child took it, through onTouchEvent
+        // when none did), so the same watcher runs in both: a long press and a
+        // sideways swipe belong to the page.
+        private boolean watch(MotionEvent e) {
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     if (down != null) down.recycle();
                     down = MotionEvent.obtain(e);
                     longSent = false;
                     toPage = false;
+                    removeCallbacks(longPress);
                     postDelayed(longPress, ViewConfiguration.getLongPressTimeout());
                     return false;
                 case MotionEvent.ACTION_MOVE:
-                    if (down == null) return false;
+                    if (down == null || toPage) return false;
                     float dx = e.getX() - down.getX();
                     float dy = e.getY() - down.getY();
                     if (Math.hypot(dx, dy) > slop) removeCallbacks(longPress);
-                    if (longSent) return true;
-                    // sideways: the pages turn
-                    if (Math.abs(dx) > slop * 2 && Math.abs(dx) > Math.abs(dy) * 1.3f) {
+                    if (longSent) return false;
+                    if (Math.abs(dx) > slop * 2 && Math.abs(dx) > Math.abs(dy) * 1.2f) {
                         toPage = true;
-                        handToPage(down);
+                        Log.i(MainActivity.TAG, "widget " + id + ": sideways swipe goes to the page");
+                        handToPage(e);
                         return true;
                     }
                     return false;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     removeCallbacks(longPress);
-                    return longSent;
+                    return false;
                 default:
                     return false;
             }
         }
 
         @Override
+        public boolean onInterceptTouchEvent(MotionEvent e) {
+            boolean grab = watch(e);
+            return grab || longSent;
+        }
+
+        @Override
         public boolean onTouchEvent(MotionEvent e) {
             int a = e.getActionMasked();
             if (toPage) {
-                WebView w = act.web;
-                if (w != null) {
-                    MotionEvent m = MotionEvent.obtain(e);
-                    m.offsetLocation(getX(), getY());
-                    w.dispatchTouchEvent(m);
-                    m.recycle();
-                }
+                forward(e);
                 if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) toPage = false;
                 return true;
             }
-            if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) removeCallbacks(longPress);
-            // the widget did not use the touch: it still belongs to this place, not to the page below
+            // nobody inside took the touch: this cell is the target and the intercept is not asked again
+            if (a != MotionEvent.ACTION_DOWN && watch(e)) return true;
             return true;
         }
 
-        private void handToPage(MotionEvent first) {
+        private void forward(MotionEvent e) {
             WebView w = act.web;
             if (w == null) return;
-            // the widget lets go; the page gets the touch from where it began
-            long now = android.os.SystemClock.uptimeMillis();
-            MotionEvent cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+            MotionEvent m = MotionEvent.obtain(e);
+            m.offsetLocation(getX(), getY());
+            w.dispatchTouchEvent(m);
+            m.recycle();
+        }
+
+        private void handToPage(MotionEvent now) {
+            WebView w = act.web;
+            if (w == null) return;
+            // the widget lets go (cancel), the page gets a touch that begins right here
+            MotionEvent cancel = MotionEvent.obtain(now.getDownTime(), now.getEventTime(), MotionEvent.ACTION_CANCEL, now.getX(), now.getY(), 0);
             view.dispatchTouchEvent(cancel);
             cancel.recycle();
-            MotionEvent d0 = MotionEvent.obtain(first);
-            d0.offsetLocation(getX(), getY());
+            MotionEvent d0 = MotionEvent.obtain(now.getDownTime(), now.getEventTime(), MotionEvent.ACTION_DOWN, now.getX() + getX(), now.getY() + getY(), 0);
             w.dispatchTouchEvent(d0);
             d0.recycle();
         }
