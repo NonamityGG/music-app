@@ -140,6 +140,37 @@ const S = {
     await shot(p.page, 'tablet-port-settings');
     await p.ctx.close();
   },
+  async sys() {
+    const { page, ctx } = await open('sys', phone, { store: STORE });
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('rez-open-widgets')));
+    await wait(500);
+    await shot(page, 'phone-sys-picker');
+    check('picker lists app widgets', (await page.locator('.wgs').count()) === 2);
+    await page.locator('.wgs .btn').first().click();
+    await wait(900);
+    await shot(page, 'phone-sys-added');
+    check('placeholder on desktop', (await page.locator('#pager .item.w-sys').count()) === 1);
+    const frames = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'frames').map((c) => c[1]));
+    const f = JSON.parse(frames[frames.length - 1] || '[]');
+    check('frame sent for widget 41', f.length === 1 && f[0].id === 41 && f[0].w > 100, JSON.stringify(f));
+    // a menu hides the widgets, the long press from Android opens it
+    await page.evaluate(() => window.__rezEmit('widgetLong', { id: 41 }));
+    await wait(400);
+    await shot(page, 'phone-sys-menu');
+    check('menu opened', await page.locator('#menu.on').count());
+    const frames2 = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'frames').map((c) => c[1]));
+    check('widgets hidden under menu', frames2[frames2.length - 1] === '[]');
+    await page.locator('#menu .mi-sizes .sz').nth(3).click();
+    await wait(500);
+    await page.evaluate(() => window.__rezEmit('widgetLong', { id: 41 }));
+    await wait(300);
+    await page.locator('#menu .mi.danger, #menu .danger').first().click();
+    await wait(500);
+    check('placeholder removed', (await page.locator('#pager .item.w-sys').count()) === 0);
+    const rm = await page.evaluate(() => window.__calls.filter((c) => c[0] === 'widgetRemove'));
+    check('native told to let go', rm.length === 1 && rm[0][1] === 41, JSON.stringify(rm));
+    await ctx.close();
+  },
   async looks() {
     const variants = [
       ['fire-ember', { palette: 'fire', bg: 'ember', style: 'neon' }],

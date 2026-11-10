@@ -51,6 +51,18 @@ sleep 1
 adb shell input swipe $((W * 10 / 100)) $((H / 2)) $((W * 85 / 100)) $((H / 2)) 250
 sleep 1
 shot 7-page-left
+# a widget of another app: the first one the system has
+adb shell cmd appwidget grantbind --package $PKG --user 0 > "$OUT/grantbind.txt" 2>&1
+adb shell dumpsys appwidget | grep -E "Provider\{|provider=" | head -30 > "$OUT/providers.txt"
+adb shell am start -n $PKG/.MainActivity --es test_widget first
+sleep 8
+shot 8-widget-added
+adb shell input swipe $((W * 85 / 100)) $((H / 2)) $((W * 10 / 100)) $((H / 2)) 250
+sleep 1
+shot 9-widget-swipe
+adb shell input swipe $((W / 2)) $((H * 35 / 100)) $((W / 2)) $((H * 35 / 100)) 900
+sleep 1.5
+shot 10-widget-long
 # what the page and the system said
 adb logcat -d -s RezL:* > "$OUT/rezl.txt"
 adb logcat -d -s chromium:* AndroidRuntime:* | tail -80 > "$OUT/logcat.txt"

@@ -692,6 +692,30 @@ body.intro-on #home {
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* a widget of another app: Android draws it above this place */
+.item.w.w-sys {
+  padding: 0;
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  align-items: center;
+  border-radius: 26px;
+}
+.item.w.w-sys .sys-name {
+  font: 600 13px 'Onest', sans-serif;
+  color: var(--muted);
+  text-align: center;
+  padding: 0 12px;
+}
+html.native-host .item.w.w-sys .sys-name {
+  display: none;
+}
+.item.w.w-sys.hole {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 /* the clock */
 .wc-greet {
   font: 600 14px 'Onest', sans-serif;
@@ -1990,6 +2014,50 @@ button.st-row:active {
 }
 
 /* the widget picker */
+.wg-head {
+  margin: 22px 4px 10px;
+  font: 600 13px 'Onest', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wg-sys {
+  display: grid;
+  gap: 8px;
+}
+.wgs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--edge);
+}
+.wgs img {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  flex: none;
+}
+.wgs > div {
+  flex: 1;
+  min-width: 0;
+}
+.wgs b {
+  display: block;
+  font: 600 14.5px 'Onest', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wgs span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .wg-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

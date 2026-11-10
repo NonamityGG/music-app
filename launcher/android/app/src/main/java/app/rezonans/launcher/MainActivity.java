@@ -44,6 +44,7 @@ public class MainActivity extends Activity implements Page {
     private boolean visible = false;
     private BroadcastReceiver packages;
     String lastInsets = "";
+    WidgetLayer widgets;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -110,7 +111,12 @@ public class MainActivity extends Activity implements Page {
                 return true;
             }
         });
-        setContentView(web);
+        // the page, and above it a transparent layer for the widgets of other apps
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        widgets = new WidgetLayer(this);
+        root.addView(widgets, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
         web.loadUrl(AssetServer.BASE + "index.html");
         web.requestFocus();
 
@@ -224,8 +230,49 @@ public class MainActivity extends Activity implements Page {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         Log.i(TAG, "onNewIntent " + intent);
+        testWidget(intent);
         // the Home button while Резонанс is already in front: back to the first page
         if (intent != null && intent.hasCategory(Intent.CATEGORY_HOME)) emit("key", "\"home\"");
+    }
+
+    // for the emulator check only (builds with "dev" in the version): add the first widget the system has
+    private void testWidget(Intent intent) {
+        try {
+            if (intent == null || !intent.hasExtra("test_widget") || widgets == null) return;
+            String vn = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            if (vn == null || !vn.contains("dev")) return;
+            org.json.JSONArray all = new org.json.JSONArray(widgets.list());
+            String want = intent.getStringExtra("test_widget");
+            for (int i = 0; i < all.length(); i++) {
+                JSONObject o = all.getJSONObject(i);
+                if ("first".equals(want) || o.getString("k").contains(want)) {
+                    Log.i(TAG, "test widget " + o.getString("k"));
+                    widgets.add(o.getString("k"));
+                    return;
+                }
+            }
+            Log.w(TAG, "test widget: nothing to add, providers " + all.length());
+        } catch (Exception e) {
+            Log.w(TAG, "test widget: " + e);
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (widgets != null) widgets.start();
+    }
+
+    @Override
+    protected void onStop() {
+        if (widgets != null) widgets.stop();
+        super.onStop();
+    }
+
+    @Override
+    protected void onActivityResult(int req, int result, Intent data) {
+        super.onActivityResult(req, result, data);
+        if (widgets != null && (req == WidgetLayer.REQ_BIND || req == WidgetLayer.REQ_CONFIG)) widgets.onResult(req, result, data);
     }
 
     @Override

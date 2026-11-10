@@ -11,6 +11,7 @@ import * as drawer from './drawer.js';
 import * as folder from './folder.js';
 import * as settings from './settings.js';
 import * as widgets from './widgets.js';
+import * as sys from './sys.js';
 import * as weather from './weather.js';
 import * as intro from './intro.js';
 import './graph.js';
@@ -58,6 +59,7 @@ function openWidgets() {
   b.style.setProperty('--ch', home.geo.ch + 'px');
   const list = el('div', 'wg-list');
   for (const [id, k] of Object.entries(widgets.KINDS)) {
+    if (k.hidden) continue;
     const [c, r] = k.sizes[0];
     const card = el('div', 'wg');
     const prev = el('div', 'wg-prev');
@@ -79,9 +81,49 @@ function openWidgets() {
     list.append(card);
   }
   b.append(list);
+  sysSection(b);
   b.scrollTop = 0;
   wgBox.classList.add('on');
 }
+
+// widgets of other apps, as the system lists them
+function sysSection(b) {
+  const all = rez.widgets();
+  if (!all.length) return;
+  b.append(el('div', 'wg-head', 'Виджеты приложений'));
+  const byApp = new Map();
+  for (const w of all) {
+    if (w.pkg === 'app.rezonans.launcher') continue;
+    if (!byApp.has(w.pkg)) byApp.set(w.pkg, []);
+    byApp.get(w.pkg).push(w);
+  }
+  const names = (pkg) => {
+    const a = apps.byPkg(pkg);
+    return a ? a.label || a.name || pkg : pkg;
+  };
+  const pkgs = Array.from(byApp.keys()).sort((x, y) => names(x).localeCompare(names(y), 'ru'));
+  const box = el('div', 'wg-sys');
+  for (const pkg of pkgs) {
+    for (const w of byApp.get(pkg)) {
+      const row = el('div', 'wgs');
+      const ic = el('img');
+      ic.src = rez.iconUrl(pkg);
+      ic.alt = '';
+      const tx = el('div');
+      const [c, r] = sysSize(w);
+      tx.append(el('b', '', w.label || names(pkg)), el('span', '', `${names(pkg)} · ${c}×${r}`));
+      const add = el('button', 'btn', 'Добавить');
+      add.addEventListener('click', () => {
+        closeWidgets();
+        rez.widgetAdd(w.k);
+      });
+      row.append(ic, tx, add);
+      box.append(row);
+    }
+  }
+  b.append(box);
+}
+const sysSize = (w) => sys.sizeFor(w.w || 250, w.h || 110);
 
 function closeWidgets() {
   wgOpen = false;
@@ -102,6 +144,8 @@ drag.hooks.openFolder = (id, rect) => folder.openFolder(id, rect);
 drag.hooks.openSettings = (page) => settings.open(page);
 drag.hooks.openWidgets = openWidgets;
 drag.hooks.toast = toast;
+sys.hooks.toast = toast;
+sys.hooks.longMenu = (id) => drag.widgetMenu(id);
 drag.hooks.rename = (id) => folder.rename(id);
 drag.hooks.dragging = (on) => homeEl.classList.toggle('dragging', on);
 drag.attach($('home'));
@@ -391,6 +435,7 @@ function boot() {
   widgets.setMedia(m);
   look.setWaveState({ music: !!(m && m.active && m.playing) });
   weather.start(onWeather);
+  sys.start();
   rez.visualizer(S.hear);
   rez.orientation(S.orient);
   rez.log(`Резонанс Лаунчер запущен: ${apps.all().length} приложений, ${home.geo.W}×${home.geo.H}, сетка ${home.geo.cols}×${home.geo.rows}, ${(navigator.userAgent.match(/Chrome\/[\d.]+/) || [''])[0]}`);

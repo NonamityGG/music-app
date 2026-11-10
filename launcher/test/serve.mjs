@@ -139,6 +139,9 @@ export function mockScript(opts = {}) {
         info: () => JSON.stringify(O.info), network: () => 'wifi', battery: () => JSON.stringify(O.battery), badges: () => JSON.stringify(O.badges),
         media: (a) => rec('media', a), mediaState: () => JSON.stringify(O.media), visualizer: () => {}, wallpaper: (j) => rec('wallpaper', j), setLiveWallpaper: () => {},
         pickWallpaper: () => {}, seeThrough: (b) => rec('seeThrough', b), scroll: () => {}, haptic: () => {}, notifications: () => (rec('shade'), true),
+        widgets: () => JSON.stringify([{ k: 'com.android.deskclock/.Clock', pkg: 'com.android.deskclock', label: 'Часы', w: 250, h: 110, cfg: false }, { k: 'com.google.search/.Box', pkg: 'org.telegram.messenger', label: 'Чаты', w: 250, h: 250, cfg: false }]),
+        widgetAdd: (k) => { rec('widgetAdd', k); setTimeout(() => window.__rezEmit('widgetAdded', { id: 41, w: 250, h: 110, label: 'Часы' }), 50); },
+        widgetFrames: (j) => rec('frames', j), widgetRemove: (id) => rec('widgetRemove', id),
         orientation: () => {}, storeGet: () => O.store, storeSet: (s) => rec('storeSet', s.length), log: (m) => console.log('[RezL]', m), reload: () => {},
       };
     })();`;

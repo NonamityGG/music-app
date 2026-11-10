@@ -13,6 +13,7 @@ export const KINDS = {
   np: { name: 'Сейчас играет', hint: 'обложка и кнопки', sizes: [[4, 2], [4, 1], [2, 2]], glyph: 'play' },
   search: { name: 'Поиск', hint: 'приложения и интернет', sizes: [[4, 1], [2, 1]], glyph: 'search' },
   battery: { name: 'Батарея', hint: 'заряд телефона', sizes: [[2, 1], [2, 2]], glyph: 'battery' },
+  sys: { name: 'Виджет приложения', hint: '', sizes: [[2, 1], [2, 2], [4, 1], [4, 2], [4, 3], [4, 4]], glyph: 'grid', hidden: true },
   waves: { name: 'Волны', hint: 'живая полоса', sizes: [[4, 1], [4, 2]], glyph: 'waves' },
 };
 
@@ -106,7 +107,7 @@ function paint(root, item) {
   root.classList.toggle('wide', c >= 4);
   root.classList.toggle('tall', r >= 2);
   root.textContent = '';
-  fn(root, c, r);
+  fn(root, c, r, item);
 }
 
 function weatherChip(w) {
@@ -219,6 +220,12 @@ const PAINT = {
     if (r >= 2) side.append(el('div', 'bt-s', battery.charging ? 'питание подключено' : lv >= 0 && lv <= 20 ? 'пора заряжать' : 'работает от аккумулятора'));
     box.append(ring, side);
     root.append(box);
+  },
+
+  // a widget of another app: the real one is drawn by Android above this place
+  sys(root, c, r, item) {
+    root.dataset.wid = item.wid;
+    root.append(el('div', 'sys-name', item.label || 'Виджет'));
   },
 
   waves(root, c, r) {

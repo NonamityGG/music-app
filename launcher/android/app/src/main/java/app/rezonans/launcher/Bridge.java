@@ -427,6 +427,30 @@ final class Bridge {
     // ---------- the screen and the touch ----------
 
     /** tick, press, context, confirm: a short vibration of the screen. */
+    // ---------- widgets of other apps ----------
+
+    @JavascriptInterface
+    public String widgets() {
+        return a.widgets == null ? "[]" : a.widgets.list();
+    }
+
+    @JavascriptInterface
+    public void widgetAdd(final String key) {
+        a.ui.post(() -> {
+            if (a.widgets != null) a.widgets.add(key);
+        });
+    }
+
+    @JavascriptInterface
+    public void widgetFrames(String json) {
+        if (a.widgets != null) a.widgets.frames(json);
+    }
+
+    @JavascriptInterface
+    public void widgetRemove(int id) {
+        if (a.widgets != null) a.widgets.remove(id);
+    }
+
     @JavascriptInterface
     public void haptic(String kind) {
         a.ui.post(() -> {

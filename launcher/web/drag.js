@@ -320,6 +320,18 @@ function longPress() {
   }
 }
 
+// a long press on a widget of another app: the Android side saw it, the menu is ours
+export function widgetMenu(wid) {
+  const node = document.querySelector(`#pager .item.w-sys[data-wid="${wid}"]`);
+  if (!node) return;
+  const cont = node.parentElement;
+  const d = { node, k: 'w', where: 'page', page: cont && cont.dataset.i != null ? +cont.dataset.i : -1, id: node.dataset.id, key: node.dataset.key };
+  const item = itemAt(d);
+  if (!item) return;
+  if (S.sounds) rez.haptic('long');
+  showMenu(widgetRows(d, item), node.getBoundingClientRect(), node);
+}
+
 function cancelPress() {
   if (!press) return;
   clearTimeout(press.timer);
