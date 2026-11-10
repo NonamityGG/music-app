@@ -59,7 +59,7 @@ sleep 6
 shot 8-widget-dialog
 # the system's own question: "Create widget and allow access?" - the Create button
 adb shell input tap $((W * 826 / 1000)) $((H * 628 / 1000))
-sleep 7
+sleep 12
 shot 8-widget-added
 shot 9-widget-page
 # a long press ON the widget (Android sees it, the page opens the menu)
