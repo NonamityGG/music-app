@@ -55,7 +55,11 @@ shot 7-page-left
 adb shell cmd appwidget grantbind --package $PKG --user 0 > "$OUT/grantbind.txt" 2>&1
 adb shell dumpsys appwidget | grep -E "Provider\{|provider=" | head -30 > "$OUT/providers.txt"
 adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME -n $PKG/.MainActivity --es test_widget first
-sleep 8
+sleep 6
+shot 8-widget-dialog
+# the system's own question: "Create widget and allow access?" - the Create button
+adb shell input tap $((W * 826 / 1000)) $((H * 628 / 1000))
+sleep 7
 shot 8-widget-added
 adb shell input swipe $((W * 85 / 100)) $((H / 2)) $((W * 10 / 100)) $((H / 2)) 250
 sleep 1
