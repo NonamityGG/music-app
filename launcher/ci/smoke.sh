@@ -83,6 +83,9 @@ for i in $(seq 1 20); do
 done
 sleep 2
 shot 8-widget-added
+# make sure the page with the widget is the one on screen (the last one)
+adb shell input swipe $((W * 85 / 100)) $((H * 57 / 100)) $((W * 10 / 100)) $((H * 57 / 100)) 300
+sleep 2
 shot 9-widget-page
 # a long press ON the widget (Android sees it, the page opens the menu)
 adb shell input swipe $((W / 2)) $((H * 667 / 1000)) $((W / 2)) $((H * 667 / 1000)) 900
