@@ -231,6 +231,10 @@ public class WidgetLayer extends FrameLayout {
                 }
                 int w = Math.max(1, Math.round((float) o.getDouble("w") * d));
                 int h = Math.max(1, Math.round((float) o.getDouble("h") * d));
+                if (c.getVisibility() != View.VISIBLE && !c.logged) {
+                    c.logged = true;
+                    Log.i(MainActivity.TAG, "widget " + id + " shown at " + o.getDouble("x") + "," + o.getDouble("y") + " " + o.getDouble("w") + "x" + o.getDouble("h"));
+                }
                 c.place(Math.round((float) o.getDouble("x") * d), Math.round((float) o.getDouble("y") * d), w, h, d);
                 shown.add(id);
             }
@@ -271,6 +275,7 @@ public class WidgetLayer extends FrameLayout {
         private MotionEvent down;
         private boolean longSent = false;
         private boolean toPage = false;
+        boolean logged = false;
         private final int slop;
         private final Runnable longPress = new Runnable() {
             @Override

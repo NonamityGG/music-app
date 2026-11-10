@@ -55,11 +55,33 @@ shot 7-page-left
 adb shell cmd appwidget grantbind --package $PKG --user 0 > "$OUT/grantbind.txt" 2>&1
 adb shell dumpsys appwidget | grep -E "Provider\{|provider=" | head -30 > "$OUT/providers.txt"
 adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME -n $PKG/.MainActivity --es test_widget first
-sleep 6
+sleep 4
 shot 8-widget-dialog
-# the system's own question: "Create widget and allow access?" - the Create button
-adb shell input tap $((W * 826 / 1000)) $((H * 628 / 1000))
-sleep 12
+# the system's own question: "Create widget and allow access?" - find its Create button (waits up to 40 s)
+for i in $(seq 1 20); do
+  adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1
+  adb pull /sdcard/ui.xml "$OUT/ui.xml" > /dev/null 2>&1
+  pos=$(python3 - "$OUT/ui.xml" <<'PY'
+import re, sys
+try:
+    x = open(sys.argv[1], encoding='utf-8').read()
+except Exception:
+    sys.exit()
+m = re.search(r'text="Create"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', x)
+if m:
+    a, b, c, d = map(int, m.groups())
+    print((a + c) // 2, (b + d) // 2)
+PY
+)
+  if [ -n "$pos" ]; then adb shell input tap $pos; echo "tap Create $pos" > "$OUT/create.txt"; break; fi
+  sleep 2
+done
+# wait until the page has told Android where the widget is (the log line), up to 40 s
+for i in $(seq 1 20); do
+  adb logcat -d -s RezL:* | grep -q "shown at" && break
+  sleep 2
+done
+sleep 2
 shot 8-widget-added
 shot 9-widget-page
 # a long press ON the widget (Android sees it, the page opens the menu)
