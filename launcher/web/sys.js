@@ -45,6 +45,7 @@ function frame() {
   const j = JSON.stringify(list);
   if (j !== last) {
     last = j;
+    if (list.length || last !== '[]') rez.log('виджеты: рамки ' + j);
     rez.widgetFrames(j);
   }
 }
@@ -72,6 +73,7 @@ export function sizeFor(w, h) {
 }
 
 export function added(info) {
+  rez.log('виджет добавлен: ' + JSON.stringify(info) + ', страниц ' + L.pages.length);
   const [c, r] = sizeFor(info.w || 250, info.h || 110);
   const it = { k: 'w', t: 'sys', id: newId('w'), wid: info.id, label: info.label || 'Виджет', c, r };
   let i = Math.max(0, home.pageIndex());

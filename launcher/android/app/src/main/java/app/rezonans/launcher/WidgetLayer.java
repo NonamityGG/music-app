@@ -188,6 +188,7 @@ public class WidgetLayer extends FrameLayout {
             o.put("w", Math.round(info.minWidth / d));
             o.put("h", Math.round(info.minHeight / d));
             o.put("label", info.loadLabel(act.getPackageManager()));
+            Log.i(MainActivity.TAG, "widget " + id + " bound, telling the page");
             act.emit("widgetAdded", o.toString());
         } catch (Exception e) {
             Log.w(MainActivity.TAG, "widget done: " + e);
@@ -231,7 +232,7 @@ public class WidgetLayer extends FrameLayout {
                 }
                 int w = Math.max(1, Math.round((float) o.getDouble("w") * d));
                 int h = Math.max(1, Math.round((float) o.getDouble("h") * d));
-                if (c.getVisibility() != View.VISIBLE && !c.logged) {
+                if (!c.logged) {
                     c.logged = true;
                     Log.i(MainActivity.TAG, "widget " + id + " shown at " + o.getDouble("x") + "," + o.getDouble("y") + " " + o.getDouble("w") + "x" + o.getDouble("h"));
                 }
