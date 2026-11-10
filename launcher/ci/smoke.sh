@@ -61,12 +61,16 @@ shot 8-widget-dialog
 adb shell input tap $((W * 826 / 1000)) $((H * 628 / 1000))
 sleep 7
 shot 8-widget-added
-adb shell input swipe $((W * 85 / 100)) $((H / 2)) $((W * 10 / 100)) $((H / 2)) 250
-sleep 1
-shot 9-widget-swipe
-adb shell input swipe $((W / 2)) $((H * 35 / 100)) $((W / 2)) $((H * 35 / 100)) 900
+shot 9-widget-page
+# a long press ON the widget (Android sees it, the page opens the menu)
+adb shell input swipe $((W / 2)) $((H * 667 / 1000)) $((W / 2)) $((H * 667 / 1000)) 900
 sleep 1.5
 shot 10-widget-long
+key KEYCODE_BACK 1
+# a sideways swipe that starts ON the widget: the pages must turn
+adb shell input swipe $((W * 15 / 100)) $((H * 667 / 1000)) $((W * 85 / 100)) $((H * 667 / 1000)) 300
+sleep 1.5
+shot 11-widget-swipe-over
 # what the page and the system said
 adb logcat -d -s RezL:* > "$OUT/rezl.txt"
 adb logcat -d -s chromium:* AndroidRuntime:* | tail -80 > "$OUT/logcat.txt"
