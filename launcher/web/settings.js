@@ -341,9 +341,20 @@ PAGES.desk = {
       ),
       label('Страницы'),
       group(
-        action('Виджеты', 'часы, погода, плеер, поиск, батарея', () => document.dispatchEvent(new CustomEvent('rez-open-widgets'))),
-        action('Сбросить раскладку', 'значки вернутся на места по умолчанию', () => {
-          if (!confirm('Сбросить рабочий стол? Папки и порядок значков пропадут.')) return;
+        action('Виджеты', 'часы, погода, плеер, поиск и виджеты других приложений', () => document.dispatchEvent(new CustomEvent('rez-open-widgets'))),
+        action('Сбросить раскладку', 'значки вернутся на места по умолчанию', (e) => {
+          // two taps instead of a dialog (the system's dialog does not open in the page)
+          const row = e.currentTarget;
+          const b = row.querySelector('b');
+          if (!row.dataset.armed) {
+            row.dataset.armed = '1';
+            b.textContent = 'Нажмите ещё раз — папки и порядок пропадут';
+            setTimeout(() => {
+              delete row.dataset.armed;
+              b.textContent = 'Сбросить раскладку';
+            }, 3500);
+            return;
+          }
           L.seeded = false;
           L.pages = [[]];
           L.dock = [];
@@ -514,6 +525,12 @@ PAGES.sys = {
           } catch {
             toast('В буфере нет копии Резонанса');
           }
+        })
+      ),
+      group(
+        action('Показать заставку', 'вступление с волнами, как при первом запуске', () => {
+          close();
+          setTimeout(() => document.dispatchEvent(new CustomEvent('rez-play-intro')), 350);
         })
       ),
       label('О телефоне'),
