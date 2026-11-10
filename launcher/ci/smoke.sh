@@ -21,7 +21,7 @@ adb shell cmd package set-home-activity $PKG/.MainActivity > "$OUT/home.txt" 2>&
 adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME >> "$OUT/home.txt" 2>&1
 
 adb logcat -c
-adb shell am start -n $PKG/.MainActivity
+adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME -n $PKG/.MainActivity
 sleep 4
 shot 0-intro
 sleep 26
