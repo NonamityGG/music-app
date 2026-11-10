@@ -45,7 +45,7 @@ function frame() {
   const j = JSON.stringify(list);
   if (j !== last) {
     last = j;
-    if (list.length || last !== '[]') rez.log('виджеты: рамки ' + j);
+    rez.log('виджеты: рамки ' + j);
     rez.widgetFrames(j);
   }
 }
@@ -93,6 +93,9 @@ on('widgetGone', (id) => {
   for (let i = 0; i < L.pages.length; i++) L.pages[i] = L.pages[i].filter((it) => !(it.t === 'sys' && it.wid === id));
   known.delete(id);
   home.render();
+});
+on('widgetSwipe', (o) => {
+  home.gotoGrid(home.pageIndex() + (o && o.dir > 0 ? 1 : -1), true);
 });
 on('widgetLong', (o) => hooks.longMenu(o.id));
 on('visible', (v) => {

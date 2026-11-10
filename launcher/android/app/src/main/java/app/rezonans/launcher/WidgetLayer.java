@@ -348,8 +348,10 @@ public class WidgetLayer extends FrameLayout {
                     if (longSent) return false;
                     if (Math.abs(dx) > slop * 2 && Math.abs(dx) > Math.abs(dy) * 1.2f) {
                         toPage = true;
-                        Log.i(MainActivity.TAG, "widget " + id + ": sideways swipe goes to the page");
-                        handToPage(e);
+                        Log.i(MainActivity.TAG, "widget " + id + ": sideways swipe turns the page");
+                        MotionEvent cancel = MotionEvent.obtain(e.getDownTime(), e.getEventTime(), MotionEvent.ACTION_CANCEL, e.getX(), e.getY(), 0);
+                        view.dispatchTouchEvent(cancel);
+                        cancel.recycle();
                         return true;
                     }
                     return false;
@@ -372,34 +374,24 @@ public class WidgetLayer extends FrameLayout {
         public boolean onTouchEvent(MotionEvent e) {
             int a = e.getActionMasked();
             if (toPage) {
-                forward(e);
+                // the swipe is the desktop's: when the finger lifts, the page turns the way it went
+                if (a == MotionEvent.ACTION_UP && down != null) {
+                    float dx = e.getX() - down.getX();
+                    if (Math.abs(dx) > slop * 3) {
+                        try {
+                            JSONObject o = new JSONObject();
+                            o.put("dir", dx < 0 ? 1 : -1);
+                            act.emit("widgetSwipe", o.toString());
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
                 if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) toPage = false;
                 return true;
             }
             // nobody inside took the touch: this cell is the target and the intercept is not asked again
             if (a != MotionEvent.ACTION_DOWN && watch(e)) return true;
             return true;
-        }
-
-        private void forward(MotionEvent e) {
-            WebView w = act.web;
-            if (w == null) return;
-            MotionEvent m = MotionEvent.obtain(e);
-            m.offsetLocation(getX(), getY());
-            w.dispatchTouchEvent(m);
-            m.recycle();
-        }
-
-        private void handToPage(MotionEvent now) {
-            WebView w = act.web;
-            if (w == null) return;
-            // the widget lets go (cancel), the page gets a touch that begins right here
-            MotionEvent cancel = MotionEvent.obtain(now.getDownTime(), now.getEventTime(), MotionEvent.ACTION_CANCEL, now.getX(), now.getY(), 0);
-            view.dispatchTouchEvent(cancel);
-            cancel.recycle();
-            MotionEvent d0 = MotionEvent.obtain(now.getDownTime(), now.getEventTime(), MotionEvent.ACTION_DOWN, now.getX() + getX(), now.getY() + getY(), 0);
-            w.dispatchTouchEvent(d0);
-            d0.recycle();
         }
     }
 }
