@@ -2,11 +2,12 @@ name: Собрать Резонанс OS (ТВ)
 
 on:
   push:
-    # tv-dev: test builds without a release
-    branches: [main, tv-dev]
+    # tv-dev, connect-dev: test builds without a release
+    branches: [main, tv-dev, connect-dev]
     paths:
       - 'tv/**'
       - 'src/waves.js'
+      - 'src/connect.js'
       - 'desktop/web/looks.js'
       - '.github/workflows/build-tv.yml'
   workflow_dispatch:
