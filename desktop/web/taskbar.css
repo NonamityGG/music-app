@@ -447,3 +447,59 @@ body.clearable.clear .clock {
 .desk:hover {
   background: var(--chip);
 }
+
+/* ---------- the user's arrangement (settings) ---------- */
+
+/* Start and the apps at the left edge, as in Windows 10 */
+body.al-left .tb {
+  grid-template-columns: auto 1fr;
+  padding-left: 6px;
+}
+body.al-left .side.left {
+  display: none;
+}
+body.al-left .dock {
+  justify-self: start;
+}
+
+/* the small taskbar */
+body.small .start,
+body.small .app {
+  width: 38px;
+  height: 36px;
+  border-radius: 8px;
+}
+body.small .app img {
+  width: 22px;
+  height: 22px;
+}
+body.small .start .mark {
+  transform: scale(0.85);
+}
+body.small .quick,
+body.small .clock,
+body.small .tray {
+  height: 36px;
+}
+body.small .clock {
+  gap: 2px;
+}
+body.small .time {
+  font-size: 12px;
+}
+body.small .date {
+  font-size: 10.5px;
+}
+
+body.no-date .date {
+  display: none;
+}
+body.no-desk .desk {
+  display: none;
+}
+body.no-desk .right {
+  padding-right: 8px;
+}
+body.no-tray .tray {
+  display: none;
+}

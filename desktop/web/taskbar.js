@@ -61,8 +61,16 @@ function apply(s) {
   if (!s) return;
   settings = s;
   body.dataset.bg = s.bg || 'glass-violet';
-  // the see-through taskbar: no acrylic from Windows, the page's own frosted tint
-  body.classList.toggle('clearable', !!s.taskbarClear);
+  // never Windows' acrylic (it stutters as windows move under it): the page's
+  // own frosted tint, which fades away when the see-through taskbar is on
+  body.classList.add('clearable');
+  // the user's arrangement: where the apps sit, the size, what's by the clock
+  body.classList.toggle('al-left', s.taskbarAlign === 'left');
+  body.classList.toggle('small', s.taskbarSize === 'small');
+  body.classList.toggle('no-date', s.taskbarDate === false);
+  body.classList.toggle('no-desk', s.taskbarDesk === false);
+  body.classList.toggle('no-tray', s.taskbarTray === false);
+  tick();
   body.style.setProperty('--tint-a', String(s.barTint ?? 0.42));
   const c = s.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
   c.forEach((v, i) => body.style.setProperty(`--c${i + 1}`, v));
@@ -401,7 +409,8 @@ const DAYS = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
 const MONTHS = ['янв.', 'февр.', 'мар.', 'апр.', 'мая', 'июн.', 'июл.', 'авг.', 'сент.', 'окт.', 'нояб.', 'дек.'];
 function tick() {
   const d = new Date();
-  $('time').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const two = (n) => String(n).padStart(2, '0');
+  $('time').textContent = `${two(d.getHours())}:${two(d.getMinutes())}` + (settings.taskbarSeconds ? `:${two(d.getSeconds())}` : '');
   $('date').textContent = `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 tick();

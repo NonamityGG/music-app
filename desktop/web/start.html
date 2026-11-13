@@ -8,42 +8,43 @@
     <link rel="stylesheet" href="start.css" />
   </head>
   <body>
-    <div class="bg" aria-hidden="true">
-      <div class="glow"></div>
-      <div class="tint"></div>
-      <canvas id="waves"></canvas>
-    </div>
-
-    <main class="root">
-      <header class="top">
-        <div class="brand"><span class="mark"><i></i><i></i><i></i><i></i></span><b>Резонанс</b></div>
-        <div class="now">
-          <span class="clock" id="clock"></span>
-          <span class="date" id="date"></span>
-        </div>
-      </header>
+    <main class="panel" id="panel">
+      <canvas id="waves" aria-hidden="true"></canvas>
 
       <div class="search">
         <span class="s-ic" id="searchIcon" aria-hidden="true"></span>
-        <input id="q" type="text" placeholder="Поиск приложений и файлов" autocomplete="off" spellcheck="false" />
+        <input id="q" type="text" placeholder="Поиск приложений и в интернете" autocomplete="off" spellcheck="false" />
       </div>
 
-      <div class="scroll" id="scroll">
-        <section class="pinned" id="pinnedSec">
-          <div class="sec-h">Закреплено</div>
-          <div class="grid" id="pinned"></div>
+      <div class="views" id="views">
+        <!-- the first page: pinned apps -->
+        <section class="view home" id="home">
+          <div class="head">
+            <span class="h">Закреплённые</span>
+            <button class="pill" id="toAll">Все приложения<span class="chev" id="chevR"></span></button>
+          </div>
+          <div class="scroll">
+            <div class="grid" id="pinned"></div>
+            <div class="empty-pins hidden" id="noPins">Закрепите приложения: правая кнопка мыши на приложении в списке «Все приложения»</div>
+          </div>
         </section>
-        <section class="recent" id="recentSec">
-          <div class="sec-h">Недавние файлы</div>
-          <div class="list" id="recent"></div>
+
+        <!-- every app, by letter -->
+        <section class="view all" id="all">
+          <div class="head">
+            <span class="h">Все приложения</span>
+            <button class="pill" id="toHome"><span class="chev back" id="chevL"></span>Назад</button>
+          </div>
+          <div class="scroll" id="allScroll">
+            <div class="list" id="apps"></div>
+          </div>
         </section>
-        <section class="all" id="allSec">
-          <div class="sec-h">Все приложения</div>
-          <div class="list" id="apps"></div>
-        </section>
-        <section class="results hidden" id="resultsSec">
-          <div class="list" id="results"></div>
-          <div class="empty hidden" id="empty"></div>
+
+        <!-- search -->
+        <section class="view results" id="resultsView">
+          <div class="scroll">
+            <div class="list" id="results"></div>
+          </div>
         </section>
       </div>
 
@@ -52,9 +53,15 @@
           <span class="ava" id="ava" aria-hidden="true"></span>
           <span class="uname" id="uname">Пользователь</span>
         </button>
-        <button class="pw" id="power" aria-label="Питание"></button>
+        <div class="foot-r">
+          <button class="icn" id="rez" title="Настройки Резонанса" aria-label="Настройки Резонанса"><span class="mark"><i></i><i></i><i></i><i></i></span></button>
+          <button class="icn" id="winSet" title="Параметры Windows" aria-label="Параметры Windows"></button>
+          <button class="icn" id="power" title="Питание" aria-label="Питание"></button>
+        </div>
       </footer>
-      <div class="pw-menu hidden" id="pwMenu"></div>
+
+      <div class="menu hidden" id="pwMenu"></div>
+      <div class="menu ctx hidden" id="ctx"></div>
     </main>
     <script src="start.js"></script>
   </body>
