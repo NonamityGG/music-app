@@ -54,6 +54,13 @@ export const tv = {
   // typing in a field: OK goes to the field, and the TV's keyboard comes up
   typing: (on) => N && N.typing && N.typing(!!on),
   keyboard: (show) => N && N.keyboard && N.keyboard(!!show),
+  // Резонанс Connect: a computer's screen on the TV (Connect.java)
+  connectPending: () => (N && N.connectPending ? json(N.connectPending(), []) : []),
+  connectAnswer: (sid, sdp) => N && N.connectAnswer(sid, sdp),
+  connectFail: (sid, why) => N && N.connectFail(sid, String(why)),
+  connectCancel: () => N && N.connectCancel && N.connectCancel(),
+  connectInfo: () => (N && N.connectInfo ? json(N.connectInfo(), {}) : M() && M().connect ? M().connect : {}),
+  connectForget: () => N && N.connectForget && N.connectForget(),
   // outside services go through the Android side (see AssetServer.net)
   net: (url) => (N ? `${BASE}net?u=${encodeURIComponent(url)}` : M() && M().net ? M().net(url) : url),
 };

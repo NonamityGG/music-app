@@ -72,6 +72,8 @@ public class HomeGuard extends AccessibilityService {
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        // the Home button service lives on while apps are in front: the TV stays findable
+        Connect.start(this);
         // right after the box starts, its own home is already up: replace it
         if (active() && SystemClock.elapsedRealtime() < 180000 && (MainActivity.current == null || !MainActivity.current.isVisible())) openOurs();
     }

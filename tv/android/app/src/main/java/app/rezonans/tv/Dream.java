@@ -75,6 +75,7 @@ public class Dream extends DreamService implements Page {
         web.loadUrl(AssetServer.BASE + "index.html#dream");
         Page.All.add(this);
         MediaHub.attach(this);
+        Connect.start(this);
         Log.i(MainActivity.TAG, "заставка Резонанс OS поверх приложений");
     }
 

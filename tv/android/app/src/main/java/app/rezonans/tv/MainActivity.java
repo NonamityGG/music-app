@@ -110,6 +110,8 @@ public class MainActivity extends Activity implements Page {
 
         Page.All.add(this);
         MediaHub.attach(this);
+        // «Приём экрана»: computers on the Wi-Fi can find the TV and show their screen
+        Connect.start(this);
         watchPackages();
         fromInstaller(getIntent());
     }

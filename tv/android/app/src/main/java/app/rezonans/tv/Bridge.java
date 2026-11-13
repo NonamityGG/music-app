@@ -339,6 +339,55 @@ final class Bridge {
         });
     }
 
+    // ---------- Резонанс Connect: a computer's screen on the TV ----------
+
+    /** The page's WebRTC answer to the offer `sid` (or why there is none). */
+    @JavascriptInterface
+    public void connectAnswer(int sid, String sdp) {
+        Connect c = Connect.get();
+        if (c != null) c.answer(sid, sdp, null);
+    }
+
+    @JavascriptInterface
+    public void connectFail(int sid, String why) {
+        Connect c = Connect.get();
+        if (c != null) c.answer(sid, null, why == null ? "page" : why);
+    }
+
+    /** The code screen was closed: that code no longer works. */
+    @JavascriptInterface
+    public void connectCancel() {
+        Connect c = Connect.get();
+        if (c != null) c.cancelCode();
+    }
+
+    /** Events that came while the home screen wasn't in front (JSON array). */
+    @JavascriptInterface
+    public String connectPending() {
+        Connect c = Connect.get();
+        return c == null ? "[]" : c.takePending();
+    }
+
+    /** The TV's name and address on the network, and how many computers it knows. */
+    @JavascriptInterface
+    public String connectInfo() {
+        Connect c = Connect.get();
+        JSONObject o = c == null ? new JSONObject() : c.about();
+        try {
+            o.put("ip", ip());
+            o.put("known", c == null ? 0 : c.pairing.count());
+        } catch (Exception ignored) {
+        }
+        return o.toString();
+    }
+
+    /** Every computer will need the code again. */
+    @JavascriptInterface
+    public void connectForget() {
+        Connect c = Connect.get();
+        if (c != null) c.forgetAll();
+    }
+
     // ---------- misc ----------
 
     @JavascriptInterface

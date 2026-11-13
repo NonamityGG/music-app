@@ -34,7 +34,8 @@ export const BACKGROUNDS = [
 
 const body = document.body;
 const canvas = document.getElementById('waves');
-let state = { visible: true, music: false, saver: false };
+// cast: a computer's screen is on the TV — the waves under it stop drawing
+let state = { visible: true, music: false, saver: false, cast: false };
 let place = { y: 0.5, amp: 0.22 };
 
 export function setWaveState(patch) {
@@ -50,7 +51,7 @@ export function setWavePlace(p) {
 }
 
 waves.setSource({
-  playing: () => state.visible && (state.music || state.saver),
+  playing: () => state.visible && !state.cast && (state.music || state.saver),
   analysing: () => S.hear && graph.fresh(),
   onSilence: () => {},
 });

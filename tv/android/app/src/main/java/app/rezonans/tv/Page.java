@@ -35,6 +35,11 @@ interface Page {
             for (Page p : pages) p.emit(name, json);
         }
 
+        /** The screen saver over apps ends (the home screen must come up instead). */
+        static void finishDreams() {
+            for (Page p : pages) if (p instanceof Dream) ((Dream) p).finish();
+        }
+
         /** The page on the screen now, or null. */
         static Page shown() {
             for (Page p : pages) if (p.isVisible()) return p;

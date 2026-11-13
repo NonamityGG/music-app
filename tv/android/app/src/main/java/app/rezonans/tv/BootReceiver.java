@@ -10,6 +10,7 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context c, Intent intent) {
         if (intent == null || !Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
         Prefs.unpause(c);
+        Connect.start(c);
         if (!Prefs.guard(c)) return;
         Intent i = new Intent(c, MainActivity.class)
             .setAction(Intent.ACTION_MAIN)

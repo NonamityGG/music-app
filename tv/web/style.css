@@ -1860,3 +1860,131 @@ body.sv-waves .sv {
     backdrop-filter: blur(3rem) saturate(1.3);
   }
 }
+
+/* ---------- «Приём экрана»: a computer's screen on the TV ---------- */
+
+.cast {
+  z-index: 20;
+  background: rgba(9, 6, 18, 0.92);
+  animation: fade-in 0.3s ease;
+}
+
+.cast video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  opacity: 0;
+}
+
+body.casting .cast {
+  background: #000;
+}
+
+body.casting .cast video {
+  opacity: 1;
+}
+
+/* under the picture nothing needs drawing: the box's power goes to the video */
+body.casting .layer,
+body.casting .screen,
+body.casting .overlay:not(.cast) {
+  visibility: hidden;
+}
+
+.cast-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 92rem;
+  padding: 6rem 7rem 5rem;
+  border-radius: 5rem;
+  background: rgba(30, 20, 56, 0.9);
+  box-shadow: inset 0 0 0 0.12rem var(--edge), 0 3rem 8rem rgba(0, 0, 0, 0.55);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  animation: cast-in 0.5s var(--back);
+}
+
+@keyframes cast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.96);
+  }
+}
+
+.cast-ic {
+  display: inline-block;
+  width: 8rem;
+  height: 8rem;
+  padding: 1.8rem;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--a1s);
+  color: var(--a2);
+}
+
+.cast-ic svg {
+  width: 100%;
+  height: 100%;
+}
+
+.cast-card h1 {
+  margin: 2.6rem 0 1.4rem;
+  font: 700 4.6rem/1.1 'Unbounded', sans-serif;
+}
+
+.cast-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 2.6rem;
+}
+
+.cast-code {
+  display: flex;
+  justify-content: center;
+  margin: 4.4rem 0 3rem;
+}
+
+.cast-code b {
+  width: 13rem;
+  height: 17rem;
+  margin: 0 1.2rem;
+  border-radius: 3rem;
+  background: var(--glass-hi);
+  box-shadow: inset 0 0 0 0.16rem var(--a1g);
+  font: 700 10rem/17rem 'Unbounded', sans-serif;
+  color: var(--text);
+}
+
+.cast-card p.cast-hint {
+  color: var(--text);
+}
+
+.cast-card p.cast-back {
+  margin-top: 3.6rem;
+  color: var(--faint);
+  font-size: 2.2rem;
+}
+
+.cast-note {
+  position: absolute;
+  top: 4rem;
+  right: 4rem;
+  padding: 1.6rem 3rem;
+  border-radius: 4rem;
+  background: rgba(20, 14, 38, 0.86);
+  box-shadow: inset 0 0 0 0.12rem var(--edge);
+  font: 600 2.2rem/1.2 'Onest', sans-serif;
+  opacity: 0;
+  transform: translateY(-2rem);
+  transition: opacity 0.3s ease, transform 0.4s var(--back);
+}
+
+.cast-note.on {
+  opacity: 1;
+  transform: none;
+}

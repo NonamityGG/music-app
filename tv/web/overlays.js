@@ -191,6 +191,22 @@ const SAVER = [
   [0, 'Никогда'],
 ];
 
+// «Приём экрана»: how a computer finds this TV, and the computers it knows
+function connectItems() {
+  const c = tv.connectInfo() || {};
+  const list = [
+    { sec: 'Приём экрана' },
+    {
+      info: true,
+      name: c.name || 'Резонанс OS',
+      sub: 'На компьютере: Резонанс → «Транслировать на телевизор». Телевизор покажет код — введи его там',
+      value: c.ip || '—',
+    },
+  ];
+  if (c.known > 0) list.push({ act: 'connectForget', name: 'Забыть компьютеры', sub: 'Каждому снова понадобится код с экрана', value: `${c.known}` });
+  return list;
+}
+
 function items() {
   const guardSub = !info.guard
     ? 'Сначала включи службу в разделе «Подготовка» выше (или установщиком с компьютера)'
@@ -279,6 +295,7 @@ function items() {
         [5, '5%'],
       ],
     },
+    ...connectItems(),
     { sec: 'Плавность' },
     {
       key: 'fx',

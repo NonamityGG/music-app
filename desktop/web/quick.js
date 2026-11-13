@@ -17,6 +17,7 @@ const ICON = {
   waves: 'M3 10h2v4H3zm4-3h2v10H7zm4-4h2v18h-2zm4 4h2v10h-2zm4 3h2v4h-2z',
   moon: 'M12.3 2a1 1 0 0 0-.2 2 6 6 0 1 1-7.9 7.9 1 1 0 0 0-2 .2 8 8 0 1 0 10.1-10.1z',
   island: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7zm0 2a3 3 0 0 0 0 6h10a3 3 0 0 0 0-6H7zm10 1a2 2 0 1 1 0 4 2 2 0 0 1 0-4z',
+  cast: 'M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z',
   paint: 'M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.36-.6-.36-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z',
   vol: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
   mute: 'M16.5 12A4.5 4.5 0 0 0 14 8v2.18l2.45 2.45a4.9 4.9 0 0 0 .05-.63zM19 12a7 7 0 0 1-.73 3.1l1.46 1.46A9 9 0 0 0 21 12a9 9 0 0 0-7-8.77v2.06A7 7 0 0 1 19 12zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25a7 7 0 0 1-2.25 1.21v2.06a9 9 0 0 0 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4 9.91 6.09 12 8.18V4z',
@@ -49,6 +50,7 @@ function svg(name, cls) {
 let status = {};
 let settings = {};
 let media = { status: 'none' };
+let castState = { live: false, tv: '' };
 
 function colors(s) {
   settings = s || settings;
@@ -75,9 +77,11 @@ function renderTiles() {
     { name: 'Тёмная тема', ic: 'moon', on: on(settings.winDark), sub: 'Windows', act: () => window.rez.set({ winDark: !settings.winDark }) },
     { name: 'Цвета', ic: 'paint', on: on(settings.winAccent), sub: 'Windows в палитре', act: () => window.rez.set({ winAccent: !settings.winAccent }) },
   ];
+  // «На телевизор»: the screen and sound of this PC on a TV with Резонанс OS
+  items.push({ name: castState.live ? 'На телевизоре' : 'На телевизор', ic: 'cast', on: castState.live, wide: true, sub: castState.live ? `«${castState.tv}» · нажми, чтобы остановить` : 'Экран и звук на Резонанс OS', act: () => window.rez.shell('cast') });
   for (const it of items) {
     box.appendChild(
-      h('button', { class: 'toggle' + (it.on ? ' on' : ''), onclick: it.act, title: it.name }, h('span', { class: 't-ic' }, svg(it.ic)), h('div', { class: 't-t' }, h('div', { class: 't-n' }, it.name), h('div', { class: 't-s' }, it.sub)))
+      h('button', { class: 'toggle' + (it.on ? ' on' : '') + (it.wide ? ' wide' : ''), onclick: it.act, title: it.name }, h('span', { class: 't-ic' }, svg(it.ic)), h('div', { class: 't-t' }, h('div', { class: 't-n' }, it.name), h('div', { class: 't-s' }, it.sub)))
     );
   }
 }
@@ -229,6 +233,14 @@ function applyStatus(s) {
 }
 
 window.rez.onStatus(applyStatus);
+window.rez.onCastState((s) => {
+  castState = s || castState;
+  renderTiles();
+});
+window.rez.castState().then((s) => {
+  castState = s || castState;
+  renderTiles();
+});
 window.rez.onOutputs((list) => {
   outputs = Array.isArray(list) ? list : [];
   renderOutputs();

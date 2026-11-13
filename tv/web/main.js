@@ -10,6 +10,7 @@ import * as look from './look.js';
 import * as home from './home.js';
 import * as weather from './weather.js';
 import * as intro from './intro.js';
+import * as connect from './connect.js';
 import { grid, menu, settings, ambient, toast, launch, setInfo, setCity, homePlace, cityEnter } from './overlays.js';
 
 const homeEl = document.getElementById('home');
@@ -44,7 +45,25 @@ function boot() {
   tv.setGuard(S.guard);
   tv.log(`Резонанс OS запущен: ${apps.everything().length} приложений, ${navigator.userAgent.match(/Chrome\/[\d.]+/) || ''}`);
 
+  // «Приём экрана»: a computer's screen comes over everything
+  connect.init({
+    before() {
+      if (skipIntro) skipIntro();
+      if (moving) endMove();
+      layers.closeAll();
+    },
+    after(on, msg) {
+      if (msg) toast(msg);
+      if (!on) resetIdle();
+    },
+  });
+
   const startIntro = () => {
+    // a computer's screen came first: no intro over it
+    if (connect.active()) {
+      document.body.classList.remove('intro-on');
+      return resetIdle();
+    }
     skipIntro = intro.play(() => {
       skipIntro = null;
       resetIdle();
@@ -336,6 +355,10 @@ settings.onAct = (act) => {
       toast(info.sysSaver === 'ours' ? 'Теперь поверх приложений — эта заставка' : 'Вернул заставку приставки');
     } else if (tv.setSystemSaver(on)) toast('Выбери «Резонанс OS — заставка» в списке');
     else toast('Это включает установщик с компьютера — запусти Install-Rezonans-OS.cmd ещё раз');
+  } else if (act === 'connectForget') {
+    tv.connectForget();
+    settings.refresh();
+    toast('Компьютеры забыты — каждому снова понадобится код');
   } else if (act === 'homeApp') {
     if (!tv.openHomeSettings()) toast('Эта приставка не даёт выбрать главный экран — помогут служба «Домой» или установщик');
   }
@@ -390,6 +413,8 @@ function awake() {
   tv.keepAwake(true);
   if (!(S.sleep > 0)) return;
   sleepTimer = setTimeout(() => {
+    // a computer's screen is shown: no keys are pressed, but someone watches
+    if (connect.live()) return awake();
     tv.log('долго без кнопок: экран отпущен');
     tv.keepAwake(false);
   }, S.sleep * 60000);
@@ -401,7 +426,7 @@ function resetIdle() {
   clearTimeout(idleTimer);
   if (!visible || !(S.saver > 0) || skipIntro) return;
   idleTimer = setTimeout(() => {
-    if (!visible || layers.isOpen(ambient) || moving) return;
+    if (!visible || layers.isOpen(ambient) || moving || connect.active()) return;
     layers.closeAll();
     ambient.open();
   }, S.saver * 60000);
