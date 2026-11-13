@@ -99,6 +99,32 @@ export function markPlaying() {
   markedKey = key;
 }
 
+// Резонанс's own cover for a playlist that has none of its own here (no artwork
+// of other services): a gradient in two tones picked from the title, the bars of
+// the Резонанс mark and the title over it. The same title always looks the same.
+export function rezCover(title, cls = 'cover cover-card') {
+  let hsh = 0;
+  for (const ch of String(title || '')) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+  const h1 = hsh % 360;
+  const h2 = (h1 + 40 + ((hsh >> 9) % 80)) % 360;
+  const bars = h(
+    'div',
+    { class: 'rez-cover-bars', 'aria-hidden': 'true' },
+    [0.45, 0.8, 1, 0.65, 0.35].map((k) => h('i', { style: { height: Math.round(k * 100) + '%' } }))
+  );
+  return h('div', { class: cls + ' cover-box rez-cover', style: { '--h1': String(h1), '--h2': String(h2) } }, bars, h('div', { class: 'rez-cover-title' }, title || ''));
+}
+
+export function playlistCard(title, sub, onClick) {
+  return h(
+    'div',
+    { class: 'card', role: 'button', onclick: onClick },
+    rezCover(title),
+    h('div', { class: 'card-title' }, title),
+    h('div', { class: 'card-sub' }, sub || '')
+  );
+}
+
 // ---------- cards ----------
 
 export function releaseCard(r, onClick) {

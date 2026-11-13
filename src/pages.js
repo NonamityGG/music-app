@@ -36,6 +36,7 @@ import {
   closeSheet,
   refreshLocalCovers,
   skeleton,
+  rezCover,
 } from './components.js';
 
 // ---------- liked tracks cache (for the heart in menus and the player) ----------
@@ -369,10 +370,13 @@ export function servicePlaylistPage(p) {
   asyncBody(el, async () => {
     const data = await online.playlistTracks(p.id);
     const tracks = data.tracks;
+    // Резонанс's own cover, not the service's artwork
+    const top = hero('', data.title || p.title, `${tracksWord(tracks.length)} ${IN[serviceOfId(p.id)]}`);
+    top.querySelector('.cover-box').replaceWith(rezCover(data.title || p.title, 'cover cover-hero'));
     return h(
       'div',
       null,
-      hero(data.cover || p.cover, data.title || p.title, `${tracksWord(tracks.length)} ${IN[serviceOfId(p.id)]}`),
+      top,
       h('div', { class: 'center-row' }, playButtons(async () => tracks)),
       h(
         'div',

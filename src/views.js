@@ -28,7 +28,13 @@ import {
   coverOf,
   askText,
   confirmSheet,
+  sheet,
+  closeSheet,
+  rezCover,
+  playlistCard,
 } from './components.js';
+import { buildPicks } from './picks.js';
+import { moreLike } from './endless.js';
 import {
   trackMenu,
   artistPage,
@@ -48,11 +54,222 @@ const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 
 // ===================== Лента =====================
 
+// which parts of the feed are shown (the feed's settings)
+const FEED_PARTS = [
+  ['picks', 'Подборки Резонанса', '«Эта музыка резонирует с вами», «Давно не слушали», «Открытия»'],
+  ['personal', 'Плейлисты для тебя', 'Плейлист дня, Дежавю и другие от Яндекс Музыки'],
+  ['releases', 'Новинки твоих артистов', null],
+  ['related', 'Похожие артисты', null],
+  ['stream', 'Лента треков', 'Бесконечная — подгружается, пока листаешь'],
+];
+const feedShows = (part) => !(settings.feedHide || []).includes(part);
+
+// One of Резонанс's picks: its own cover, the question, and "play".
+function pickCard(p) {
+  const go = h('button', { class: 'btn btn-white small' }, icon('play', 18), 'Включить');
+  go.onclick = async (e) => {
+    e.stopPropagation();
+    if (p.tracks) return player.playQueue(p.tracks, 0);
+    // a station is read only when it is asked for
+    go.disabled = true;
+    try {
+      const tracks = await ya.stationTracks(p.station, p.seed && p.seed.yid);
+      if (!tracks.length) throw new Error('Яндекс Музыка не нашла похожего — попробуй позже');
+      player.playQueue([p.seed, ...tracks.filter((t) => t.key !== p.seed.key)], 1);
+    } catch (err) {
+      logError('pick', err);
+      toast(err.message || String(err), 4000);
+    } finally {
+      go.disabled = false;
+    }
+  };
+  return h(
+    'div',
+    { class: 'pick-card' },
+    rezCover(p.title, 'cover pick-cover'),
+    h('div', { class: 'pick-text' }, h('div', { class: 'pick-title' }, p.title), h('div', { class: 'pick-sub' }, p.sub), go)
+  );
+}
+
+// The feed's settings: the artists it follows (picked by hand, and the ones it
+// found itself), what it shows, and rebuilding it.
+function feedSettings(feed, rerender, rebuild) {
+  const box = h('div', { class: 'sheet-form feed-settings' });
+  const paint = () => {
+    clear(box);
+    const fav = favArtists();
+    add(
+      box,
+      h('div', { class: 'fs-title' }, 'Артисты ленты'),
+      h('div', { class: 'muted small' }, 'Лента подбирает новинки, похожих артистов и микс прежде всего по ним.'),
+      h(
+        'div',
+        { class: 'chips' },
+        fav.map((a) =>
+          h(
+            'button',
+            {
+              class: 'chip chip-on',
+              onclick: () => {
+                setFav(a, false);
+                paint();
+              },
+            },
+            a.name,
+            icon('close', 16)
+          )
+        ),
+        h('button', { class: 'chip', onclick: () => addArtist() }, icon('add', 16), 'Добавить артиста')
+      ),
+      feed && feed.seeds && feed.seeds.length
+        ? [
+            h('div', { class: 'fs-title' }, 'Лента нашла сама'),
+            h('div', { class: 'muted small' }, 'По лайкам, плейлистам и MP3. Нажми, чтобы открыть артиста.'),
+            h(
+              'div',
+              { class: 'chips' },
+              feed.seeds.map((a) =>
+                h(
+                  'button',
+                  {
+                    class: 'chip',
+                    onclick: () => {
+                      closeSheet();
+                      nav.push(artistPage(a.id, a.name));
+                    },
+                  },
+                  a.name
+                )
+              )
+            ),
+          ]
+        : null,
+      h('div', { class: 'fs-title' }, 'Что показывать'),
+      FEED_PARTS.map(([id, label, sub]) => {
+        const sw = h('input', { type: 'checkbox', class: 'switch' });
+        sw.checked = feedShows(id);
+        sw.addEventListener('change', () => {
+          const hide = new Set(settings.feedHide || []);
+          if (sw.checked) hide.delete(id);
+          else hide.add(id);
+          saveSettings({ feedHide: [...hide] });
+          rerender();
+        });
+        return h('label', { class: 'setting-row' }, h('div', null, h('div', null, label), sub ? h('div', { class: 'muted small' }, sub) : null), sw);
+      }),
+      h(
+        'button',
+        {
+          class: 'btn btn-primary',
+          onclick: () => {
+            closeSheet();
+            rebuild();
+          },
+        },
+        icon('refresh', 20),
+        'Пересобрать ленту'
+      )
+    );
+  };
+
+  // a new artist: the name, then the right one from what Yandex Music finds
+  const addArtist = async () => {
+    const q = await askText('Какого артиста добавить в ленту?', '', 'Найти');
+    if (!q) return feedSettings(feed, rerender, rebuild);
+    let found = [];
+    try {
+      found = (await online.quickSearch(q, 8)).artists || [];
+    } catch (e) {
+      toast(e.message || String(e), 4000);
+    }
+    if (!found.length) {
+      toast('Не нашёл такого артиста');
+      return feedSettings(feed, rerender, rebuild);
+    }
+    sheet(
+      'Кого добавить?',
+      h(
+        'div',
+        { class: 'feed-artist-pick' },
+        found.map((a) =>
+          artistCard(a, () => {
+            setFav(a, true);
+            toast(`«${a.name}» в ленте — пересобираю её`);
+            closeSheet();
+            rebuild();
+          })
+        )
+      )
+    );
+  };
+
+  paint();
+  sheet('Настройки ленты', box);
+}
+
 export function feedView() {
   let building = false;
   const refreshBtn = h('button', { class: 'icon-btn', 'aria-label': 'Обновить ленту' }, icon('refresh', 24));
-  const el = nav.page({ title: 'Лента', actions: [refreshBtn] });
+  const tuneBtn = h('button', { class: 'icon-btn', 'aria-label': 'Настройки ленты' }, icon('tune', 24));
+  const el = nav.page({ title: 'Лента', actions: [tuneBtn, refreshBtn] });
   const body = nav.pageBody(el);
+  tuneBtn.onclick = () => feedSettings(cachedFeed(), () => render(cachedFeed()), () => rebuild());
+
+  // ---------- the endless list of tracks at the bottom ----------
+  // It continues "Моя волна" of Yandex Music batch by batch (each request goes on
+  // from the last track) while you scroll; without Yandex — your own MP3s.
+  let stream = [];
+  let seen = new Set();
+  let lastYid = '';
+  let loading = false;
+  let ended = false;
+  let observer = null;
+  const streamBox = h('div', { class: 'stream' });
+  const sentinel = h('div', { class: 'stream-more' });
+
+  const moreTracks = async () => {
+    if (loading || ended) return;
+    loading = true;
+    sentinel.textContent = 'Подбираю ещё…';
+    try {
+      let batch = [];
+      if (online.isLoggedIn()) {
+        for (let i = 0; i < 4 && batch.length < 12; i++) {
+          const b = await ya.stationTracks('user:onyourwave', lastYid);
+          if (!b.length) break;
+          lastYid = b[b.length - 1].yid;
+          batch.push(...b.filter((t) => !seen.has(t.key)));
+        }
+      } else batch = await moreLike(stream.slice(-5));
+      batch = batch.filter((t) => !seen.has(t.key));
+      batch.forEach((t) => seen.add(t.key));
+      if (!batch.length) {
+        ended = true;
+        sentinel.textContent = online.isLoggedIn() ? 'Волна пока молчит — обнови ленту позже' : 'Это все твои MP3 — войди в Яндекс Музыку, и лента станет бесконечной';
+        return;
+      }
+      const offset = stream.length;
+      stream.push(...batch);
+      streamBox.appendChild(trackList(batch, { onPlay: (i) => player.playQueue(stream, offset + i), menu: (t) => trackMenu(t) }));
+      sentinel.textContent = '';
+    } catch (e) {
+      logError('feed:stream', e);
+      sentinel.textContent = 'Не получилось подобрать — попробую ещё, когда долистаешь';
+    } finally {
+      loading = false;
+    }
+  };
+
+  const startStream = (feed) => {
+    stream = [];
+    seen = new Set(((feed && feed.mix) || []).map((t) => t.key));
+    lastYid = '';
+    ended = false;
+    clear(streamBox);
+    if (observer) observer.disconnect();
+    observer = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && moreTracks(), { rootMargin: '700px 0px' });
+    observer.observe(sentinel);
+  };
 
   const render = (feed) => {
     clear(body);
@@ -90,30 +307,27 @@ export function feedView() {
         h('button', { class: 'btn btn-text', onclick: () => nav.push(mixPage(feed)) }, 'Весь микс')
       );
     }
+    // Резонанс's own picks: "this music resonates with you — play it?"
+    if (feedShows('picks')) {
+      const picks = buildPicks(feed);
+      if (picks.length) add(body, section('Подборки Резонанса', null, h('div', { class: 'picks' }, picks.map(pickCard))));
+    }
     // Yandex's own playlists for this user (Плейлист дня, Дежавю…)
-    if (feed.personal && feed.personal.length)
-      add(body, section('Плейлисты для тебя', null, hscroll(feed.personal.map((p) => releaseCard({ cover: p.cover, title: p.title, artist: p.trackCount ? tracksWord(p.trackCount) : '' }, () => nav.push(servicePlaylistPage(p)))))));
-    if (feed.releases && feed.releases.length) {
+    if (feedShows('personal') && feed.personal && feed.personal.length)
+      add(body, section('Плейлисты для тебя', null, hscroll(feed.personal.map((p) => playlistCard(p.title, p.trackCount ? tracksWord(p.trackCount) : '', () => nav.push(servicePlaylistPage(p)))))));
+    if (feedShows('releases') && feed.releases && feed.releases.length) {
       add(body, section('Новинки твоих артистов', null, hscroll(feed.releases.map((r) => releaseCard(r, () => nav.push(releasePage(r.id)))))));
     }
-    if (feed.related && feed.related.length) {
+    if (feedShows('related') && feed.related && feed.related.length) {
       add(body, section('Похожие артисты', null, hscroll(feed.related.map((a) => artistCard(a, () => nav.push(artistPage(a.id, a.name)))))));
-    }
-    if (feed.seeds && feed.seeds.length) {
-      add(body, 
-        section(
-          'Лента учитывает',
-          h('button', { class: 'btn btn-text small', onclick: () => nav.switchTab('search') }, '+ артист'),
-          h(
-            'div',
-            { class: 'chips' },
-            feed.seeds.map((a) => h('button', { class: 'chip', onclick: () => nav.push(artistPage(a.id, a.name)) }, a.name))
-          )
-        )
-      );
     }
     const at = new Date(feed.at);
     add(body, h('div', { class: 'list-meta center' }, `Обновлено ${at.toLocaleDateString('ru-RU')} в ${at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`));
+    // the endless list of tracks
+    if (feedShows('stream')) {
+      add(body, section('Лента треков', null, streamBox), sentinel);
+      startStream(feed);
+    } else if (observer) observer.disconnect();
   };
 
   const rebuild = async () => {

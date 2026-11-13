@@ -103,6 +103,7 @@
   --glass-fill: rgba(255, 255, 255, 0.075);
   --glass-card: rgba(255, 255, 255, 0.085);
   --glass-strong: rgba(30, 18, 60, 0.5);
+  --glass-bar: rgba(30, 18, 60, 0.88);
   --glass-strong-solid: rgba(34, 20, 66, 0.94);
   --glass-edge: rgba(255, 255, 255, 0.16);
   --glass-hi: rgba(255, 255, 255, 0.42);
@@ -127,6 +128,7 @@
   --glass-fill: rgba(255, 255, 255, 0.06);
   --glass-card: rgba(255, 255, 255, 0.07);
   --glass-strong: rgba(14, 14, 18, 0.58);
+  --glass-bar: rgba(14, 14, 18, 0.9);
   --glass-strong-solid: rgba(18, 17, 23, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.13);
   --glass-hi: rgba(255, 255, 255, 0.34);
@@ -161,6 +163,7 @@
   --glass-fill: rgba(255, 255, 255, 0.5);
   --glass-card: rgba(255, 255, 255, 0.6);
   --glass-strong: rgba(255, 255, 255, 0.66);
+  --glass-bar: rgba(255, 255, 255, 0.9);
   --glass-strong-solid: rgba(250, 250, 255, 0.95);
   --glass-edge: rgba(255, 255, 255, 0.85);
   --glass-hi: rgba(255, 255, 255, 0.95);
@@ -2096,6 +2099,189 @@ body.has-mini .snack {
   background: color-mix(in srgb, var(--src) 16%, transparent);
 }
 
+/* ---------- Резонанс's own covers (components.rezCover): no artwork of other services ---------- */
+
+.rez-cover {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 15% 10%, hsl(calc(var(--h1) * 1deg) 85% 62% / 0.95), transparent 60%),
+    radial-gradient(110% 90% at 95% 100%, hsl(calc(var(--h2) * 1deg) 80% 55% / 0.95), transparent 65%),
+    linear-gradient(160deg, hsl(calc(var(--h1) * 1deg) 45% 18%), hsl(calc(var(--h2) * 1deg) 50% 12%));
+}
+.rez-cover-bars {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  height: 34%;
+  width: 40%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7%;
+}
+.rez-cover-bars i {
+  flex: 1;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.35);
+}
+.rez-cover-title {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 9%;
+  color: #fff;
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 700;
+  font-size: clamp(11px, 3.4cqw + 6px, 20px);
+  line-height: 1.15;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cover-box.rez-cover {
+  container-type: inline-size;
+}
+
+/* ---------- Резонанс's picks on the feed ---------- */
+
+.picks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pick-card {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--lilac, #b79cff) 10%, var(--card, rgba(255, 255, 255, 0.05)));
+}
+.pick-cover {
+  flex: none;
+  width: 92px;
+  height: 92px;
+  border-radius: 16px;
+}
+.pick-cover .rez-cover-title {
+  display: none;
+}
+.pick-cover .rez-cover-bars {
+  top: 50%;
+  height: 46%;
+  width: 52%;
+}
+.pick-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.pick-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+.pick-sub {
+  font-size: 13px;
+  opacity: 0.72;
+  line-height: 1.3;
+}
+.pick-text .btn {
+  margin-top: 6px;
+}
+
+/* ---------- the endless list of tracks ---------- */
+
+.stream-more {
+  padding: 18px 0 28px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.6;
+  min-height: 20px;
+}
+
+/* ---------- the feed's settings ---------- */
+
+.feed-settings .fs-title {
+  margin-top: 6px;
+  font-weight: 700;
+}
+.feed-settings .chip svg {
+  margin-left: 4px;
+  vertical-align: -3px;
+}
+.feed-artist-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 12px;
+  padding: 4px 4px 12px;
+}
+
+/* ---------- the screensaver (saver.js): waves over the whole screen, a clock ---------- */
+
+.saver {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: radial-gradient(120% 80% at 50% 70%, color-mix(in srgb, var(--lilac, #b79cff) 10%, #07040d), #030206);
+  opacity: 0;
+  transition: opacity 0.32s ease;
+  cursor: none;
+}
+.saver.open {
+  opacity: 1;
+}
+.saver-waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.saver-clock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--sat, 0px) + 12vh);
+  text-align: center;
+  color: #fff;
+  transition: transform 2s ease;
+  pointer-events: none;
+}
+.saver-time {
+  font-family: 'Unbounded', sans-serif;
+  font-weight: 700;
+  font-size: clamp(64px, 22vw, 160px);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 40px color-mix(in srgb, var(--lilac, #b79cff) 45%, transparent);
+}
+.saver-date {
+  margin-top: 10px;
+  font-size: 16px;
+  opacity: 0.7;
+  text-transform: lowercase;
+}
+.saver-song {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: calc(var(--sab, 0px) + 7vh);
+  text-align: center;
+  color: #fff;
+  font-size: 15px;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 /* the source of a brought-in playlist and, next to it, "refresh" */
 .source-row {
   display: flex;
@@ -2826,10 +3012,13 @@ body.has-mini .snack {
   pointer-events: none;
 }
 
-/* real blur: small, fixed, few */
+/* No live blur: a blurred bar over a scrolling list (or over the circle of a
+   theme switch) is blurred again every frame, which phones can't keep up with —
+   scrolling stuttered and switching dropped frames. The bars are frosted glass
+   that is nearly opaque instead: the same sheen and rim, nothing re-blurred. */
 [data-glass] :is(.tabbar, .mini, .toast, .snack) {
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* The moving waves stay out from under the blurred bars (with room for the
@@ -2853,7 +3042,9 @@ body.has-mini .snack {
   padding-bottom: 0;
   border: 0;
   border-radius: 30px;
-  background: var(--glass-strong);
+  background:
+    linear-gradient(170deg, color-mix(in srgb, var(--glass-hi) 16%, transparent), transparent 45%),
+    var(--glass-bar);
   box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px var(--glass-shadow);
 }
 
@@ -2875,7 +3066,9 @@ body.has-mini .snack {
   bottom: calc(var(--tabbar-h) + var(--sab) + 18px);
   border: 0;
   border-radius: 22px;
-  background: var(--glass-strong);
+  background:
+    linear-gradient(170deg, color-mix(in srgb, var(--glass-hi) 16%, transparent), transparent 45%),
+    var(--glass-bar);
   box-shadow: inset 0 1px 0 var(--glass-hi), 0 10px 30px var(--glass-shadow);
 }
 
@@ -2914,10 +3107,10 @@ body.has-mini .snack {
 }
 
 [data-glass] .page-head.scrolled {
-  background: var(--glass-strong);
+  background:
+    linear-gradient(170deg, color-mix(in srgb, var(--glass-hi) 16%, transparent), transparent 45%),
+    var(--glass-bar);
   box-shadow: 0 1px 0 var(--glass-edge);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
-  backdrop-filter: blur(16px) saturate(160%);
 }
 
 /* sheets: nearly opaque glass, no live blur over the moving player behind */
