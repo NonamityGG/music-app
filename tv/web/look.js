@@ -17,7 +17,10 @@ export function weak() {
   }
   return weakBox;
 }
-export const eco = () => S.fx === 'eco' || (S.fx !== 'max' && weak());
+// the box falls behind while the waves move (it got hot, an app works in the
+// background): light effects for the rest of the session, not a stuttering picture
+let struggling = false;
+export const eco = () => S.fx === 'eco' || (S.fx !== 'max' && (weak() || struggling));
 
 looks.install();
 
@@ -40,6 +43,7 @@ let place = { y: 0.5, amp: 0.22 };
 
 export function setWaveState(patch) {
   Object.assign(state, patch);
+  watchFrames();
   document.body.classList.toggle('quiet', !state.music && !state.saver);
   waves.kick();
 }
@@ -94,7 +98,7 @@ export function apply() {
   const a = hexRgb(c[0]);
   body.style.setProperty('--a1s', `rgba(${a[0]},${a[1]},${a[2]},0.35)`);
   body.style.setProperty('--a1g', `rgba(${a[0]},${a[1]},${a[2]},0.6)`);
-  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: eco() ? 24 : 60 });
+  waves.configure({ style: S.style || 'capsules', palette: S.palette || 'violet', light: false, maxFps: eco() ? 30 : 60 });
   waves.kick();
 }
 
@@ -121,6 +125,53 @@ export function saverColors(c) {
 }
 
 export const coverColors = (src) => looks.coverColors(src);
+
+// ---------- does the box keep up? ----------
+// While the waves move, the time between frames is watched (nothing else is
+// drawn for it). Many late frames for a few seconds in a row: the effects go
+// light by themselves («Эффекты: Сами»), once, until Резонанс OS starts again.
+
+let watching = 0;
+let lastAt = 0;
+let since = 0;
+let frames = 0;
+let late = 0;
+function watchFrames() {
+  const on = state.visible && !state.cast && (state.music || state.saver) && S.style !== 'off';
+  if (!on || struggling || (S.fx && S.fx !== 'auto')) {
+    if (watching) cancelAnimationFrame(watching);
+    watching = 0;
+    lastAt = 0;
+    return;
+  }
+  if (watching) return;
+  // the first moments after showing up are always uneven: not counted
+  since = performance.now() + 3000;
+  frames = 0;
+  late = 0;
+  const step = (now) => {
+    watching = requestAnimationFrame(step);
+    if (lastAt && now > since) {
+      frames++;
+      // a frame of a 60 Hz screen is ~16.7 ms: more than ~2 of them is a stutter
+      if (now - lastAt > 36) late++;
+      if (frames >= 240) {
+        if (late / frames > 0.18) {
+          struggling = true;
+          cancelAnimationFrame(watching);
+          watching = 0;
+          tv.log(`приставка не успевает (${late} из ${frames} кадров с опозданием): эффекты стали экономными`);
+          apply();
+          return;
+        }
+        frames = 0;
+        late = 0;
+      }
+    }
+    lastAt = now;
+  };
+  watching = requestAnimationFrame(step);
+}
 
 // ---------- light from the focused app ----------
 

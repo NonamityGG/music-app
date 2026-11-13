@@ -65,7 +65,9 @@ public class MainActivity extends Activity implements Page {
         s.setAllowContentAccess(false);
         s.setTextZoom(100); // the TV's font size setting must not break the layout
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
-        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        // no layer of its own: a WebView in a hardware layer is drawn twice per
+        // frame (into the layer, then the layer onto the screen) — a full extra
+        // 1080p pass that weak TV GPUs feel as stutter
         web.setVerticalScrollBarEnabled(false);
         web.setHorizontalScrollBarEnabled(false);
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
