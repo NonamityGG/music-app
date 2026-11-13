@@ -444,6 +444,10 @@ window.rez.onCast((m) => {
     tvs = tvs.filter((t) => t.known);
     renderTvs();
     find();
+  } else if (m.cmd === 'found' && m.tv) {
+    // a TV seen while searching, or one that connected to us a moment later
+    addTv(m.tv);
+    if (!finding && !live && !$('vList').classList.contains('hidden')) status(tvs.length === 1 ? 'Нашёл телевизор — нажми на него' : `Нашёл телевизоров: ${tvs.length}`);
   } else if (m.cmd === 'stop') stop('main');
   else if (m.cmd === 'hidden') {
     // the list closed while asking: forget that attempt (unless the picture goes)

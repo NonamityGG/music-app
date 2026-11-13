@@ -313,4 +313,206 @@ function store(file) {
   };
 }
 
-module.exports = { PORT, FIND_PORT, SERVICE, T, isLanIp, encodeName, encodeQuery, parseMessage, tvsFromMdns, tvFromFindReply, lanInterfaces, discover, request, store };
+// ---------- the other way round: the TV comes to us ----------
+// Some boxes (SberBox) let nothing in to an ordinary app: not our HTTP request,
+// not even a UDP packet — only the system's mDNS hears the network. So while
+// «На телевизор» is open (or the picture goes), this PC announces itself as
+// _rezonans-pc._tcp and waits; the TV's Резонанс OS sees it through the system
+// and connects here. Requests then go down that connection, one JSON per line
+// (see tv/…/Dialer.java).
+
+const PC_SERVICE = '_rezonans-pc._tcp.local';
+
+/** The questions of a DNS message: [{name, type}]. */
+function parseQuestions(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 12) throw new Error('short message');
+  const qd = buf.readUInt16BE(4);
+  const out = [];
+  let off = 12;
+  for (let i = 0; i < qd; i++) {
+    const [name, o] = readName(buf, off);
+    if (o + 4 > buf.length) throw new Error('question out of range');
+    out.push({ name, type: buf.readUInt16BE(o) });
+    off = o + 4;
+  }
+  return { response: (buf.readUInt16BE(2) & 0x8000) !== 0, questions: out };
+}
+
+function rr(name, type, data, ttl, flush) {
+  const h = Buffer.alloc(10);
+  h.writeUInt16BE(type, 0);
+  h.writeUInt16BE(flush ? 0x8001 : 1, 2);
+  h.writeUInt32BE(ttl, 4);
+  h.writeUInt16BE(data.length, 8);
+  return Buffer.concat([encodeName(name), h, data]);
+}
+
+/** An mDNS answer that says "this PC, at this port and these addresses" (ttl 0: "gone"). */
+function encodeAnnounce({ instance, host, port, ips, txt = {}, ttl = 120 }) {
+  const full = `${instance}.${PC_SERVICE}`;
+  const srv = Buffer.alloc(6);
+  srv.writeUInt16BE(0, 0);
+  srv.writeUInt16BE(0, 2);
+  srv.writeUInt16BE(port, 4);
+  const txtBuf = Buffer.concat(
+    Object.entries(txt).map(([k, v]) => {
+      const b = Buffer.from(`${k}=${v}`, 'utf8');
+      return Buffer.concat([Buffer.from([Math.min(255, b.length)]), b.subarray(0, 255)]);
+    }).concat(Object.keys(txt).length ? [] : [Buffer.from([0])])
+  );
+  const records = [rr(PC_SERVICE, T.PTR, encodeName(full), ttl, false), rr(full, T.SRV, Buffer.concat([srv, encodeName(host)]), ttl, true), rr(full, T.TXT, txtBuf, ttl, true)];
+  for (const ip of ips) records.push(rr(host, T.A, Buffer.from(ip.split('.').map(Number)), ttl, true));
+  const head = Buffer.alloc(12);
+  head.writeUInt16BE(0x8400, 2); // a response, authoritative
+  head.writeUInt16BE(records.length, 6);
+  return Buffer.concat([head, ...records]);
+}
+
+// a DNS label: letters, digits and dashes (the PC's name may be anything)
+const label = (s) => String(s || 'pc').replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'pc';
+
+/**
+ * While alive: a server the TVs connect to and an mDNS announcement of it.
+ * onTv(tv) for each TV that comes ({id, name, ip, w, h, link: true}).
+ */
+function presence({ id, name, onTv = () => {}, onGone = () => {}, log = () => {} }) {
+  const net = require('net');
+  const tvs = new Map(); // tv id -> {tv, sock, waiting: Map(rid -> resolve)}
+  let rid = 0;
+  let closed = false;
+  const instance = label(name) + '-' + String(id).slice(0, 6);
+  const host = instance + '.local';
+
+  const server = net.createServer((sock) => {
+    const ip = String(sock.remoteAddress || '').replace(/^::ffff:/, '');
+    if (!isLanIp(ip)) return sock.destroy();
+    sock.setNoDelay(true);
+    sock.setKeepAlive(true, 10000);
+    let me = null;
+    let buf = '';
+    sock.setEncoding('utf8');
+    sock.on('data', (chunk) => {
+      buf += chunk;
+      if (buf.length > 2 * 1024 * 1024) return sock.destroy();
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        let m = null;
+        try {
+          m = JSON.parse(line);
+        } catch {}
+        if (!m) continue;
+        if (m.t === 'tv' && !me && m.id) {
+          me = { tv: { id: String(m.id), name: String(m.name || 'Резонанс OS'), ip, port: PORT, w: Number(m.w) || 0, h: Number(m.h) || 0, link: true }, sock, waiting: new Map() };
+          const old = tvs.get(me.tv.id);
+          if (old && old.sock !== sock) old.sock.destroy();
+          tvs.set(me.tv.id, me);
+          log(`трансляция: «${me.tv.name}» на связи (${ip})`);
+          onTv(me.tv);
+        } else if (m.t === 'res' && me) {
+          const w = me.waiting.get(m.rid);
+          if (w) {
+            me.waiting.delete(m.rid);
+            w({ status: Number(m.status) || 0, body: m.body || {} });
+          }
+        }
+      }
+    });
+    const gone = () => {
+      if (!me) return;
+      for (const w of me.waiting.values()) w({ status: 0, body: { ok: false, error: 'net' } });
+      me.waiting.clear();
+      if (tvs.get(me.tv.id) === me) {
+        tvs.delete(me.tv.id);
+        onGone(me.tv);
+      }
+    };
+    sock.on('close', gone);
+    sock.on('error', () => {});
+  });
+  server.on('error', (e) => log('трансляция: сервер для ТВ: ' + e.message));
+
+  // mDNS: answer questions about us, and say it ourselves now and then
+  const mdns = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  const ifs = () => lanInterfaces();
+  const say = (ttl) => {
+    if (!server.address()) return;
+    const ips = ifs().map((i) => i.address);
+    if (!ips.length) return;
+    const pkt = encodeAnnounce({ instance, host, port: server.address().port, ips, txt: { id: String(id), proto: '1' }, ttl });
+    for (const i of ifs()) {
+      try {
+        mdns.setMulticastInterface(i.address);
+        mdns.send(pkt, MDNS.port, MDNS.address, () => {});
+      } catch {}
+    }
+  };
+  mdns.on('error', (e) => log('трансляция: mDNS: ' + e.message));
+  mdns.on('message', (msg, r) => {
+    if (closed || !isLanIp(r.address)) return;
+    try {
+      const q = parseQuestions(msg);
+      if (q.response) return;
+      const lc = (s) => String(s).toLowerCase();
+      if (q.questions.some((x) => lc(x.name) === PC_SERVICE || lc(x.name) === lc(`${instance}.${PC_SERVICE}`) || lc(x.name) === lc(host))) say(120);
+    } catch {}
+  });
+  let timer = 0;
+  server.listen(0, '0.0.0.0', () => {
+    mdns.bind(MDNS.port, () => {
+      for (const i of ifs()) {
+        try {
+          mdns.addMembership(MDNS.address, i.address);
+        } catch {}
+      }
+      // announced three times at first (packets get lost), then now and then
+      say(120);
+      setTimeout(() => !closed && say(120), 1000);
+      setTimeout(() => !closed && say(120), 3000);
+      timer = setInterval(() => say(120), 20000);
+      log(`трансляция: жду телевизоры на порту ${server.address().port}`);
+    });
+  });
+
+  return {
+    tvs: () => [...tvs.values()].map((x) => x.tv),
+    port: () => (server.address() ? server.address().port : 0),
+    has: (tvId) => tvs.has(tvId),
+    /** A request to a TV that came to us: {status, body} like request(). */
+    request(tvId, method, path, body, timeout = 8000) {
+      const x = tvs.get(tvId);
+      if (!x) return Promise.resolve({ status: 0, body: { ok: false, error: 'net' } });
+      return new Promise((resolve) => {
+        const my = ++rid;
+        const t = setTimeout(() => {
+          x.waiting.delete(my);
+          resolve({ status: 0, body: { ok: false, error: 'timeout' } });
+        }, timeout);
+        x.waiting.set(my, (r) => {
+          clearTimeout(t);
+          resolve(r);
+        });
+        x.sock.write(JSON.stringify({ t: 'req', rid: my, method, path, body: body || {} }) + '\n');
+      });
+    },
+    stop() {
+      if (closed) return;
+      closed = true;
+      clearInterval(timer);
+      try {
+        say(0); // "gone"
+      } catch {}
+      setTimeout(() => {
+        try {
+          mdns.close();
+        } catch {}
+      }, 300);
+      for (const x of tvs.values()) x.sock.destroy();
+      tvs.clear();
+      server.close();
+    },
+  };
+}
+
+module.exports = { PORT, FIND_PORT, SERVICE, PC_SERVICE, T, isLanIp, encodeName, encodeQuery, parseMessage, parseQuestions, encodeAnnounce, tvsFromMdns, tvFromFindReply, lanInterfaces, discover, request, presence, store };

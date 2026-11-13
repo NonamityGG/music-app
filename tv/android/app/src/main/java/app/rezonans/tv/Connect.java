@@ -46,6 +46,9 @@ import java.util.concurrent.TimeUnit;
  *   POST /connect/hello {from, name}            -> {ok, paired}   (not paired: the TV shows a code)
  *   POST /connect/offer {from, name, code|token, sdp} -> {ok, sdp, token?}
  *   POST /connect/bye   {from, token}           -> {ok}
+ *
+ * The same requests also come the other way round, over a connection the TV
+ * opens to the computer (Dialer): some boxes let nothing in.
  */
 final class Connect {
     static final int PORT = 48230;
@@ -101,6 +104,8 @@ final class Connect {
         find.setDaemon(true);
         find.start();
         ui.post(this::announce);
+        // boxes that let nothing in: the TV goes out to the computer (Dialer)
+        ui.post(() -> new Dialer(ctx, this).start());
     }
 
     // ---------- who the TV is ----------
@@ -281,11 +286,7 @@ final class Connect {
             }
             JSONObject q = len > 0 ? new JSONObject(new String(body, 0, got, StandardCharsets.UTF_8)) : new JSONObject();
             String ip = from.getHostAddress();
-            if (method.equals("GET") && path.equals("/connect/info")) reply(s, 200, about());
-            else if (method.equals("POST") && path.equals("/connect/hello")) hello(s, q);
-            else if (method.equals("POST") && path.equals("/connect/offer")) offer(s, q, ip);
-            else if (method.equals("POST") && path.equals("/connect/bye")) bye(s, q);
-            else reply(s, 404, err("path"));
+            route((code, o) -> reply(s, code, o), method, path, q, ip);
         } catch (Exception e) {
             Log.w(TAG, "connect: запрос: " + e);
             try {
@@ -343,13 +344,27 @@ final class Connect {
         return s.length() > max ? s.substring(0, max) : s;
     }
 
+    /** Where an answer goes: an HTTP response, or a line on a link the TV opened. */
+    interface Out {
+        void send(int code, JSONObject o) throws IOException;
+    }
+
+    /** One request, from either way in. */
+    void route(Out out, String method, String path, JSONObject q, String ip) throws Exception {
+        if (method.equals("GET") && path.equals("/connect/info")) out.send(200, about());
+        else if (method.equals("POST") && path.equals("/connect/hello")) hello(out, q);
+        else if (method.equals("POST") && path.equals("/connect/offer")) offer(out, q, ip);
+        else if (method.equals("POST") && path.equals("/connect/bye")) bye(out, q);
+        else out.send(404, err("path"));
+    }
+
     // ---------- the steps ----------
 
-    private void hello(Socket s, JSONObject q) throws Exception {
+    private void hello(Out s, JSONObject q) throws Exception {
         String from = clean(q.optString("from"), 80);
         String name = clean(q.optString("name"), 60);
         if (from.isEmpty()) {
-            reply(s, 400, err("from"));
+            s.send(400, err("from"));
             return;
         }
         JSONObject o = new JSONObject();
@@ -367,7 +382,7 @@ final class Connect {
             deliver(e);
             o.put("paired", false);
         }
-        reply(s, 200, o);
+        s.send(200, o);
     }
 
     // the one picture being shown now: the page's answer comes back through answer()
@@ -378,12 +393,12 @@ final class Connect {
     private String answerErr;
     private String castFrom;
 
-    private void offer(Socket s, JSONObject q, String ip) throws Exception {
+    private void offer(Out s, JSONObject q, String ip) throws Exception {
         String from = clean(q.optString("from"), 80);
         String name = clean(q.optString("name"), 60);
         String sdp = q.optString("sdp", "");
         if (from.isEmpty() || sdp.isEmpty() || !sdp.startsWith("v=0")) {
-            reply(s, 400, err("bad"));
+            s.send(400, err("bad"));
             return;
         }
         long now = System.currentTimeMillis();
@@ -395,7 +410,7 @@ final class Connect {
             ok = token != null;
             if (ok) savePairing();
             else {
-                reply(s, 403, err(had ? "code" : "expired"));
+                s.send(403, err(had ? "code" : "expired"));
                 if (had && pairing.shownCode(now) == null) {
                     JSONObject e = new JSONObject();
                     e.put("t", "nocode");
@@ -405,7 +420,7 @@ final class Connect {
             }
         }
         if (!ok) {
-            reply(s, 403, err("pair"));
+            s.send(403, err("pair"));
             return;
         }
         CountDownLatch l = new CountDownLatch(1);
@@ -440,32 +455,32 @@ final class Connect {
             if (waiting == l) waiting = null;
         }
         if (!got || a == null) {
-            reply(s, got ? 409 : 504, err(why != null ? why : "timeout"));
+            s.send(got ? 409 : 504, err(why != null ? why : "timeout"));
             return;
         }
         JSONObject o = new JSONObject();
         o.put("ok", true);
         o.put("sdp", a);
         if (token != null) o.put("token", token);
-        reply(s, 200, o);
+        s.send(200, o);
     }
 
-    private void bye(Socket s, JSONObject q) throws Exception {
+    private void bye(Out s, JSONObject q) throws Exception {
         String from = clean(q.optString("from"), 80);
         if (!pairing.tryToken(from, q.optString("token", ""), System.currentTimeMillis())) {
-            reply(s, 403, err("pair"));
+            s.send(403, err("pair"));
             return;
         }
         synchronized (lock) {
             if (!from.equals(castFrom)) {
-                reply(s, 200, new JSONObject().put("ok", true));
+                s.send(200, new JSONObject().put("ok", true));
                 return;
             }
         }
         deliver(new JSONObject().put("t", "bye"));
         JSONObject o = new JSONObject();
         o.put("ok", true);
-        reply(s, 200, o);
+        s.send(200, o);
     }
 
     // ---------- from the page ----------

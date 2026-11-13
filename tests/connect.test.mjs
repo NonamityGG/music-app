@@ -216,3 +216,50 @@ test('the video starts sharp: start bitrate on every video fmtp line, audio left
   assert.equal(shared.startBitrate(out), out);
   assert.equal(shared.startBitrate('v=0\r\n'), 'v=0\r\n');
 });
+
+test('the PC announces itself so a TV can come to it', () => {
+  const pkt = net.encodeAnnounce({ instance: 'COMP-890-abc123', host: 'COMP-890-abc123.local', port: 50123, ips: ['192.168.50.81'], txt: { id: 'abc123', proto: '1' } });
+  const recs = net.parseMessage(pkt);
+  assert.deepEqual(recs.map((r) => r.type), [12, 33, 16, 1]);
+  assert.equal(recs[0].name, net.PC_SERVICE);
+  assert.equal(recs[0].data, 'COMP-890-abc123.' + net.PC_SERVICE);
+  assert.deepEqual(recs[1].data, { priority: 0, weight: 0, port: 50123, target: 'COMP-890-abc123.local' });
+  assert.deepEqual(recs[2].data, { id: 'abc123', proto: '1' });
+  assert.equal(recs[3].data, '192.168.50.81');
+  assert.equal(pkt.readUInt16BE(2), 0x8400, 'a response');
+  // and it understands a question about itself
+  const q = net.parseQuestions(net.encodeQuery(net.PC_SERVICE));
+  assert.deepEqual(q, { response: false, questions: [{ name: net.PC_SERVICE, type: 12 }] });
+  assert.equal(net.parseQuestions(pkt).response, true);
+});
+
+test('a TV that connects to the PC answers requests down the same line', async () => {
+  const tcp = require('net');
+  const seen = [];
+  const p = net.presence({ id: 'pc-test', name: 'test pc', onTv: (t) => seen.push(t) });
+  let port = 0;
+  for (let i = 0; i < 100 && !port; i++) {
+    await new Promise((r) => setTimeout(r, 20));
+    port = p.port();
+  }
+  assert.ok(port > 0, 'the server listens');
+  const tv = tcp.connect(port, '127.0.0.1');
+  tv.setEncoding('utf8');
+  tv.write(JSON.stringify({ t: 'tv', id: 'tv1', name: 'Резонанс OS · тест', w: 1920, h: 1080 }) + '\n');
+  tv.on('data', (d) => {
+    for (const line of d.split('\n').filter(Boolean)) {
+      const m = JSON.parse(line);
+      if (m.t === 'req') tv.write(JSON.stringify({ t: 'res', rid: m.rid, status: 200, body: { ok: true, echo: m.path } }) + '\n');
+    }
+  });
+  for (let i = 0; i < 50 && !p.has('tv1'); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(seen[0].name, 'Резонанс OS · тест');
+  assert.equal(seen[0].ip, '127.0.0.1');
+  const r = await p.request('tv1', 'POST', '/connect/hello', { from: 'x' });
+  assert.deepEqual(r, { status: 200, body: { ok: true, echo: '/connect/hello' } });
+  tv.destroy();
+  for (let i = 0; i < 50 && p.has('tv1'); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.equal(p.has('tv1'), false);
+  assert.deepEqual(await p.request('tv1', 'GET', '/connect/info'), { status: 0, body: { ok: false, error: 'net' } });
+  p.stop();
+});

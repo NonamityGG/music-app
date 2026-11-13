@@ -28,6 +28,23 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
   let busy = false; // asking the TV: the list stays open even without focus
   const db = net.store(path.join(app.getPath('userData'), 'connect.json'));
 
+  // while the list is open or the picture goes: TVs that let nothing in come to us
+  let pres = null;
+  function presenceOn() {
+    if (pres) return;
+    pres = net.presence({ id: db.me(), name: os.hostname(), log, onTv: (t) => send({ cmd: 'found', tv: mark(t) }), onGone: (t) => send({ cmd: 'gone', tv: t }) });
+  }
+  function presenceOff() {
+    if (!pres || mode !== 'off') return;
+    pres.stop();
+    pres = null;
+  }
+  // a request to a TV: down the connection it opened to us, or over HTTP
+  function talk(t, method, p, body, timeout) {
+    if (pres && t && pres.has(t.id)) return pres.request(t.id, method, p, body, timeout);
+    return net.request(t.ip, method, p, body, timeout);
+  }
+
   // the cast window's own session: its own "what to capture" answer
   const ses = session.fromPartition('rez-cast');
   ses.setDisplayMediaRequestHandler(
@@ -126,6 +143,7 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
       return;
     }
     mode = 'pick';
+    presenceOn();
     place('pick');
     send({ cmd: 'pick' });
     win.show();
@@ -140,6 +158,7 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
       send({ cmd: 'hidden' });
       win.hide();
     }
+    presenceOff();
   }
 
   /** Stops the picture (from the Quick settings, the panel or the tray). */
@@ -151,7 +170,7 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
   function byeTv(t) {
     if (!t) return;
     const known = db.tv(t.id);
-    if (known && known.token) net.request(t.ip, 'POST', '/connect/bye', { from: db.me(), token: known.token }, 3000);
+    if (known && known.token) return talk(t, 'POST', '/connect/bye', { from: db.me(), token: known.token }, 3000);
   }
 
   function displays() {
@@ -172,7 +191,11 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
       case 'find': {
         const found = await net.discover(Number(arg.ms) || 2500, (t) => send({ cmd: 'found', tv: mark(t) }));
         log(`трансляция: найдено телевизоров: ${found.length}`);
-        return { tvs: found.map(mark), displays: displays(), mute: capture.mute };
+        // the ones that came to us count too (and win: that way works for sure)
+        const all = new Map();
+        for (const t of found) all.set(t.id || t.ip, mark(t));
+        for (const t of pres ? pres.tvs() : []) all.set(t.id, mark(t));
+        return { tvs: [...all.values()], displays: displays(), mute: capture.mute };
       }
       case 'byIp': {
         const ip = String(arg.ip || '').trim();
@@ -186,11 +209,11 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
         busy = true;
         try {
           const known = db.tv(t.id);
-          let r = await net.request(t.ip, 'POST', '/connect/hello', { from: db.me(), name: os.hostname() });
+          let r = await talk(t, 'POST', '/connect/hello', { from: db.me(), name: os.hostname() });
           if (r.status !== 200 || !r.body.ok) return { error: (r.body && r.body.error) || 'net' };
           // the TV remembers us but we lost the token: a code again
           if (r.body.paired && !(known && known.token)) {
-            r = await net.request(t.ip, 'POST', '/connect/hello', { from: db.me(), name: os.hostname(), again: true });
+            r = await talk(t, 'POST', '/connect/hello', { from: db.me(), name: os.hostname(), again: true });
             if (r.status !== 200 || !r.body.ok) return { error: (r.body && r.body.error) || 'net' };
           }
           if (!r.body.paired && known && known.token) db.forget(t.id);
@@ -210,7 +233,7 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
           const body = { from: db.me(), name: os.hostname(), sdp: String(arg.sdp || '') };
           if (arg.code) body.code = String(arg.code);
           else if (known && known.token) body.token = known.token;
-          const r = await net.request(t.ip, 'POST', '/connect/offer', body, 25000);
+          const r = await talk(t, 'POST', '/connect/offer', body, 25000);
           if (r.status !== 200 || !r.body.ok || !r.body.sdp) {
             const e = (r.body && r.body.error) || 'net';
             log(`трансляция: «${t.name}» отказал: ${e} (HTTP ${r.status})`);
@@ -236,8 +259,10 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
       case 'stopped': {
         const was = tv;
         log('трансляция: закончена (' + (arg.why || '—') + ')');
-        if (was && arg.why !== 'remote') byeTv(was);
+        const bye = was && arg.why !== 'remote' ? byeTv(was) : null;
         setMode('off');
+        // the bye goes down the TV's connection: close it only after
+        Promise.resolve(bye).finally(() => presenceOff());
         if (win && !win.isDestroyed()) {
           win.setAlwaysOnTop(true);
           win.hide();
