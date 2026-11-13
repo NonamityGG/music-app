@@ -212,8 +212,10 @@ function Needed([string]$p) {
     if ($who -and @($who | Where-Object { $_ -ne $p }).Count -eq 0) { $why += 'кнопка помощника на пульте' }
   }
   # the remote itself: its own components that pair or handle the remote's keys
-  # (component names only — a mere Bluetooth permission doesn't count)
-  $svcs = Shell "dumpsys package $p | grep -iE '$([regex]::Escape($p))/[^ ]*(remote|pairing|keyhandler|globalkey|rcu)'"
+  # (component names only — a mere Bluetooth permission doesn't count, and
+  # "remote" alone doesn't either: Sber's launcher has ForceRemoteUpdateReceiver,
+  # remote config updates, not the remote control)
+  $svcs = Shell "dumpsys package $p | grep -iE '$([regex]::Escape($p))/[^ ]*(remotecontrol|remotectrl|rcu|pairing|keyhandler|globalkey)'"
   if ($svcs) { $why += 'пульт' }
   return (($why | Select-Object -Unique) -join ', ')
 }

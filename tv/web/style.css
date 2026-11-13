@@ -1514,54 +1514,56 @@ body.sv-waves .sv {
   display: none;
 }
 
-/* the weather moves a little (only in big pictures, not in eco) */
-.wx-anim .wx-rays {
+/* the weather moves a little (only in big pictures, not in eco: one endless
+   animation keeps the whole page redrawing 60 times a second — on a weak box
+   that alone is a busy processor and a hot, stuttering TV) */
+.fx .wx-anim .wx-rays {
   transform-origin: 12px 12px;
   animation: wx-spin 24s linear infinite;
 }
 
-.wx-anim .wx-cloud {
+.fx .wx-anim .wx-cloud {
   animation: wx-float 6s ease-in-out infinite alternate;
 }
 
-.wx-anim .wx-moon {
+.fx .wx-anim .wx-moon {
   transform-origin: 12px 12px;
   animation: wx-rock 7s ease-in-out infinite alternate;
 }
 
-.wx-anim .wx-drop {
+.fx .wx-anim .wx-drop {
   animation: wx-drop 1.1s linear infinite;
 }
 
-.wx-anim .wx-flake {
+.fx .wx-anim .wx-flake {
   animation: wx-flake 2.6s linear infinite;
 }
 
-.wx-anim .d2 {
+.fx .wx-anim .d2 {
   animation-delay: -0.4s;
 }
 
-.wx-anim .d3 {
+.fx .wx-anim .d3 {
   animation-delay: -0.8s;
 }
 
-.wx-anim .wx-flake.d2 {
+.fx .wx-anim .wx-flake.d2 {
   animation-delay: -1.1s;
 }
 
-.wx-anim .wx-flake.d3 {
+.fx .wx-anim .wx-flake.d3 {
   animation-delay: -1.9s;
 }
 
-.wx-anim .wx-bolt {
+.fx .wx-anim .wx-bolt {
   animation: wx-bolt 3.2s ease-in-out infinite;
 }
 
-.wx-anim .wx-fog {
+.fx .wx-anim .wx-fog {
   animation: wx-float 5s ease-in-out infinite alternate;
 }
 
-.wx-anim .wx-fog.d2 {
+.fx .wx-anim .wx-fog.d2 {
   animation-direction: alternate-reverse;
 }
 
