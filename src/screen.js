@@ -42,6 +42,23 @@ export function initScreen() {
   }
 }
 
+// Whether the phone leaves Резонанс alone in the background (out of battery
+// saving). Some phones freeze an app that stands on pause in the background,
+// and "play" from the lock screen then waits until the app is opened.
+export async function backgroundFree() {
+  if (!native) return true;
+  try {
+    return !!(await Screen.backgroundFree()).free;
+  } catch {
+    return true;
+  }
+}
+
+// The system's own "let it run in the background?" dialog
+export function askBackgroundFree() {
+  if (native) Screen.askBackgroundFree().catch(() => {});
+}
+
 export function setFullscreen(on) {
   saveSettings({ fullscreen: on });
   document.documentElement.toggleAttribute('data-fullscreen', fullscreenOn());

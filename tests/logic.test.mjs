@@ -703,3 +703,21 @@ test('Likes from Звук go to Yandex «Мне нравится» in the same o
   ya.setYandexTransport(null);
   saveSettings({ yaToken: '', yaUid: '' });
 });
+
+test('refreshing a brought-in playlist brings in only the new songs, in the source order', async () => {
+  const { createPlaylist, mergeFrom, getPlaylist, removeTrackAt } = await import('../src/playlists.js');
+  const tr = (n) => ({ key: 'x:a|' + n, src: 'ext', title: n, artist: 'a' });
+  // brought in: 3 songs; the user then removed "b"
+  const p = createPlaylist('Мне нравится', [tr('a'), tr('b'), tr('c')], 'yandex');
+  removeTrackAt(p.id, 1);
+  // the source now: two new likes on top, one in the middle, "b" still there
+  const added = mergeFrom(p.id, [tr('n1'), tr('n2'), tr('a'), tr('b'), tr('m'), tr('c')]);
+  const keys = getPlaylist(p.id).tracks.map((t) => t.title);
+  // "b" was removed by hand, so it comes back as a song the playlist doesn't have:
+  // only songs missing here are added, nothing is duplicated
+  assert.deepEqual(keys, ['n1', 'n2', 'a', 'b', 'm', 'c']);
+  assert.equal(added, 4);
+  // nothing new: nothing changes
+  assert.equal(mergeFrom(p.id, [tr('n1'), tr('a')]), 0);
+  assert.deepEqual(getPlaylist(p.id).tracks.map((t) => t.title), ['n1', 'n2', 'a', 'b', 'm', 'c']);
+});

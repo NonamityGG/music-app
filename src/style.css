@@ -2096,6 +2096,29 @@ body.has-mini .snack {
   background: color-mix(in srgb, var(--src) 16%, transparent);
 }
 
+/* the source of a brought-in playlist and, next to it, "refresh" */
+.source-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.source-row .source-tag {
+  margin: 0;
+}
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  min-height: 0;
+  font-size: 13px;
+}
+.refresh-btn[disabled] svg {
+  animation: spin 1s linear infinite;
+}
+
 .match-progress {
   margin: 14px 0 0;
 }

@@ -85,6 +85,40 @@ export function addTracks(id, tracks) {
   return added;
 }
 
+// The source changed (songs added there): brings in the songs the playlist doesn't
+// have yet, each placed right after the song it follows in the source (at the top
+// if it opens the source, as new likes do). The user's own order and the songs
+// they removed here are left alone. Returns how many came in.
+export function mergeFrom(id, source) {
+  const p = getPlaylist(id);
+  if (!p) return 0;
+  const have = new Set(p.tracks.map((t) => t.key));
+  let added = 0;
+  let after = null; // the key of the last source song already in the playlist
+  for (const t of source) {
+    if (have.has(t.key)) {
+      after = t.key;
+      continue;
+    }
+    const at = after == null ? 0 : p.tracks.findIndex((x) => x.key === after) + 1;
+    p.tracks.splice(at, 0, snapshot(t));
+    have.add(t.key);
+    after = t.key;
+    added++;
+  }
+  p.refreshedAt = Date.now();
+  commit();
+  return added;
+}
+
+// Where the playlist came from (a link), so it can be read again later.
+export function setLink(id, link) {
+  const p = getPlaylist(id);
+  if (!p) return;
+  p.link = String(link || '').trim();
+  commit();
+}
+
 // Stores what a song was matched to (MP3 or Zvuk) in every playlist that has it.
 export function rememberMatch(key, patch) {
   let changed = false;

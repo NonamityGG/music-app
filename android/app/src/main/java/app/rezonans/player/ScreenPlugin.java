@@ -7,8 +7,11 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -59,6 +62,44 @@ public class ScreenPlugin extends Plugin {
         JSObject r = new JSObject();
         r.put("enabled", a == null || a.isFullscreen());
         call.resolve(r);
+    }
+
+    /**
+     * Whether the phone lets Резонанс be in the background without saving power on
+     * it. Some phones (Infinix, Tecno — XOS "Usf_Hiber") freeze an app that stands
+     * on pause in the background and drop what the system sends it: "play" from the
+     * lock screen then does nothing until the app is opened. Apps left out of
+     * battery saving are not frozen.
+     */
+    @PluginMethod
+    public void backgroundFree(PluginCall call) {
+        JSObject r = new JSObject();
+        boolean free = true;
+        try {
+            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            if (pm != null && Build.VERSION.SDK_INT >= 23) free = pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+        } catch (Exception ignored) {}
+        r.put("free", free);
+        r.put("maker", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
+        call.resolve(r);
+    }
+
+    /** Asks the system to leave Резонанс out of battery saving (its own dialog; the app's settings page if that isn't there). */
+    @PluginMethod
+    public void askBackgroundFree(PluginCall call) {
+        String pkg = getContext().getPackageName();
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + pkg));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            } catch (Exception ignored) {}
+        }
+        call.resolve();
     }
 
     /** Starts watching battery and network; resolves with the current state, then sends "status" events. */

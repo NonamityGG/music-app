@@ -4,7 +4,7 @@
 
 import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { settings, saveSettings } from './settings.js';
-import { configure as configureWaves, resize as resizeWaves } from './waves.js';
+import { configure as configureWaves, resize as resizeWaves, hold as holdWaves } from './waves.js';
 
 export const THEMES = [
   { id: 'dark', name: 'Тёмная', sub: 'фирменная', bg: '#140f1f' },
@@ -18,7 +18,7 @@ export const THEMES = [
 export const themeById = (id) => THEMES.find((t) => t.id === id) || THEMES[0];
 export const currentTheme = () => themeById(settings.theme);
 
-function setAttrs(t) {
+function setAttrs(t, resizeLater = false) {
   const root = document.documentElement;
   root.setAttribute('data-theme', t.id);
   root.toggleAttribute('data-glass', !!t.glass);
@@ -29,8 +29,9 @@ function setAttrs(t) {
   if (scheme) scheme.setAttribute('content', t.light ? 'light' : 'dark');
   bars(t);
   configureWaves({ light: !!t.light });
-  // glass themes give the background waves a different area
-  requestAnimationFrame(() => resizeWaves('bg'));
+  // glass themes give the background waves a different area (during a switch:
+  // once it is over — resizing the canvas mid-way costs a frame or two)
+  if (!resizeLater) requestAnimationFrame(() => resizeWaves('bg'));
   window.dispatchEvent(new Event('rez-theme'));
 }
 
@@ -56,13 +57,19 @@ let switching = false;
 export function setTheme(id, from, after) {
   const t = themeById(id);
   saveSettings({ theme: t.id });
-  const apply = () => {
+  const plain = () => {
     setAttrs(t);
     if (after) after();
   };
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduced || switching || !document.startViewTransition) return apply();
+  if (reduced || switching || !document.startViewTransition) return plain();
+  const apply = () => {
+    setAttrs(t, true);
+    if (after) after();
+  };
   switching = true;
+  // the waves stand still for the switch (see waves.hold)
+  holdWaves(true);
   const w = window.innerWidth;
   const hgt = window.innerHeight;
   const x = from && from.x != null ? from.x : w / 2;
@@ -71,12 +78,17 @@ export function setTheme(id, from, after) {
   const root = document.documentElement;
   root.classList.add('vt-theme');
   let vt;
+  const done = () => {
+    root.classList.remove('vt-theme');
+    switching = false;
+    holdWaves(false);
+    resizeWaves('bg');
+  };
   try {
     vt = document.startViewTransition(apply);
   } catch {
-    root.classList.remove('vt-theme');
-    switching = false;
-    return apply();
+    done();
+    return plain();
   }
   vt.ready
     .then(() => {
@@ -86,10 +98,5 @@ export function setTheme(id, from, after) {
       );
     })
     .catch(() => {});
-  vt.finished
-    .catch(() => {})
-    .then(() => {
-      root.classList.remove('vt-theme');
-      switching = false;
-    });
+  vt.finished.catch(() => {}).then(done);
 }

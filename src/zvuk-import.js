@@ -163,6 +163,15 @@ export async function importZvukLink(text, onWait) {
   return { ...r, origin: link.id ? 'zvuk:' + link.id : '' };
 }
 
+// "Мне нравится" of the signed-in user, read again (to bring in new likes)
+export async function likedTracks(onWait) {
+  if (!zvuk.isLoggedIn()) throw new ImportError('Чтобы обновить «Мне нравится» из Звука, войди в Звук');
+  const ids = await patiently(() => zvuk.likedTrackIds(), onWait);
+  const out = [];
+  for (let i = 0; i < ids.length; i += 100) out.push(...(await patiently(() => zvuk.getTracks(ids.slice(i, i + 100)), onWait)));
+  return out.map(toExt);
+}
+
 // ---------- everything of a signed-in user ----------
 
 // onStep(text) shows progress; onList(group) is called for every playlist as soon

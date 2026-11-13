@@ -11,9 +11,9 @@ import { migrateFromZvuk } from './playlists.js';
 import { toExt as zvukToExt } from './zvuk-import.js';
 import { feedView, searchView, libraryView, profileView } from './views.js';
 import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync, toggleLike, likedIds, canLike, onLikeChange, searchInApp, openExternal } from './pages.js';
-import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose, hSwipe, slideIn } from './components.js';
+import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose, hSwipe, slideIn, confirmSheet } from './components.js';
 import { applyTheme, syncBars } from './theme.js';
-import { initScreen } from './screen.js';
+import { initScreen, backgroundFree, askBackgroundFree } from './screen.js';
 import { createLyricsView } from './lyrics-view.js';
 import { moreLike } from './endless.js';
 import { onLocalChange } from './local.js';
@@ -81,6 +81,29 @@ waves.addSurface('full', full.canvas, {
 player.onPlayer((type) => {
   if (type === 'state') waves.kick();
 });
+
+// The first time music plays: if the phone would freeze Резонанс on pause in the
+// background (so "play" from the lock screen waits until the app is opened), ask
+// to let it run there — with the system's own dialog. Asked at most twice, a week apart.
+let bgChecked = false;
+player.onPlayer((type) => {
+  if (type !== 'state' || bgChecked || !player.state.playing) return;
+  bgChecked = true;
+  setTimeout(offerBackground, 2500);
+});
+async function offerBackground() {
+  if (await backgroundFree()) return;
+  const asked = settings.bgAsked || 0;
+  if (asked >= 2 || Date.now() - (settings.bgAskedAt || 0) < 7 * 864e5) return;
+  saveSettings({ bgAsked: asked + 1, bgAskedAt: Date.now() });
+  const ok = await confirmSheet(
+    'Музыка с экрана блокировки',
+    'Телефон усыпляет Резонанс, когда музыка стоит на паузе в фоне, — и «играть» с экрана блокировки или из шторки не срабатывает, пока не откроешь приложение. Разреши Резонансу работать в фоне: телефон спросит сам.',
+    'Разрешить',
+    'primary'
+  );
+  if (ok) askBackgroundFree();
+}
 
 // ---------- tabs ----------
 

@@ -179,6 +179,17 @@ export async function logout() {
 
 const FIELDS = 'items(track(name,duration_ms,artists(name),album(name))),next';
 
+// one list of the signed-in user, read again (to bring in songs added since)
+export async function likedTracks() {
+  const liked = await all('/me/tracks?limit=50', (j) => (j.items || []).map((x) => x.track));
+  return liked.map(toExt).filter(Boolean);
+}
+
+export async function playlistTracks(id) {
+  const items = await all(`/playlists/${id}/tracks?limit=100&fields=${encodeURIComponent(FIELDS)}`, (j) => (j.items || []).map((x) => x.track));
+  return items.map(toExt).filter(Boolean);
+}
+
 export async function importAll({ onStep, onList, skip = new Set() }) {
   onStep('Смотрю, какие у тебя плейлисты…');
   const lists = await all('/me/playlists?limit=50');

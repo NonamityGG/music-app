@@ -111,8 +111,18 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener('visibilitychange', () => kick());
 
+// Held: the waves stay as they are (the last frame on screen, no drawing) — while
+// the theme switches, a moving canvas would make the browser build the whole
+// revealed screen again every frame.
+let held = false;
+
 function running() {
-  return cfg.style !== 'off' && !document.hidden && (source.playing() || energy > 0.004 || ripples.length > 0);
+  return cfg.style !== 'off' && !held && !document.hidden && (source.playing() || energy > 0.004 || ripples.length > 0);
+}
+
+export function hold(on) {
+  held = !!on;
+  if (!held) kick();
 }
 
 // Frame pacing. On a 120/144 Hz screen drawing at "about 60" lands on uneven

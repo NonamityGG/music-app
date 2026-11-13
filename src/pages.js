@@ -16,6 +16,7 @@ import { AppLauncher } from '@capacitor/app-launcher';
 import { PLATFORMS, platformUrl } from './platforms.js';
 import { SOURCES, sourceById, importFromLink, parseTextList, parseExportFile, detectLink, ImportError } from './importers.js';
 import { matchProgress, onMatchProgress, queueMatch, rematchLocal } from './matcher.js';
+import { canRefresh, refreshPlaylist } from './refresh.js';
 import { likeInYandex, looksLiked, transferable } from './liketransfer.js';
 import {
   trackList,
@@ -431,6 +432,27 @@ export function customPlaylistPage(id) {
   const body = nav.pageBody(el);
   let onlyMissing = false;
 
+  // the source read again: the songs added there since come in
+  let refreshing = false;
+  const doRefresh = async () => {
+    if (refreshing) return;
+    refreshing = true;
+    render();
+    try {
+      const r = await refreshPlaylist(id, {
+        askLink: () => askText('Вставь ссылку на этот плейлист в сервисе, откуда он перенесён', '', 'Обновить'),
+        onWait: (ms) => toast(`Звук попросил подождать — продолжу через ${Math.ceil(ms / 1000)} с`),
+      });
+      if (r) toast(r.added ? `Новых песен: ${r.added} — ищу, откуда их играть` : 'Новых песен нет — плейлист как в источнике');
+    } catch (e) {
+      logError('refresh', e);
+      toast(e.message || String(e), 5000);
+    } finally {
+      refreshing = false;
+      render();
+    }
+  };
+
   const render = () => {
     const p = pl.getPlaylist(id);
     const scroll = el.scrollTop;
@@ -459,6 +481,7 @@ export function customPlaylistPage(id) {
             if (name) pl.renamePlaylist(id, name);
           },
         },
+        canRefresh(p) ? { icon: 'refresh', label: 'Обновить из источника', onClick: () => setTimeout(doRefresh, 300) } : null,
         p.source && p.source !== 'mine' && online.isLoggedIn()
           ? { icon: 'heart', label: 'Лайкнуть все в Яндекс Музыке', onClick: () => setTimeout(() => likeTransfer(id), 400) }
           : null,
@@ -489,7 +512,16 @@ export function customPlaylistPage(id) {
     const shown = onlyMissing ? p.tracks.filter(isMissing) : p.tracks;
     add(body, 
       hero(coverOf(p.tracks.find((t) => coverOf(t))), p.name, parts.join(', ')),
-      p.source && p.source !== 'mine' ? h('div', { class: 'source-tag', style: { '--src': src.color } }, src.name) : null,
+      p.source && p.source !== 'mine'
+        ? h(
+            'div',
+            { class: 'source-row' },
+            h('div', { class: 'source-tag', style: { '--src': src.color } }, src.name),
+            canRefresh(p)
+              ? h('button', { class: 'btn btn-ghost small refresh-btn', disabled: refreshing, onclick: doRefresh }, icon('refresh', 18), refreshing ? 'Обновляю…' : 'Обновить')
+              : null
+          )
+        : null,
       prog
         ? h(
             'div',
@@ -717,7 +749,8 @@ export function importPage(preselect = 'zvuk') {
   const fileInput = h('input', { type: 'file', accept: '.csv,.txt,text/csv,text/plain', hidden: true });
 
   const finish = (groups, source) => {
-    const made = groups.map((g) => pl.createPlaylist(g.name, g.tracks, source, g.origin ? { origin: g.origin } : {}));
+    // where each came from is kept, so it can be refreshed later
+    const made = groups.map((g) => pl.createPlaylist(g.name, g.tracks, source, { ...(g.origin ? { origin: g.origin } : {}), ...(g.link ? { link: g.link } : {}) }));
     made.forEach((p) => queueMatch(p.id));
     const total = groups.reduce((n, g) => n + g.tracks.length, 0);
     toast(made.length > 1 ? `Перенесено плейлистов: ${made.length}, треков: ${total}` : `Перенесено: ${tracksWord(total)}`);
@@ -757,10 +790,10 @@ export function importPage(preselect = 'zvuk') {
       try {
         if (current === 'zvuk' && (link || detectZvukLink(text))) {
           const r = await importZvukLink(link || text, (ms) => (status.textContent = `Звук попросил подождать — продолжу через ${Math.ceil(ms / 1000)} с`));
-          finish([{ name: r.name, tracks: r.tracks, origin: r.origin }], 'zvuk');
+          finish([{ name: r.name, tracks: r.tracks, origin: r.origin, link: (link || text).trim() }], 'zvuk');
         } else if (link || detectLink(text)) {
           const r = await importFromLink(link || text);
-          finish([{ name: r.name, tracks: r.tracks }], r.service || current);
+          finish([{ name: r.name, tracks: r.tracks, link: (link || text).trim() }], r.service || current);
         } else {
           const tracks = parseTextList(text);
           if (!tracks.length) throw new ImportError('Не нашёл в тексте ни одного трека');
