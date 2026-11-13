@@ -26,6 +26,19 @@ if ($state -ne 'device') { Write-Host "  Приставка не отвечае�
 Start-Sleep -Seconds 2
 $saver = (& $adb -s $target shell settings get secure screensaver_components 2>&1 | Out-String).Trim()
 if ($saver -like "*$pkg*") { & $adb -s $target shell settings delete secure screensaver_components 2>&1 | Out-Null }
+# the box's own home screen, if the installer switched it off, comes back first
+# (without it and without Резонанс OS the box would have no home screen at all)
+$disabledFile = Join-Path $work 'disabled-home.txt'
+$back = @()
+if (Test-Path $disabledFile) { $back += Get-Content $disabledFile | ForEach-Object { $_.Trim() } | Where-Object { $_ } }
+$off = (& $adb -s $target shell pm list packages -d 2>&1 | Out-String) -split "`n" | ForEach-Object { $_.Trim() -replace '^package:', '' }
+foreach ($p in ($back | Select-Object -Unique)) {
+  if ($off -contains $p) {
+    & $adb -s $target shell pm enable $p 2>&1 | Out-Null
+    Write-Host "  Экран приставки снова включён: $p" -ForegroundColor Green
+  }
+}
+if (Test-Path $disabledFile) { Remove-Item $disabledFile }
 $svc = "$pkg/$pkg.HomeGuard"
 $cur = (& $adb -s $target shell settings get secure enabled_accessibility_services | Out-String).Trim()
 $rest = ($cur -split ':' | Where-Object { $_ -and $_ -ne $svc -and $_ -ne 'null' }) -join ':'

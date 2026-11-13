@@ -183,6 +183,73 @@ $oldSaver = Shell 'settings get secure screensaver_components'
 Step '6. Домашний экран'
 $r = Shell "cmd package set-home-activity $pkg/.MainActivity"
 Say ('  ' + ($(if ($r) { $r } else { 'Резонанс OS — домашний экран.' })))
+
+# Did the box really take it? Some boxes (Sber) keep their own home screen and
+# keep drawing it in the background. Then its launcher can be switched off for
+# this user — not removed: `pm enable` brings it back (Restore-Sber-Home.cmd
+# does it). First checked: it must not be the voice assistant, the keyboard, a
+# device admin or anything else the box needs, and the person checks the
+# remote right away (a "no" switches it straight back on).
+function HomeNow { return (Shell 'cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME') }
+function OtherHomes {
+  return (Shell 'cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME') -split "`n" |
+    ForEach-Object { $_.Trim() } | Where-Object { $_ -match '/' -and $_ -notlike "$pkg/*" -and $_ -notmatch 'FallbackHome' } |
+    ForEach-Object { ($_ -split '/')[0] } | Select-Object -Unique
+}
+# what the box needs from a package besides its home screen ('' — nothing found)
+function Needed([string]$p) {
+  $why = @()
+  $never = 'android', 'com.android.settings', 'com.android.systemui', 'com.android.tv.settings', 'com.google.android.gms', 'com.android.providers.settings'
+  if ($never -contains $p) { $why += 'системная часть' }
+  foreach ($k in 'voice_interaction_service', 'voice_recognition_service', 'assistant') {
+    if ((Shell "settings get secure $k") -like "*$p*") { $why += 'голосовой помощник' }
+  }
+  if ((Shell 'settings get secure default_input_method') -like "$p/*") { $why += 'клавиатура' }
+  if ((Shell 'settings get secure enabled_accessibility_services') -like "*$p/*") { $why += 'специальные возможности' }
+  if ((Shell 'dumpsys device_policy') -match [regex]::Escape($p)) { $why += 'управление устройством' }
+  foreach ($a in 'android.intent.action.ASSIST', 'android.intent.action.VOICE_COMMAND', 'android.intent.action.SEARCH_LONG_PRESS') {
+    $who = (Shell "cmd package query-activities --brief -a $a") -split "`n" | Where-Object { $_ -match '/' } | ForEach-Object { ($_.Trim() -split '/')[0] } | Select-Object -Unique
+    if ($who -and @($who | Where-Object { $_ -ne $p }).Count -eq 0) { $why += 'кнопка помощника на пульте' }
+  }
+  # the remote itself: its own components that pair or handle the remote's keys
+  # (component names only — a mere Bluetooth permission doesn't count)
+  $svcs = Shell "dumpsys package $p | grep -iE '$([regex]::Escape($p))/[^ ]*(remote|pairing|keyhandler|globalkey|rcu)'"
+  if ($svcs) { $why += 'пульт' }
+  return (($why | Select-Object -Unique) -join ', ')
+}
+
+$homeNow = HomeNow
+if ($homeNow -like "$pkg/*") {
+  Say '  Приставка приняла: «Домой» ведёт в Резонанс OS, её экран не рисуется в фоне.' 'Green'
+} else {
+  Say "  Приставка оставила свой домашний экран ($homeNow)." 'Yellow'
+  $disabledFile = Join-Path $work 'disabled-home.txt'
+  foreach ($p in OtherHomes) {
+    $why = Needed $p
+    if ($why) {
+      Say "  $p не трогаю — он нужен приставке: $why. «Домой» вернёт служба Резонанс OS." 'Yellow'
+      continue
+    }
+    Say "  Можно выключить экран приставки ($p) — не удалить: вернуть можно одной командой (Restore-Sber-Home.cmd)."
+    Say '  Тогда он не будет работать в фоне, и Резонанс OS станет плавнее.'
+    $a = (Read-Host '  Выключить? [д/Н]').Trim().ToLower()
+    if (-not ($a -eq 'д' -or $a -eq 'да' -or $a -eq 'y' -or $a -eq 'l')) { continue }
+    $r = Shell "pm disable-user --user 0 $p"
+    if ($r -notmatch 'disabled') { Say "  Приставка не дала: $r" 'Yellow'; continue }
+    Add-Content -Path $disabledFile -Value $p -Encoding ASCII
+    Shell "cmd package set-home-activity $pkg/.MainActivity" | Out-Null
+    Shell 'input keyevent KEYCODE_HOME' | Out-Null
+    Say '  Выключил. Проверь пультом прямо сейчас: «Домой», «Назад», громкость, кнопку голосового помощника.'
+    $ok = (Read-Host '  Всё работает? [Д/н]').Trim().ToLower()
+    # «т» is «n» typed in the Russian layout
+    if ($ok -eq 'н' -or $ok -eq 'нет' -or $ok -eq 'n' -or $ok -eq 'no' -or $ok -eq 'т') {
+      Shell "pm enable $p" | Out-Null
+      Say "  Вернул $p обратно — всё как было." 'Yellow'
+    } else {
+      Say "  Готово: «Домой» — $(HomeNow)." 'Green'
+    }
+  }
+}
 # the app switches the screen saver itself, so it remembers the box's own one
 Shell "am start -n $pkg/.MainActivity --ez sysSaver true" | Out-Null
 Start-Sleep -Seconds 2
