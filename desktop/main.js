@@ -2410,7 +2410,8 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('right-click', () => togglePanel('tray'));
 
     startHost();
-    createPanel();
+    // the panel, Start and Quick settings are made when first opened: a window
+    // made while everything is starting can stay empty on screen for good
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
     if (settings.island) createIsland();
@@ -2433,13 +2434,33 @@ if (!app.requestSingleInstanceLock()) {
         closeTaskbar();
         enableTaskbar(true);
       }
+      // the bar too (it once came up as an empty strip after an update), and any
+      // menu opened in these first seconds
+      if (settings.bar && bar && !bar.isDestroyed()) {
+        log('строка: создаю заново после запуска');
+        closeBar();
+        createBar();
+      }
+      for (const [name, get, drop] of [
+        ['панель', () => panel, () => (panel = null)],
+        ['Пуск', () => startWin, () => (startWin = null)],
+        ['быстрые настройки', () => quickWin, () => (quickWin = null)],
+      ]) {
+        const w = get();
+        if (!w || w.isDestroyed()) continue;
+        log(name + ': создаю заново после запуска');
+        const was = w.isVisible();
+        drop();
+        w.destroy();
+        if (was && name === 'панель') showPanel('bar', 'home');
+      }
     }, 5000);
     if (SELFTEST) setTimeout(selftest, 3000);
     else if (settings.seen !== app.getVersion()) {
       // a new version: show the new panel once
       settings.seen = app.getVersion();
       writeSettings();
-      setTimeout(() => showPanel('bar', 'home'), 3500);
+      setTimeout(() => showPanel('bar', 'home'), 6500);
     }
 
     screen.on('display-added', () => scheduleRebuild('новый экран'));

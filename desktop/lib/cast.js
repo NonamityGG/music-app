@@ -11,6 +11,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
 const net = require('./connect');
 
@@ -23,7 +24,18 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
   let win = null;
   let mode = 'off'; // off | pick | live
   let tv = null; // the TV being shown on: {id, name, ip}
-  let capture = { displayId: null, mute: true };
+  // what the person chose last time (the cast window's own storage is not kept)
+  const prefsFile = path.join(app.getPath('userData'), 'cast-prefs.json');
+  let prefs = { quality: 'sharp', mute: true };
+  try {
+    prefs = { ...prefs, ...JSON.parse(fs.readFileSync(prefsFile, 'utf8')) };
+  } catch {}
+  const savePrefs = () => {
+    try {
+      fs.writeFileSync(prefsFile, JSON.stringify(prefs));
+    } catch {}
+  };
+  let capture = { displayId: null, mute: prefs.mute !== false };
   let shownAt = 0;
   let busy = false; // asking the TV: the list stays open even without focus
   const db = net.store(path.join(app.getPath('userData'), 'connect.json'));
@@ -195,7 +207,7 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
         const all = new Map();
         for (const t of found) all.set(t.id || t.ip, mark(t));
         for (const t of pres ? pres.tvs() : []) all.set(t.id, mark(t));
-        return { tvs: [...all.values()], displays: displays(), mute: capture.mute };
+        return { tvs: [...all.values()], displays: displays(), mute: capture.mute, quality: prefs.quality };
       }
       case 'byIp': {
         const ip = String(arg.ip || '').trim();
@@ -224,6 +236,10 @@ function create({ BrowserWindow, session, desktopCapturer, screen, app, preload,
       }
       case 'prepare':
         capture = { displayId: arg.displayId != null ? arg.displayId : screen.getPrimaryDisplay().id, mute: arg.mute !== false };
+        if (prefs.mute !== capture.mute || (arg.quality && prefs.quality !== arg.quality)) {
+          prefs = { ...prefs, mute: capture.mute, ...(arg.quality ? { quality: String(arg.quality) } : {}) };
+          savePrefs();
+        }
         return { display: displays().find((d) => d.id === capture.displayId) || displays()[0] };
       case 'offer': {
         const t = arg.tv || {};
