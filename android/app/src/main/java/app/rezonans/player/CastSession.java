@@ -324,7 +324,7 @@ final class CastSession {
         try {
             // a TV box's Wi-Fi queues anything above a few Mbit/s: seconds of delay (seen 0.5–1.1 s
             // round trip at 4–8 Mbit/s, 25–70 ms at 2–3 Mbit/s)
-            pc.setBitrate(1_000_000, 2_500_000, 4_000_000);
+            pc.setBitrate(2_500_000, 3_000_000, 4_500_000);
         } catch (Exception e) {
             Log.w(TAG, "битрейт: " + e);
         }
@@ -337,8 +337,9 @@ final class CastSession {
                 RtpParameters p = s.getParameters();
                 if (p.encodings == null || p.encodings.isEmpty()) continue;
                 if ("video".equals(t.kind())) {
-                    p.encodings.get(0).maxBitrateBps = 4_000_000;
-                    p.encodings.get(0).minBitrateBps = 1_000_000;
+                    // below 2.5 Mbit/s the phone's hardware encoder makes mush; the box's Wi-Fi takes ~3 without queueing
+                    p.encodings.get(0).maxBitrateBps = 4_500_000;
+                    p.encodings.get(0).minBitrateBps = 2_500_000;
                     p.encodings.get(0).maxFramerate = 30;
                     p.encodings.get(0).scaleResolutionDownBy = 1.0;
                     // a screen: text and details stay sharp; under load fewer frames, not a smaller picture
@@ -371,6 +372,10 @@ final class CastSession {
             StringBuilder b = new StringBuilder();
             for (org.webrtc.RTCStats st : r.getStatsMap().values()) {
                 java.util.Map<String, Object> m = st.getMembers();
+                if ("codec".equals(st.getType()) && String.valueOf(m.get("mimeType")).contains("video")) {
+                    b.append(m.get("mimeType")).append(' ').append(m.get("sdpFmtpLine")).append("; ");
+                    continue;
+                }
                 if ("remote-inbound-rtp".equals(st.getType())) {
                     b.append(m.get("kind")).append(" на ТВ: туда-обратно ").append(m.get("roundTripTime")).append(" с, джиттер ").append(m.get("jitter")).append(" с, потеряно ").append(m.get("packetsLost")).append("; ");
                     continue;
