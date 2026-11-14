@@ -137,8 +137,8 @@ final class CastSession {
             .createAudioDeviceModule();
         factory = PeerConnectionFactory.builder()
             .setAudioDeviceModule(adm)
-            // hardware H.264 (constrained baseline: every TV decodes it), VP8 otherwise
-            .setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(), true, false))
+            // hardware H.264, High profile first (a cleaner picture for the same bits), VP8 otherwise
+            .setVideoEncoderFactory(new DefaultVideoEncoderFactory(egl.getEglBaseContext(), true, true))
             .setVideoDecoderFactory(new DefaultVideoDecoderFactory(egl.getEglBaseContext()))
             .createPeerConnectionFactory();
 
@@ -165,8 +165,11 @@ final class CastSession {
         WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
         wm.getDefaultDisplay().getRealMetrics(dm);
         int sw = dm.widthPixels, sh = dm.heightPixels;
-        int maxW = Math.min(1920, tvW > 0 ? tvW : 1920);
-        int maxH = Math.min(1080, tvH > 0 ? tvH : 1080);
+        // at most 720p across: a phone's encoder and a TV box's Wi-Fi give a clean 720p,
+        // a blocky 1080p (upright the phone stays 1080 tall — few pixels across)
+        boolean wide = sw > sh;
+        int maxW = Math.min(wide ? 1280 : 1920, tvW > 0 ? tvW : 1920);
+        int maxH = Math.min(wide ? 720 : 1080, tvH > 0 ? tvH : 1080);
         double k = Math.min(1.0, Math.min(maxW / (double) sw, maxH / (double) sh));
         return new int[] { even(sw * k), even(sh * k) };
     }
@@ -288,7 +291,10 @@ final class CastSession {
         if (mime.equals("video/h264")) {
             int r = 0;
             if (!fmtp.contains("packetization-mode=1")) r += 4;
-            if (!fmtp.toLowerCase().contains("profile-level-id=42e0")) r += 2;
+            String low = fmtp.toLowerCase();
+            if (low.contains("profile-level-id=640c")) r += 0; // constrained high
+            else if (low.contains("profile-level-id=42e0")) r += 1; // constrained baseline
+            else r += 2;
             return r;
         }
         if (mime.equals("video/vp8")) return 10;
@@ -315,7 +321,7 @@ final class CastSession {
         if (err[0] != null) throw err[0];
         // start sharp: WebRTC would start at 300 kbit/s and climb for many seconds
         try {
-            pc.setBitrate(1_500_000, 6_000_000, 12_000_000);
+            pc.setBitrate(1_500_000, 4_000_000, 12_000_000);
         } catch (Exception e) {
             Log.w(TAG, "битрейт: " + e);
         }

@@ -247,7 +247,7 @@ async function start(t, code) {
       return fail(e);
     }
     remember(t.id, { name: t.name, ...(r.body.token ? { token: r.body.token } : {}) });
-    await Cast.answer({ sdp: startBitrate(opusStereo(unhideCandidates(r.body.sdp, t.ip))) });
+    await Cast.answer({ sdp: startBitrate(opusStereo(unhideCandidates(r.body.sdp, t.ip)), 4000, 1500, 12000) });
     if (!countCandidates(r.body.sdp)) console.warn('cast: в ответе телевизора нет адресов');
     live = { id: t.id, name: t.name };
     view = 'live';
