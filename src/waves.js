@@ -28,7 +28,9 @@ const waveTarget = new Float32Array(WAVE);
 const ripples = [];
 // Per-band automatic gain: loud, mastered tracks would otherwise sit at the top
 // all the time and nothing would seem to move with the music.
-const avgLevel = new Float32Array(BANDS).fill(0.3);
+// Each band is measured between its own quietest and loudest of the last second
+// or two: on a hit it jumps, in between it settles — whatever the volume.
+const avgLevel = new Float32Array(BANDS).fill(0.3); // the band's recent floor
 const peakLevel = new Float32Array(BANDS).fill(0.6);
 const fallSpeed = new Float32Array(BANDS);
 let energy = 0;
@@ -238,8 +240,8 @@ function update(t, dt) {
   prevBassRaw = bassRaw;
   beatPulse = Math.max(beatPulse * Math.exp(-dt / 0.12), Math.min(1, flux * 7));
 
-  const kAvg = 1 - Math.exp(-dt / 1.4);
-  const peakDecay = Math.exp(-dt / 2.5);
+  const kFloor = 1 - Math.exp(-dt / 1.2);
+  const peakDecay = Math.exp(-dt / 1.6);
   const gravity = 5.5; // how fast bars fall, in full heights per second squared
   let e = 0;
   let b = 0;
@@ -250,11 +252,12 @@ function update(t, dt) {
     if (real) {
       // compare each band with its own recent level: hits stand out,
       // steady loudness doesn't fill the screen
-      avgLevel[i] += (v - avgLevel[i]) * kAvg;
-      peakLevel[i] = Math.max(v, peakLevel[i] * peakDecay, avgLevel[i] + 0.08);
-      const floor = avgLevel[i] * 0.65;
-      const rel = (v - floor) / Math.max(0.1, peakLevel[i] - floor);
-      out = Math.min(1, 0.3 * v + 0.8 * Math.max(0, rel));
+      // the floor drops to a quiet moment at once and creeps back up; the
+      // peak jumps to a hit and sinks back down
+      avgLevel[i] = v < avgLevel[i] ? v : avgLevel[i] + (v - avgLevel[i]) * kFloor;
+      peakLevel[i] = Math.max(v, avgLevel[i] + (peakLevel[i] - avgLevel[i]) * peakDecay);
+      const rel = (v - avgLevel[i]) / Math.max(0.14, peakLevel[i] - avgLevel[i]);
+      out = Math.min(1, 0.12 * v + 0.88 * Math.max(0, rel));
     }
     // rise at once, fall with gravity, like a level meter
     if (out >= bands[i]) {
