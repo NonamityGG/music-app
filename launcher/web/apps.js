@@ -1,152 +1,128 @@
-// Резонанс Лаунчер: the phone's apps — the list, the colour and kind of every
-// icon, how often each is opened (for "Частые"), and search (also when the
-// keyboard was on the wrong language).
+// The installed apps: the list, the order, the search (Russian and Latin,
+// a word typed in the wrong keyboard layout, transliteration), and the first
+// home screen for someone who has not arranged anything yet.
 
 import { rez, on } from './bridge.js';
-import { S, L, saveLayout } from './store.js';
+import { S, save } from './store.js';
 
 let list = [];
-let meta = rez.meta(); // the colours and kinds of icons from the last time
-const listeners = [];
-export const onApps = (fn) => listeners.push(fn);
-export const byPkg = (pkg) => list.find((a) => a.pkg === pkg) || null;
+let byPkg = new Map();
+const subs = [];
+export const onApps = (fn) => subs.push(fn);
 export const all = () => list;
-export const metaOf = (pkg) => meta[pkg] || null;
+export const get = (pkg) => byPkg.get(pkg);
 
-let sig = '';
-function fire() {
-  for (const fn of listeners) fn();
+const collator = new Intl.Collator('ru', { sensitivity: 'base', numeric: true });
+export const norm = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').trim();
+
+export function reload() {
+  const raw = rez.apps();
+  list = raw
+    .filter((a) => a && a.pkg && a.label)
+    .map((a) => ({ ...a, key: norm(a.label) }))
+    .sort((a, b) => collator.compare(a.label, b.label));
+  byPkg = new Map(list.map((a) => [a.pkg, a]));
+  firstHome();
+  // apps that are gone leave the home screen and the dock
+  const keep = (arr) => (arr || []).filter((p) => byPkg.has(p));
+  const home = keep(S.home);
+  const dock = keep(S.dock);
+  if (home.length !== (S.home || []).length || dock.length !== (S.dock || []).length) save({ home, dock });
+  for (const fn of subs) fn(list);
+}
+on('apps', () => setTimeout(reload, 120));
+
+// the first letter for the drawer's index: А…Я, A…Z, digits as #
+export function letter(a) {
+  const c = a.label.trim().charAt(0).toUpperCase().replace('Ё', 'Е');
+  if (/[А-Я]/.test(c) || /[A-Z]/.test(c)) return c;
+  return '#';
 }
 
-export function load() {
-  list = rez.apps() || [];
-  for (const a of list) a.m = meta[a.pkg] || null;
-  const s = list.map((a) => a.pkg + '|' + a.label + '|' + (a.updated || 0)).join(',');
-  if (s === sig) return false;
-  sig = s;
-  fire();
-  return true;
-}
+// ---------- the first home screen ----------
 
-let reload = 0;
-on('apps', () => {
-  clearTimeout(reload);
-  reload = setTimeout(load, 900);
-});
-
-// the phone drew every icon: now their colours and kinds are known
-on('meta', (m) => {
-  meta = m || {};
-  for (const a of list) a.m = meta[a.pkg] || null;
-  fire();
-});
-
-// ---------- sorting, kinds ----------
-
-const coll = typeof Intl !== 'undefined' && Intl.Collator ? new Intl.Collator('ru') : null;
-export const byLabel = (a, b) => (coll ? coll.compare(a.label, b.label) : a.label < b.label ? -1 : 1);
-export const hidden = (a) => (L.hidden || []).indexOf(a.pkg) >= 0;
-export const visible = () => list.filter((a) => !hidden(a)).sort(byLabel);
-
-export const CATS = [
-  { id: 'all', name: 'Все' },
-  { id: 'game', name: 'Игры', cats: [0] },
-  { id: 'media', name: 'Музыка и видео', cats: [1, 2] },
-  { id: 'social', name: 'Общение', cats: [4] },
-  { id: 'work', name: 'Работа', cats: [7, 5] },
-  { id: 'photo', name: 'Фото', cats: [3] },
-  { id: 'maps', name: 'Карты', cats: [6] },
-  { id: 'new', name: 'Новые' },
+const DOCK_GUESS = [
+  [/dialer|\.phone$|contacts.*call|incallui/, /^(телефон|phone|звонки)$/],
+  [/messaging|\.mms|\.sms|messages/, /^(сообщения|messages|sms)$/],
+  [/chrome|browser|yandex\.browser|firefox|opera|\.webview/, /(chrome|браузер|browser|яндекс браузер)/],
+  [/camera/, /^(камера|camera)$/],
 ];
+const HOME_GUESS = [/rezonans|music|spotify|yandex\.music|zvuk/, /telegram|whatsapp|vk|viber/, /maps|navigator|2gis/, /gallery|photos/, /settings$/, /youtube/, /gmail|mail/, /calendar/, /clock|deskclock/, /calculator/, /files|filemanager/, /market|vending|appgallery|rustore/];
 
-export function inCat(a, id) {
-  const c = CATS.find((x) => x.id === id);
-  if (!c || id === 'all') return true;
-  if (id === 'new') return isNew(a);
-  return c.cats.indexOf(a.cat) >= 0;
-}
-
-export const isNew = (a) => (L.seen || []).indexOf(a.pkg) < 0 && Date.now() - (a.installed || 0) < 7 * 24 * 3600e3;
-
-// the first letter for the drawer's headings and the fast scroll
-export function letterOf(a) {
-  const ch = (a.label || '?').trim().charAt(0).toUpperCase();
-  return /[A-ZА-ЯЁ]/.test(ch) ? ch : '#';
-}
-
-// ---------- how often an app is opened ----------
-
-export function used(pkg) {
-  const u = (L.usage[pkg] = L.usage[pkg] || { n: 0, at: 0 });
-  u.n += 1;
-  u.at = Date.now();
-  saveLayout();
-}
-
-// the apps opened most (recent opens count more)
-export function frequent(n, skip) {
-  const now = Date.now();
-  return list
-    .filter((a) => !hidden(a) && L.usage[a.pkg] && (!skip || skip.indexOf(a.pkg) < 0))
-    .map((a) => {
-      const u = L.usage[a.pkg];
-      const days = (now - u.at) / 86400e3;
-      return { a, score: u.n * Math.exp(-days / 10) };
-    })
-    .sort((x, y) => y.score - x.score)
-    .slice(0, n)
-    .map((x) => x.a);
+function firstHome() {
+  if (S.home && S.dock) return;
+  const taken = new Set();
+  const pick = (pkgRe, labelRe) => {
+    const a = list.find((x) => !taken.has(x.pkg) && (pkgRe.test(x.pkg) || (labelRe && labelRe.test(x.key))));
+    if (a) taken.add(a.pkg);
+    return a && a.pkg;
+  };
+  const dock = DOCK_GUESS.map(([p, l]) => pick(p, l)).filter(Boolean);
+  const home = HOME_GUESS.map((p) => pick(p)).filter(Boolean);
+  for (const a of list) {
+    if (home.length >= 8) break;
+    if (!taken.has(a.pkg) && !a.sys) {
+      taken.add(a.pkg);
+      home.push(a.pkg);
+    }
+  }
+  save({ home: S.home || home.slice(0, 12), dock: S.dock || dock.slice(0, 4) });
 }
 
 // ---------- search ----------
 
-const RU = 'йцукенгшщзхъфывапролджэячсмитьбю';
-const EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.";
-const toEn = (s) => s.replace(/[а-яё]/g, (c) => EN[RU.indexOf(c)] || c);
-const toRu = (s) => s.replace(/[a-z\[\];',.]/g, (c) => RU[EN.indexOf(c)] || c);
-const norm = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е');
+const EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,.`";
+const RU = 'йцукенгшщзхъфывапролджэячсмитьбюё';
+const swapLayout = (s) =>
+  s.replace(/./g, (c) => {
+    const i = EN.indexOf(c);
+    if (i >= 0) return RU[i];
+    const j = RU.indexOf(c);
+    return j >= 0 ? EN[j] : c;
+  });
+const TR = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya' };
+const translit = (s) => s.replace(/[а-я]/g, (c) => TR[c] ?? c);
 
-function score(label, q) {
-  const l = norm(label);
-  if (l.startsWith(q)) return 3;
-  if (l.split(/[\s\-_.]+/).some((w) => w.startsWith(q))) return 2;
-  if (l.indexOf(q) >= 0) return 1;
-  return 0;
+function score(a, q) {
+  const k = a.key;
+  if (k === q) return 100;
+  if (k.startsWith(q)) return 90;
+  if (k.split(/[\s\-_.:]+/).some((w) => w.startsWith(q))) return 80;
+  if (k.includes(q)) return 60;
+  const t = translit(k);
+  if (t.startsWith(q)) return 55;
+  if (t.includes(q)) return 40;
+  if (a.pkg.toLowerCase().includes(q) && q.length > 2) return 20;
+  // the letters in order ("тлг" → Телеграм)
+  let i = 0;
+  for (const c of k) if (c === q[i]) i++;
+  return i === q.length && q.length > 1 ? 10 : 0;
 }
 
-export function search(raw) {
-  const q = norm(raw).trim();
+export function search(text) {
+  const q = norm(text);
   if (!q) return [];
-  const variants = [q];
-  const sw = /[а-яё]/.test(q) ? toEn(q) : toRu(q);
-  if (sw !== q) variants.push(sw);
+  const sw = swapLayout(q);
+  const qs = [q, sw, translit(q), translit(sw)];
   const out = [];
   for (const a of list) {
-    if (hidden(a)) continue;
     let best = 0;
-    for (const v of variants) best = Math.max(best, score(a.label, v));
-    if (best) out.push({ a, s: best * 100 + Math.min(50, ((L.usage[a.pkg] || {}).n || 0)) });
+    for (let i = 0; i < qs.length; i++) best = Math.max(best, score(a, qs[i]) - i * 5);
+    if (best > 0) out.push([best + Math.min(9, (S.uses[a.pkg]?.n || 0) / 3), a]);
   }
-  return out.sort((x, y) => y.s - x.s || byLabel(x.a, y.a)).map((x) => x.a);
+  return out.sort((x, y) => y[0] - x[0]).map((x) => x[1]);
 }
 
-// "12*(3+4)" → 84: a quick sum in the search field
-export function calc(raw) {
-  const s = String(raw || '').replace(/,/g, '.').replace(/×/g, '*').replace(/÷/g, '/').replace(/\s+/g, '');
-  if (!/^[\d+\-*/().%^]+$/.test(s) || !/[+\-*/%^]/.test(s.replace(/^-/, '')) || /^[\d.]+$/.test(s)) return null;
-  try {
-    // only digits and operators got here
-    const v = Function('"use strict";return (' + s.replace(/\^/g, '**').replace(/(\d+(?:\.\d+)?)%/g, '($1/100)') + ')')();
-    if (typeof v !== 'number' || !isFinite(v)) return null;
-    return String(Math.round(v * 1e8) / 1e8).replace('.', ',');
-  } catch {
-    return null;
-  }
+// the ones opened most and lately: the row above the drawer's list
+export function frequent(n = 4) {
+  const now = Date.now();
+  return list
+    .map((a) => {
+      const u = S.uses[a.pkg];
+      return [u ? u.n / (1 + (now - u.at) / 864e5 / 7) : 0, a];
+    })
+    .filter((x) => x[0] > 0)
+    .sort((x, y) => y[0] - x[0])
+    .slice(0, n)
+    .map((x) => x[1]);
 }
-
-export function webUrl(q) {
-  const e = encodeURIComponent(q);
-  return S.engine === 'google' ? 'https://www.google.com/search?q=' + e : S.engine === 'ddg' ? 'https://duckduckgo.com/?q=' + e : 'https://yandex.ru/search/?text=' + e;
-}
-
-export const engineName = () => (S.engine === 'google' ? 'Google' : S.engine === 'ddg' ? 'DuckDuckGo' : 'Яндекс');

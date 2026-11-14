@@ -1,148 +1,108 @@
-// A small static server for looking at the launcher page in a desktop browser:
-// the built www/, generated icons (/icon/<pkg>), a cover (/art) and stand-ins
-// for the outside services the weather asks (/net?u=).
-import http from 'node:http';
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { join, extname, dirname } from 'node:path';
+// A look at the launcher in a desktop browser: the built page (www) with a
+// stand-in phone (window.RezL) — some apps, drawn icons, a song playing.
+// node launcher/test/serve.mjs [port]   (build first: node launcher/build.mjs)
+
+import { createServer } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, dirname, extname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
-export const APPS = [
-  ['com.android.dialer', 'Телефон', 'sys', -1, '#2e7d32'],
-  ['com.android.messages', 'Сообщения', 'sys', 4, '#1565c0'],
-  ['com.android.chrome', 'Chrome', 'sys', -1, '#ef6c00'],
-  ['com.android.camera', 'Камера', 'sys', 3, '#455a64'],
-  ['org.telegram.messenger', 'Telegram', 'user', 4, '#229ed9'],
-  ['com.whatsapp', 'WhatsApp', 'user', 4, '#25d366'],
-  ['com.vkontakte.android', 'ВКонтакте', 'user', 4, '#0077ff'],
-  ['com.google.android.youtube', 'YouTube', 'user', 2, '#e53935'],
-  ['ru.zvuk.music', 'Звук', 'user', 1, '#7c4dff'],
-  ['ru.yandex.music', 'Яндекс Музыка', 'user', 1, '#fdd835'],
-  ['com.spotify.music', 'Spotify', 'user', 1, '#1db954'],
-  ['com.google.android.apps.maps', 'Карты', 'user', 6, '#34a853'],
-  ['ru.dublgis.dgismobile', '2ГИС', 'user', 6, '#43a047'],
-  ['com.android.settings', 'Настройки', 'sys', -1, '#607d8b'],
-  ['com.android.gallery3d', 'Галерея', 'sys', 3, '#8e24aa'],
-  ['com.google.android.calendar', 'Календарь', 'user', 7, '#1e88e5'],
-  ['com.android.calculator2', 'Калькулятор', 'sys', -1, '#546e7a'],
-  ['com.android.deskclock', 'Часы', 'sys', -1, '#37474f'],
-  ['com.valvesoftware.cs2', 'CS2 Companion', 'user', 0, '#ff7043'],
-  ['com.faceit.app', 'FACEIT', 'user', 0, '#ff5500'],
-  ['com.supercell.brawl', 'Brawl Stars', 'user', 0, '#fbc02d'],
-  ['com.mojang.minecraft', 'Minecraft', 'user', 0, '#558b2f'],
-  ['ru.sberbankmobile', 'СберБанк', 'user', -1, '#21a038'],
-  ['ru.tinkoff', 'Т-Банк', 'user', -1, '#ffdd2d'],
-  ['com.google.android.gm', 'Gmail', 'user', 5, '#d93025'],
-  ['com.google.android.apps.docs', 'Диск', 'user', 7, '#1fa463'],
-  ['com.microsoft.office.word', 'Word', 'user', 7, '#2b579a'],
-  ['ru.max.messenger', 'Макс', 'user', 4, '#00b0ff'],
-  ['com.discord', 'Discord', 'user', 4, '#5865f2'],
-  ['com.twitch.android', 'Twitch', 'user', 2, '#9146ff'],
-  ['com.instagram.android', 'Photos Pro', 'user', 3, '#e1306c'],
-  ['com.android.vending', 'Play Маркет', 'sys', -1, '#00897b'],
-  ['com.android.contacts', 'Контакты', 'sys', -1, '#3949ab'],
-  ['com.android.documentsui', 'Файлы', 'sys', -1, '#6d4c41'],
-  ['com.android.recorder', 'Диктофон', 'sys', -1, '#c62828'],
-  ['com.hotspot.vpn', 'VPN', 'user', -1, '#00acc1'],
-  ['com.aliexpress.ru', 'AliExpress', 'user', -1, '#ff4747'],
-  ['ru.ozon.app.android', 'Ozon', 'user', -1, '#005bff'],
-  ['ru.wildberries', 'Wildberries', 'user', -1, '#cb11ab'],
-  ['com.avito.android', 'Авито', 'user', -1, '#00aaff'],
-  ['ru.yandex.taxi', 'Такси', 'user', -1, '#fc3f1d'],
-  ['ru.yandex.market', 'Маркет', 'user', -1, '#ffcc00'],
-  ['com.duolingo', 'Duolingo', 'user', -1, '#58cc02'],
-  ['com.notion.id', 'Notion', 'user', 7, '#eeeeee'],
-  ['com.adobe.reader', 'Acrobat', 'user', 7, '#d32f2f'],
-  ['org.videolan.vlc', 'VLC', 'user', 2, '#ff8800'],
-  ['com.shazam.android', 'Shazam', 'user', 1, '#0088ff'],
-  ['com.google.android.apps.translate', 'Переводчик', 'user', -1, '#4285f4'],
-  ['com.google.android.apps.photos', 'Google Фото', 'user', 3, '#fbbc04'],
+const www = resolve(process.env.LAUNCHER_OUT || join(here, '..', 'android', 'app', 'src', 'main', 'assets', 'www'));
+const port = Number(process.argv[2] || 5180);
+
+const APPS = [
+  ['app.rezonans.music', 'Резонанс', '#7c4dff', '#ff6fd8'],
+  ['org.telegram.messenger', 'Telegram', '#2aabee', '#229ed9'],
+  ['com.whatsapp', 'WhatsApp', '#25d366', '#128c7e'],
+  ['com.vkontakte.android', 'ВКонтакте', '#0077ff', '#3f8cff'],
+  ['ru.yandex.yandexmaps', 'Яндекс Карты', '#ffcc00', '#ff5a36'],
+  ['com.google.android.youtube', 'YouTube', '#ff0033', '#cc0000'],
+  ['com.google.android.gm', 'Gmail', '#ea4335', '#fbbc04'],
+  ['com.android.chrome', 'Chrome', '#34a853', '#4285f4'],
+  ['com.google.android.dialer', 'Телефон', '#2ee6c1', '#1a9e85'],
+  ['com.google.android.apps.messaging', 'Сообщения', '#3fa9ff', '#4d6bff'],
+  ['com.android.camera', 'Камера', '#3a3550', '#1e1a2c'],
+  ['com.google.android.apps.photos', 'Галерея', '#ff8a3d', '#ffd36b'],
+  ['com.android.settings', 'Настройки', '#5d5577', '#2f2940'],
+  ['com.google.android.deskclock', 'Часы', '#1e172d', '#7c4dff'],
+  ['com.google.android.calendar', 'Календарь', '#4285f4', '#3367d6'],
+  ['com.android.calculator2', 'Калькулятор', '#ff6b8b', '#d6325a'],
+  ['ru.sberbankmobile', 'СберБанк', '#21a038', '#0b7a2a'],
+  ['ru.ozon.app.android', 'Ozon', '#005bff', '#f91155'],
+  ['com.wildberries.ru', 'Wildberries', '#cb11ab', '#481173'],
+  ['ru.yandex.taxi', 'Яндекс Go', '#fce000', '#1d1d1d'],
+  ['com.spotify.music', 'Spotify', '#1ed760', '#121212'],
+  ['com.android.vending', 'Google Play', '#00d1ff', '#34a853'],
+  ['com.google.android.apps.docs', 'Диск', '#fbbc04', '#34a853'],
+  ['com.google.android.keep', 'Keep', '#fbbc04', '#f29900'],
+  ['com.instagram.android', 'Instagram', '#f58529', '#dd2a7b'],
+  ['ru.kinopoisk', 'Кинопоиск', '#ff6600', '#1a1a1a'],
+  ['com.duolingo', 'Duolingo', '#58cc02', '#46a302'],
+  ['com.android.contacts', 'Контакты', '#7be0b0', '#2ee6c1'],
+  ['com.google.android.apps.nbu.files', 'Файлы', '#4d6bff', '#b44dff'],
+  ['ru.rostel', 'Госуслуги', '#0d4cd3', '#ee3f58'],
+  ['com.avito.android', 'Авито', '#00aaff', '#97cf26'],
+  ['com.google.android.apps.maps', 'Google Карты', '#34a853', '#ea4335'],
+  ['com.android.soundrecorder', 'Диктофон', '#ff3d7f', '#ff8a3d'],
+  ['com.android.fmradio', 'Радио', '#c3a6ff', '#7c4dff'],
+  ['com.shazam.android', 'Shazam', '#0088ff', '#0055ff'],
+  ['ru.yandex.music', 'Яндекс Музыка', '#ffdb4d', '#ff3d7f'],
+  ['com.zhiliaoapp.musically', 'TikTok', '#25f4ee', '#fe2c55'],
+  ['com.discord', 'Discord', '#5865f2', '#404eed'],
+  ['com.notion.id', 'Notion', '#ffffff', '#d0d0d0'],
+  ['com.weather.forecast', 'Погода', '#3fa9ff', '#a8ff9e'],
 ];
 
-const byPkg = Object.fromEntries(APPS.map((a) => [a[0], a]));
-const glyph = (label) => (label.trim().charAt(0) || '?').toUpperCase();
-
-function iconSvg(pkg, mono) {
-  const a = byPkg[pkg] || [pkg, pkg, 'user', -1, '#7c4dff'];
-  if (mono) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><circle cx="48" cy="48" r="26" fill="#000"/></svg>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" fill="${a[4]}"/><rect width="192" height="192" fill="url(#g)"/><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></linearGradient></defs><text x="96" y="122" font-family="sans-serif" font-weight="700" font-size="84" text-anchor="middle" fill="#fff">${glyph(a[1])}</text></svg>`;
+function mock() {
+  const apps = APPS.map(([pkg, label], i) => ({ pkg, label, sys: /android\.(settings|camera|dialer|contacts|calculator2|vending)/.test(pkg), cat: -1 }));
+  return `<script>
+(function(){
+  var apps=${JSON.stringify(apps)};
+  var media={active:true,app:'app.rezonans.music',appLabel:'Резонанс',title:'Ночной город',artist:'Mujuice',playing:true,pos:62000,dur:214000,art:1,canNext:true,canPrev:true};
+  var store='';
+  window.RezL={
+    apps:function(){return JSON.stringify(apps)}, meta:function(){return '{}'},
+    launch:function(p){console.log('launch',p);return true},
+    shortcuts:function(p){return p==='org.telegram.messenger'?JSON.stringify([{id:'1',label:'Новое сообщение'},{id:'2',label:'Избранное'}]):'[]'},
+    startShortcut:function(){return true}, appInfo:function(){return true}, uninstall:function(){return true},
+    openSettings:function(){return true}, openUrl:function(u){console.log('url',u);return true},
+    requestMic:function(){return true}, openNotificationAccess:function(){return true}, openHomeSettings:function(){return true},
+    info:function(){return JSON.stringify({app:'2.0.0-preview',home:false,notif:true,mic:true,insets:{t:32,b:20,l:0,r:0,ime:0}})},
+    battery:function(){return JSON.stringify({level:76,charging:false})},
+    badges:function(){return JSON.stringify({'org.telegram.messenger':3,'com.google.android.gm':1})},
+    mediaState:function(){return JSON.stringify(media)}, media:function(a){if(a==='toggle'){media.playing=!media.playing}},
+    visualizer:function(){}, haptic:function(){}, notifications:function(){console.log('shade');return true},
+    storeGet:function(){return store}, storeSet:function(s){store=s}, log:function(m){console.log(m)}
+  };
+})();
+</script>`;
 }
 
-const artSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff5fa2"/><stop offset=".5" stop-color="#7c4dff"/><stop offset="1" stop-color="#1c1245"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="130" cy="70" r="46" fill="#ffd36e" opacity=".85"/></svg>`;
+const ICON = (bg1, bg2, label) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${bg1}"/><stop offset="1" stop-color="${bg2}"/></linearGradient></defs><rect width="192" height="192" fill="url(#g)"/><text x="96" y="122" font-family="Arial" font-weight="700" font-size="84" text-anchor="middle" fill="rgba(255,255,255,0.92)">${label.charAt(0)}</text></svg>`;
+const ART = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff3d7f"/><stop offset=".5" stop-color="#7c4dff"/><stop offset="1" stop-color="#00d1ff"/></linearGradient></defs><rect width="200" height="200" fill="url(#g)"/><circle cx="140" cy="60" r="34" fill="#ffd36b" opacity=".85"/><path d="M0 150 L50 110 L90 140 L140 90 L200 130 L200 200 L0 200z" fill="#140f1f" opacity=".7"/></svg>`;
 
-function forecast() {
-  const base = new Date();
-  base.setMinutes(0, 0, 0);
-  const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  const time = [];
-  const t2 = [];
-  const code = [];
-  const day = [];
-  for (let i = 0; i < 26; i++) {
-    const d = new Date(base.getTime() + i * 3600e3);
-    time.push(iso(d));
-    t2.push(-4 - Math.round(3 * Math.sin(i / 4)));
-    code.push(i % 7 === 0 ? 71 : 3);
-    day.push(d.getHours() >= 8 && d.getHours() < 17 ? 1 : 0);
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
+
+createServer((req, res) => {
+  const u = new URL(req.url, 'http://x');
+  if (u.pathname.startsWith('/icon/')) {
+    const pkg = decodeURIComponent(u.pathname.slice(6));
+    const a = APPS.find((x) => x[0] === pkg) || [pkg, '?', '#444', '#222'];
+    res.writeHead(200, { 'content-type': 'image/svg+xml' });
+    return res.end(ICON(a[2], a[3], a[1]));
   }
-  return {
-    current: { time: iso(new Date()), temperature_2m: -4.4, apparent_temperature: -9, weather_code: 71, is_day: 1, wind_speed_10m: 4, relative_humidity_2m: 84 },
-    hourly: { time, temperature_2m: t2, weather_code: code, is_day: day },
-    daily: { time: ['0', '1', '2', '3', '4'].map((_, i) => iso(new Date(base.getTime() + i * 86400e3)).slice(0, 10)), temperature_2m_max: [-2, -3, -6, -8, -5], temperature_2m_min: [-9, -10, -12, -14, -11], weather_code: [71, 3, 3, 0, 2] },
-  };
-}
-
-export function serve(www, port = 0) {
-  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
-  const srv = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://x');
-    const send = (code, type, body) => {
-      res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
-      res.end(body);
-    };
-    if (u.pathname.startsWith('/icon/')) return send(200, 'image/svg+xml', iconSvg(decodeURIComponent(u.pathname.slice(6)), u.searchParams.get('k') === 'mono'));
-    if (u.pathname === '/art') return send(200, 'image/svg+xml', artSvg);
-    if (u.pathname === '/net') {
-      const t = u.searchParams.get('u') || '';
-      if (t.includes('sypexgeo')) return send(200, 'application/json', JSON.stringify({ city: { lat: 49.79, lon: 129.4, name_ru: 'Райчихинск' } }));
-      if (t.includes('open-meteo.com/v1/forecast')) return send(200, 'application/json', JSON.stringify(forecast()));
-      return send(404, 'text/plain', 'no');
-    }
-    let p = join(www, u.pathname === '/' ? 'index.html' : u.pathname);
-    if (!p.startsWith(www) || !existsSync(p) || statSync(p).isDirectory()) return send(404, 'text/plain', 'not found');
-    send(200, types[extname(p)] || 'application/octet-stream', readFileSync(p));
-  });
-  return new Promise((ok) => srv.listen(port, '127.0.0.1', () => ok({ srv, port: srv.address().port })));
-}
-
-// the stand-in for window.RezL, as a script to run before the page
-export function mockScript(opts = {}) {
-  const apps = APPS.map((a, i) => ({ pkg: a[0], label: a[1], sys: a[2] === 'sys', cat: a[3], installed: Date.now() - (i % 9 === 0 ? 2 : 90) * 86400e3, updated: 0 }));
-  const o = {
-    apps,
-    info: { app: '1.0.0', model: 'NOTE 50 Pro', maker: 'Infinix', android: '15', sdk: 35, dp: 2.75, sw: opts.tablet ? 800 : 393, tablet: !!opts.tablet, home: false, notif: true, mic: true, liveWall: false, dark: true, insets: opts.insets || { t: 32, b: 24, l: 0, r: 0, ime: 0 }, you: ['#6750a4', '#d0bcff', '#ccc2dc'] },
-    battery: { level: 76, charging: false },
-    badges: { 'org.telegram.messenger': 12, 'com.whatsapp': 3, 'com.android.messages': 1 },
-    media: { active: true, app: 'ru.zvuk.music', appLabel: 'Звук', title: 'Midnight City', artist: 'M83', album: '', playing: true, pos: 61000, dur: 243000, art: 1, canNext: true, canPrev: true },
-    store: opts.store || '',
-  };
-  return `
-    (() => {
-      const O = ${JSON.stringify(o)};
-      const log = (window.__calls = []);
-      const rec = (n, ...a) => log.push([n, ...a]);
-      window.RezL = {
-        apps: () => JSON.stringify(O.apps), meta: () => '{}', launch: (...a) => (rec('launch', ...a), true),
-        shortcuts: () => JSON.stringify([{ id: 's1', label: 'Новый чат' }, { id: 's2', label: 'Избранное' }]),
-        startShortcut: (...a) => rec('shortcut', ...a), appInfo: (p) => rec('appInfo', p), uninstall: (p) => rec('uninstall', p),
-        openSettings: () => {}, openUrl: (u) => rec('openUrl', u), requestMic: () => {}, openNotificationAccess: () => {}, openHomeSettings: () => rec('homeSettings'),
-        info: () => JSON.stringify(O.info), network: () => 'wifi', battery: () => JSON.stringify(O.battery), badges: () => JSON.stringify(O.badges),
-        media: (a) => rec('media', a), mediaState: () => JSON.stringify(O.media), visualizer: () => {}, wallpaper: (j) => rec('wallpaper', j), setLiveWallpaper: () => {},
-        pickWallpaper: () => {}, seeThrough: (b) => rec('seeThrough', b), scroll: () => {}, haptic: () => {}, notifications: () => (rec('shade'), true),
-        widgets: () => JSON.stringify([{ k: 'com.android.deskclock/.Clock', pkg: 'com.android.deskclock', label: 'Часы', w: 250, h: 110, cfg: false }, { k: 'com.google.search/.Box', pkg: 'org.telegram.messenger', label: 'Чаты', w: 250, h: 250, cfg: false }]),
-        widgetAdd: (k) => { rec('widgetAdd', k); setTimeout(() => window.__rezEmit('widgetAdded', { id: 41, w: 250, h: 110, label: 'Часы' }), 50); },
-        widgetFrames: (j) => rec('frames', j), widgetRemove: (id) => rec('widgetRemove', id),
-        orientation: () => {}, storeGet: () => O.store, storeSet: (s) => rec('storeSet', s.length), log: (m) => console.log('[RezL]', m), reload: () => {},
-      };
-    })();`;
-}
+  if (u.pathname === '/art') {
+    res.writeHead(200, { 'content-type': 'image/svg+xml' });
+    return res.end(ART);
+  }
+  const p = join(www, u.pathname === '/' ? 'index.html' : u.pathname);
+  if (!p.startsWith(www) || !existsSync(p)) {
+    res.writeHead(404);
+    return res.end();
+  }
+  let data = readFileSync(p);
+  if (p.endsWith('index.html')) data = data.toString().replace('<script src="app.js">', mock() + '<script src="app.js">');
+  res.writeHead(200, { 'content-type': TYPES[extname(p)] || 'application/octet-stream', 'cache-control': 'no-store' });
+  res.end(data);
+}).listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}/`));

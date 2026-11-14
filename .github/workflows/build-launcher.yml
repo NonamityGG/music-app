@@ -7,7 +7,6 @@ on:
     paths:
       - 'launcher/**'
       - 'src/waves.js'
-      - 'desktop/web/looks.js'
       - '.github/workflows/build-launcher.yml'
   workflow_dispatch:
 
@@ -129,7 +128,7 @@ jobs:
           tag_name: launcher-v${{ needs.build.outputs.version }}
           name: Резонанс Лаунчер ${{ needs.build.outputs.version }} — для телефона и планшета
           body: |
-            Резонанс Лаунчер — домашний экран для Android-телефонов и планшетов: волны вместо обоев (или живые обои), рабочий стол с папками и виджетами, ящик приложений с поиском, палитры, формы значков.
+            Резонанс Лаунчер — домашний экран для Android-телефонов и планшетов: волны Резонанса, «Сейчас играет», ящик приложений с умным поиском, меню и перетаскивание значков, палитры.
 
             Установка: скачай Rezonans-Launcher-${{ needs.build.outputs.version }}.apk, поставь, нажми «Домой» и выбери «Резонанс».
           files: Rezonans-Launcher-*.apk

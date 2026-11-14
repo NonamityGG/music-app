@@ -1,118 +1,82 @@
-// Резонанс Лаунчер: how it looks — the background, the palette's colours on
-// everything, the waves behind the desktop (the phone app's own, with the PC's
-// capsules, horizon and orb), and what the live wallpaper is told.
+// How it looks: the palette's colours on everything and the phone app's waves
+// behind the home screen. The waves move while music plays (hearing it when the
+// microphone is allowed) and rest as a still picture otherwise: nothing is
+// drawn while nothing changes.
 
 import * as waves from '../../src/waves.js';
-import * as looks from '../../desktop/web/looks.js';
 import * as graph from './graph.js';
 import { S } from './store.js';
 import { rez } from './bridge.js';
 
-looks.install();
-
-export const PALETTES = waves.PALETTES;
 export const STYLES = waves.STYLES.filter((s) => s.id !== 'off');
-export const BACKGROUNDS = [
-  ['glass-violet', 'Фиолетовое стекло'],
-  ['glass-black', 'Чёрное стекло'],
-  ['aurora', 'Северное сияние'],
-  ['ember', 'Угли'],
-  ['dark', 'Тёмный'],
-  ['amoled', 'Чёрный AMOLED'],
-];
+export const PALETTES = waves.PALETTES;
 
-const body = document.body;
-const canvas = document.getElementById('waves');
-let state = { visible: true, music: false, hidden: false };
-let info = {};
+const state = { visible: true, covered: false, music: false, preview: false };
 
-// Material You: the phone's own accent colours, when it has them
-export function setInfo(i) {
-  info = i || {};
-  if (info.you && info.you.length === 3 && !waves.PALETTES.some((p) => p.id === 'you')) {
-    waves.PALETTES.push({ id: 'you', name: 'Material You', colors: info.you });
+export function setYou(colors) {
+  if (colors && colors.length === 3 && !PALETTES.some((p) => p.id === 'you')) {
+    PALETTES.push({ id: 'you', name: 'Как в системе', colors });
   }
 }
 
-export function setWaveState(patch) {
+export function set(patch) {
   Object.assign(state, patch);
-  body.classList.toggle('music', state.music);
+  document.body.classList.toggle('music', state.music);
   waves.kick();
 }
 
-const ampScale = () => (S.motion === 'lively' ? 1 : 0.62);
-const drawing = () => S.wall === 'waves' && S.motion !== 'off';
-
 waves.setSource({
-  playing: () => state.visible && !state.hidden && drawing(),
+  playing: () => state.visible && !state.covered && (state.music || state.preview),
   analysing: () => S.hear && state.music && graph.fresh(),
   onSilence: () => {},
 });
 
-let shift = 0; // the waves slide with the pages
+const canvas = document.getElementById('waves');
 waves.addSurface('bg', canvas, {
-  dpr: Math.min(1, 1000 / Math.max(1, window.innerWidth)),
+  dpr: Math.min(1.5, 1100 / Math.max(1, window.innerWidth)),
+  // the waves run through the free space between the clock (or what's playing) and the icons
   center: () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const amp = Math.min(w, h) * 0.17 * ampScale() * (state.music ? 1.35 : 1);
-    return { x: w / 2 + shift, y: h * 0.64, amp, r: 0 };
+    const above = document.querySelector('#np:not([hidden])') || document.getElementById('top');
+    const below = document.getElementById('grid');
+    let y = h * 0.45;
+    let gap = h * 0.2;
+    if (above && below) {
+      const a = above.getBoundingClientRect().bottom;
+      const b = below.firstElementChild ? below.getBoundingClientRect().top : document.getElementById('find').getBoundingClientRect().top;
+      if (b > a) {
+        y = (a + b) / 2;
+        gap = b - a;
+      }
+    }
+    const amp = Math.max(Math.min(w, h) * 0.13, Math.min(gap * 0.5, h * 0.2)) * (state.music ? 1.15 : 0.85);
+    return { x: w / 2, y, amp, r: 0 };
   },
 });
+waves.setActive('bg');
 
-export function parallax(frac, pages) {
-  if (!S.parallax || pages < 2) shift = 0;
-  else shift = -(frac - 0.5) * window.innerWidth * 0.35;
-  document.documentElement.style.setProperty('--px', shift.toFixed(1) + 'px');
-}
-
-function hexRgb(hex) {
+const rgb = (hex) => {
   const n = parseInt(String(hex).replace('#', ''), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(',');
+};
 
-export const paletteOf = (id) => PALETTES.find((x) => x.id === id) || PALETTES[0];
-export const colors = () => paletteOf(S.palette).colors;
+export const palette = () => PALETTES.find((p) => p.id === S.palette) || PALETTES[0];
 
 export function apply() {
-  body.className = body.className.replace(/\b(bg|wp|mo)-[\w-]+/g, '').trim();
-  body.classList.add('bg-' + (S.bg || 'glass-violet'), 'wp-' + (S.wall || 'waves'), 'mo-' + (S.motion || 'calm'));
-  document.documentElement.classList.toggle('see', S.wall !== 'waves');
-  const c = colors();
-  const rgb = hexRgb(c[0]);
-  const st = body.style;
-  st.setProperty('--a1', c[0]);
-  st.setProperty('--a2', c[1]);
-  st.setProperty('--a3', c[2]);
-  st.setProperty('--r1', hexRgb(c[0]).join(','));
-  st.setProperty('--r2', hexRgb(c[1]).join(','));
-  st.setProperty('--r3', hexRgb(c[2]).join(','));
-  st.setProperty('--a1s', `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.35)`);
-  st.setProperty('--a1g', `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.6)`);
-  waves.configure({ style: S.style || 'ribbons', palette: S.palette || 'violet', light: false, maxFps: S.fps || 30 });
+  const c = palette().colors;
+  const st = document.documentElement.style;
+  ['--a1', '--a2', '--a3'].forEach((k, i) => st.setProperty(k, c[i]));
+  ['--r1', '--r2', '--r3'].forEach((k, i) => st.setProperty(k, rgb(c[i])));
+  document.body.classList.toggle('nolabels', !S.labels);
+  waves.configure({ style: S.style || 'ribbons', palette: palette().id, light: false, maxFps: 60 });
+  rez.visualizer(!!S.hear);
+}
+
+// a short hurry of the waves on a change of look, so the new one is seen moving
+export function preview() {
+  state.preview = true;
   waves.kick();
-  rez.seeThrough(S.wall !== 'waves');
-  rez.wallpaper({
-    style: NATIVE_STYLE[S.style] || 'ribbons',
-    bg: S.bg,
-    c,
-    amp: S.motion === 'lively' ? 1.25 : 0.9,
-    speed: S.motion === 'lively' ? 1.3 : 0.8,
-    react: !!S.hear,
-    fps: S.fps || 30,
-  });
+  clearTimeout(preview.t);
+  preview.t = setTimeout(() => set({ preview: false }), 1800);
 }
-
-// the live wallpaper draws four looks of its own; every page look has the nearest one
-const NATIVE_STYLE = { neon: 'ribbons', ribbons: 'ribbons', scope: 'ribbons', capsules: 'capsules', dots: 'capsules', orb: 'orb', rings: 'orb', horizon: 'aurora' };
-
-// "Из обложки": the palette follows the cover of what's playing
-export function coverPalette(src) {
-  return looks.coverColors(src).then((c) => {
-    if (c) looks.setCoverColors(c);
-    if (S.palette === 'cover') apply();
-    return c;
-  });
-}
-
-export const hasWaves = () => drawing();

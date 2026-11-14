@@ -1,77 +1,73 @@
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
-    <title>Резонанс Лаунчер</title>
-    <link rel="stylesheet" href="fonts.css" />
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body class="bg-glass-violet wp-waves mo-calm intro-on">
-    <div class="layer base" aria-hidden="true"></div>
-    <div class="layer sky" aria-hidden="true"><i></i><i></i><i></i></div>
-    <canvas class="layer" id="waves" aria-hidden="true"></canvas>
-    <div class="layer vignette" aria-hidden="true"></div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Резонанс</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="waves" aria-hidden="true"></canvas>
+<div id="shade" aria-hidden="true"></div>
 
-    <main id="home">
-      <aside id="feedcol" class="feedcol hidden"></aside>
-      <div id="pager"></div>
-      <div id="dots" class="dots"></div>
-      <button id="handle" class="handle" aria-label="Все приложения"><i></i></button>
-      <nav id="dock" class="dock"></nav>
-    </main>
+<main id="home">
+  <header id="top">
+    <button id="clock" class="bare" aria-label="Часы"><span id="time">00:00</span></button>
+    <button id="date" class="bare"><span id="day"></span><span id="batt"></span></button>
+  </header>
 
-    <section id="drawer" class="drawer" aria-label="Все приложения">
-      <div class="dr-head">
-        <div class="dr-search">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.3 4.3-1.4 1.4-4.3-4.3A7.5 7.5 0 1 1 10.5 3zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z"/></svg>
-          <input id="q" type="text" placeholder="Поиск приложений и в сети" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" />
-          <button id="qclear" class="qclear hidden" aria-label="Очистить">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5.6 4.2 12 10.6l6.4-6.4 1.4 1.4-6.4 6.4 6.4 6.4-1.4 1.4-6.4-6.4-6.4 6.4-1.4-1.4 6.4-6.4-6.4-6.4z"/></svg>
-          </button>
-        </div>
-        <button id="drgear" class="dr-gear" aria-label="Настройки Резонанса">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM12 15.2a3.2 3.2 0 1 1 0-6.4 3.2 3.2 0 0 1 0 6.4z"/></svg>
-        </button>
-      </div>
-      <div id="cats" class="dr-cats"></div>
-      <div id="drscroll" class="dr-scroll"><div id="drlist"></div></div>
-      <div id="rail" class="dr-rail hidden"></div>
-    </section>
-    <div id="bubble" class="bubble"></div>
+  <section id="np" class="glass" hidden>
+    <img id="np-art" alt="">
+    <div id="np-text">
+      <b id="np-title"></b>
+      <span id="np-artist"></span>
+    </div>
+    <div id="np-ctl">
+      <button class="np-b" data-a="prev" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M7 6v12M18 6.5v11a.6.6 0 0 1-.9.5L9.2 12.5a.6.6 0 0 1 0-1l7.9-5.5a.6.6 0 0 1 .9.5z"/></svg></button>
+      <button class="np-b np-play" data-a="toggle" aria-label="Пауза"><svg viewBox="0 0 24 24"><path class="i-pause" d="M8.5 6v12M15.5 6v12"/><path class="i-play" d="M8 5.8v12.4a.7.7 0 0 0 1.05.6l10-6.2a.7.7 0 0 0 0-1.2l-10-6.2A.7.7 0 0 0 8 5.8z"/></svg></button>
+      <button class="np-b" data-a="next" aria-label="Дальше"><svg viewBox="0 0 24 24"><path d="M17 6v12M6 6.5v11a.6.6 0 0 0 .9.5l7.9-5.5a.6.6 0 0 0 0-1L6.9 6a.6.6 0 0 0-.9.5z"/></svg></button>
+    </div>
+    <i id="np-bar"><i></i></i>
+  </section>
 
-    <section id="folder" class="folder"><div id="fcard" class="fcard"></div></section>
-    <div id="zones" class="zones"></div>
-    <div id="ghost" class="ghost"></div>
-    <div id="menu" class="menu"></div>
+  <div id="fill"></div>
+  <div id="grid" class="apps"></div>
+  <button id="find" class="glass"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><span>Поиск</span></button>
+  <nav id="dock" class="glass apps"></nav>
+</main>
 
-    <section id="settings" class="sheet-box">
-      <div id="stscrim" class="scrim"></div>
-      <div class="st-sheet">
-        <header class="st-head">
-          <button id="stback" class="ib" aria-label="Назад"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 5.5 9 12l6.5 6.5-1.4 1.4L6.2 12l7.9-7.9z"/></svg></button>
-          <b id="sttitle">Резонанс</b>
-          <button id="stclose" class="ib" aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5.6 4.2 12 10.6l6.4-6.4 1.4 1.4-6.4 6.4 6.4 6.4-1.4 1.4-6.4-6.4-6.4 6.4-1.4-1.4 6.4-6.4-6.4-6.4z"/></svg></button>
-        </header>
-        <div id="stbody" class="st-body"></div>
-      </div>
-    </section>
+<section id="drawer" aria-hidden="true">
+  <div id="d-head">
+    <i class="grab"></i>
+    <label id="q-wrap" class="glass">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+      <input id="q" type="search" placeholder="Поиск приложений" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+      <button id="q-x" class="bare" aria-label="Очистить" hidden><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+    </label>
+  </div>
+  <div id="d-scroll">
+    <div id="d-freq-wrap"><h3>Часто</h3><div id="d-freq" class="apps"></div></div>
+    <div id="d-all" class="apps"></div>
+    <div id="d-found" class="apps" hidden></div>
+    <div id="d-web" hidden></div>
+  </div>
+  <div id="rail"></div>
+  <b id="rail-bubble"></b>
+</section>
 
-    <section id="widgets" class="sheet-box">
-      <div id="wgscrim" class="scrim"></div>
-      <div class="st-sheet">
-        <header class="st-head">
-          <b>Виджеты</b>
-          <button id="wgclose" class="ib" aria-label="Закрыть"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M5.6 4.2 12 10.6l6.4-6.4 1.4 1.4-6.4 6.4 6.4 6.4-1.4 1.4-6.4-6.4-6.4 6.4-1.4-1.4 6.4-6.4-6.4-6.4z"/></svg></button>
-        </header>
-        <div id="wgbody" class="st-body"></div>
-      </div>
-    </section>
+<div id="scrim"></div>
+<div id="menu" class="pop"></div>
+<div id="trash" class="glass"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg><span>Убрать</span></div>
 
-    <section id="hello" class="hello"></section>
-    <div id="toast" class="toast"></div>
-    <div id="intro" class="intro"></div>
-    <script src="app.js"></script>
-  </body>
+<section id="sheet">
+  <i class="grab"></i>
+  <h2>Резонанс</h2>
+  <div id="sheet-body"></div>
+</section>
+
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
 </html>

@@ -1,6 +1,6 @@
-// Резонанс: the sound for the waves. The same interface as the phone app's
-// audio-graph.js (the shared waves module reads it), fed by the phone's Visualizer
-// through the Android side about 20 times a second.
+// The sound for the waves: the same interface as the phone app's audio-graph.js
+// (src/waves.js reads it), fed by the phone's Visualizer through the Android
+// side about 20 times a second.
 
 import { on } from './bridge.js';
 
@@ -15,15 +15,11 @@ let silentSince = 0;
 on('viz', (d) => {
   if (!d || !d.b) return;
   let total = 0;
-  for (let i = 0; i < BANDS; i++) {
-    lastBands[i] = d.b[i] || 0;
-    total += lastBands[i];
-  }
+  for (let i = 0; i < BANDS; i++) total += lastBands[i] = d.b[i] || 0;
   for (let i = 0; i < 64; i++) lastWave[i] = (d.w && d.w[i]) || 0;
   at = performance.now();
-  if (total < 0.02) {
-    if (!silentSince) silentSince = at;
-  } else silentSince = 0;
+  if (total < 0.02) silentSince = silentSince || at;
+  else silentSince = 0;
 });
 
 export const fresh = () => performance.now() - at < 400;
@@ -35,7 +31,6 @@ export const state = () => (fresh() ? 'running' : 'none');
 export function read(bands, wave) {
   if (!fresh()) return { ok: false, silent: 0 };
   bands.set(lastBands);
-  // 64 points of the wave stretched to 256, smoothly
   for (let j = 0; j < WAVE; j++) {
     const x = (j / (WAVE - 1)) * 63;
     const i = Math.floor(x);

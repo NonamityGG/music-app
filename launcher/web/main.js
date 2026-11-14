@@ -1,458 +1,685 @@
-// Резонанс Лаунчер: everything is put together here — the start, the gestures,
-// the Back and Home buttons, the widget picker, and what the phone tells the page.
+// Резонанс Лаунчер: the home screen (clock, what's playing, the person's apps,
+// the dock), the drawer with every app and the search, and the touch: a swipe
+// up opens the drawer under the finger, a swipe down pulls the notification
+// shade, a long press opens an icon's menu (and, moved, drags the icon), a long
+// press on an empty place opens the settings.
 
-import { rez, on } from './bridge.js';
-import { S, L, save, onChange } from './store.js';
-import * as look from './look.js';
+import { rez, on, native } from './bridge.js';
+import { S, save } from './store.js';
 import * as apps from './apps.js';
-import * as home from './home.js';
-import * as drag from './drag.js';
-import * as drawer from './drawer.js';
-import * as folder from './folder.js';
-import * as settings from './settings.js';
-import * as widgets from './widgets.js';
-import * as sys from './sys.js';
-import * as weather from './weather.js';
-import * as intro from './intro.js';
+import * as look from './look.js';
+import { $, icon, launch, toast, ghost, lift, drop, menu, openMenu, closeMenu, openSheet, closeSheet, isSheet, setBadges, ICONS } from './ui.js';
 import './graph.js';
 
-const $ = (id) => document.getElementById(id);
-const el = home.el;
 const body = document.body;
-const homeEl = home.homeEl;
-const params = new URLSearchParams(location.search);
+const root = document.documentElement;
+const home = $('#home');
+const drawer = $('#drawer');
+const grid = $('#grid');
+const dock = $('#dock');
+const scroller = $('#d-scroll');
+const q = $('#q');
 
-let INFO = {};
-let skipIntro = null;
+const H = () => window.innerHeight;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const LONG = 420;
+const cap = (el, id) => {
+  try {
+    el.setPointerCapture(id);
+  } catch {}
+};
+const SLOP = 10;
 
-window.addEventListener('error', (e) => rez.log('JS: ' + (e.message || e) + ' @' + (e.filename || '').split('/').pop() + ':' + (e.lineno || 0)));
-window.addEventListener('unhandledrejection', (e) => rez.log('JS promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason)));
+// ---------- the bars, the keyboard ----------
 
-function refreshInfo() {
-  INFO = rez.info();
-  look.setInfo(INFO);
-  settings.setInfo(INFO);
+function insets(i) {
+  if (!i) return;
+  root.style.setProperty('--t', (i.t || 0) + 'px');
+  root.style.setProperty('--b', (i.b || 0) + 'px');
+  root.style.setProperty('--l', (i.l || 0) + 'px');
+  root.style.setProperty('--r', (i.r || 0) + 'px');
+  root.style.setProperty('--ime', Math.max(0, (i.ime || 0) - (i.b || 0)) + 'px');
+}
+on('insets', insets);
+
+// ---------- clock, date, battery ----------
+
+const fmtDay = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+let clockT = 0;
+function clock() {
+  const d = new Date();
+  $('#time').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  $('#day').textContent = fmtDay.format(d);
+  const b = rez.battery();
+  const bt = $('#batt');
+  bt.textContent = b.level >= 0 ? b.level + '%' : '';
+  bt.classList.toggle('low', b.level >= 0 && b.level <= 15 && !b.charging);
+  bt.classList.toggle('charging', !!b.charging);
+  clearTimeout(clockT);
+  clockT = setTimeout(clock, 60000 - (Date.now() % 60000) + 30);
 }
 
-// ---------- the toast ----------
+const findApp = (re) => apps.all().find((a) => re.test(a.pkg));
 
-let toastTimer = 0;
-function toast(text) {
-  const t = $('toast');
-  t.textContent = text;
-  t.classList.add('on');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('on'), 2200);
+// ---------- what's playing ----------
+
+let media = { active: false };
+let mediaAt = 0;
+let barT = 0;
+function setMedia(m) {
+  media = m || { active: false };
+  mediaAt = performance.now();
+  const np = $('#np');
+  const show = !!media.active && !!(media.title || media.artist);
+  np.hidden = !show;
+  look.set({ music: show && !!media.playing });
+  if (!show) return;
+  $('#np-title').textContent = media.title || media.appLabel || '';
+  $('#np-artist').textContent = media.artist || media.appLabel || '';
+  const art = $('#np-art');
+  const src = media.art ? rez.artUrl(media.art) : rez.iconUrl(media.app);
+  if (art.dataset.src !== src) {
+    art.dataset.src = src;
+    art.src = src;
+  }
+  np.classList.toggle('paused', !media.playing);
+  $('.np-play').setAttribute('aria-label', media.playing ? 'Пауза' : 'Играть');
+  bar();
 }
-document.addEventListener('rez-toast', (e) => toast(e.detail));
+function bar() {
+  clearTimeout(barT);
+  const i = $('#np-bar i');
+  if (!media.active || !media.dur) return (i.style.transform = 'scaleX(0)');
+  const pos = media.pos + (media.playing ? performance.now() - mediaAt : 0);
+  i.style.transform = `scaleX(${clamp(pos / media.dur, 0, 1).toFixed(4)})`;
+  if (media.playing && !document.hidden) barT = setTimeout(bar, 1000);
+}
+on('media', setMedia);
+for (const b of document.querySelectorAll('.np-b')) {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    rez.haptic('tick');
+    const a = b.dataset.a;
+    rez.media(a);
+    if (a === 'toggle') setMedia({ ...media, playing: !media.playing, pos: media.pos + (media.playing ? performance.now() - mediaAt : 0) });
+  });
+}
 
-// ---------- the widget picker ----------
+// ---------- the home screen ----------
 
-const wgBox = $('widgets');
-let wgOpen = false;
+const homeEls = new Map(); // pkg -> element on the home screen or the dock
 
-function openWidgets() {
-  wgOpen = true;
-  const b = $('wgbody');
-  b.textContent = '';
-  b.style.setProperty('--is', home.geo.is + 'px');
-  b.style.setProperty('--ch', home.geo.ch + 'px');
-  const list = el('div', 'wg-list');
-  for (const [id, k] of Object.entries(widgets.KINDS)) {
-    if (k.hidden) continue;
-    const [c, r] = k.sizes[0];
-    const card = el('div', 'wg');
-    const prev = el('div', 'wg-prev');
-    prev.style.setProperty('--cols', Math.min(c, home.geo.cols));
-    prev.style.width = Math.min(100, (Math.min(c, home.geo.cols) / home.geo.cols) * 100) + '%';
-    const w = widgets.build({ k: 'w', t: id, id: 'pv-' + id, c: Math.min(c, home.geo.cols), r }, { static: true });
-    prev.append(w);
-    const t = el('div', 'wg-t');
-    const tx = el('div');
-    tx.append(el('b', '', k.name), el('span', '', k.hint));
-    const add = el('button', 'btn', 'Добавить');
-    add.addEventListener('click', () => {
-      closeWidgets();
-      drag.addWidget(id);
-      toast('Виджет добавлен');
+function homeEl(pkg, where) {
+  let el = homeEls.get(pkg);
+  const a = apps.get(pkg);
+  if (!a) return null;
+  if (!el) {
+    el = icon(a, where);
+    homeEls.set(pkg, el);
+  }
+  el.dataset.where = where;
+  return el;
+}
+
+// draws the grid and the dock; icons that only moved glide to their new place
+function renderHome(animate) {
+  const before = new Map();
+  if (animate) for (const [p, el] of homeEls) if (el.isConnected) before.set(p, el.getBoundingClientRect());
+  const fill = (box, list, where) => {
+    const els = list.map((p) => homeEl(p, where)).filter(Boolean);
+    els.forEach((el, i) => {
+      if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
     });
-    t.append(tx, add);
-    card.append(prev, t);
-    list.append(card);
-  }
-  b.append(list);
-  sysSection(b);
-  b.scrollTop = 0;
-  wgBox.classList.add('on');
-}
-
-// widgets of other apps, as the system lists them
-function sysSection(b) {
-  const all = rez.widgets();
-  if (!all.length) return;
-  b.append(el('div', 'wg-head', 'Виджеты приложений'));
-  const byApp = new Map();
-  for (const w of all) {
-    if (w.pkg === 'app.rezonans.launcher') continue;
-    if (!byApp.has(w.pkg)) byApp.set(w.pkg, []);
-    byApp.get(w.pkg).push(w);
-  }
-  const names = (pkg) => {
-    const a = apps.byPkg(pkg);
-    return a ? a.label || a.name || pkg : pkg;
+    while (box.children.length > els.length) box.lastChild.remove();
   };
-  const pkgs = Array.from(byApp.keys()).sort((x, y) => names(x).localeCompare(names(y), 'ru'));
-  const box = el('div', 'wg-sys');
-  for (const pkg of pkgs) {
-    for (const w of byApp.get(pkg)) {
-      const row = el('div', 'wgs');
-      const ic = el('img');
-      ic.src = rez.iconUrl(pkg);
-      ic.alt = '';
-      const tx = el('div');
-      const [c, r] = sysSize(w);
-      tx.append(el('b', '', w.label || names(pkg)), el('span', '', `${names(pkg)} · ${c}×${r}`));
-      const add = el('button', 'btn', 'Добавить');
-      add.addEventListener('click', () => {
-        closeWidgets();
-        rez.widgetAdd(w.k);
-      });
-      row.append(ic, tx, add);
-      box.append(row);
+  fill(grid, S.home || [], 'home');
+  fill(dock, S.dock || [], 'dock');
+  dock.classList.toggle('n5', (S.dock || []).length > 4);
+  const keep = new Set([...(S.home || []), ...(S.dock || [])]);
+  for (const p of [...homeEls.keys()]) if (!keep.has(p)) homeEls.delete(p);
+  if (!animate) return;
+  for (const [p, el] of homeEls) {
+    const a = before.get(p);
+    if (!a || !el.isConnected) continue;
+    const b = el.getBoundingClientRect();
+    const dx = a.left - b.left;
+    const dy = a.top - b.top;
+    if (!dx && !dy) continue;
+    el.style.transition = 'none';
+    el.style.transform = `translate(${dx}px,${dy}px)`;
+    void el.offsetWidth;
+    el.style.transition = 'transform 0.32s cubic-bezier(0.22, 0.8, 0.24, 1)';
+    el.style.transform = '';
+  }
+}
+
+// ---------- the drawer ----------
+
+let p = 0; // 0 home … 1 drawer
+let drawerOpen = false;
+function setP(v) {
+  p = v;
+  const h = H();
+  home.style.transform = p ? `translate3d(0,${(-p * h * 0.04).toFixed(1)}px,0) scale(${(1 - 0.06 * p).toFixed(4)})` : '';
+  home.style.opacity = (1 - p).toFixed(3);
+  drawer.style.transform = `translate3d(0,${((1 - p) * h * 0.4).toFixed(1)}px,0)`;
+  drawer.style.opacity = clamp(p * 1.5, 0, 1).toFixed(3);
+}
+let settleT = 0;
+function settle(open, animate = true) {
+  drawerOpen = open;
+  drawer.classList.toggle('open', open);
+  drawer.setAttribute('aria-hidden', String(!open));
+  clearTimeout(settleT);
+  if (animate) {
+    body.classList.add('anim');
+    // the class must be on before the final values for the transition to run
+    void home.offsetWidth;
+  }
+  setP(open ? 1 : 0);
+  look.set({ covered: false });
+  settleT = setTimeout(
+    () => {
+      body.classList.remove('anim');
+      look.set({ covered: open });
+      if (!open) {
+        if (q.value) {
+          q.value = '';
+          renderSearch();
+        }
+        scroller.scrollTop = 0;
+      }
+    },
+    animate ? 440 : 0,
+  );
+  if (!open) q.blur();
+}
+function openDrawer(withKeyboard) {
+  if (!drawerOpen) renderFreq();
+  settle(true);
+  if (withKeyboard) q.focus();
+}
+const closeDrawer = (animate = true) => drawerOpen && settle(false, animate);
+
+let letters = [];
+function renderDrawer() {
+  const all = $('#d-all');
+  all.innerHTML = '';
+  letters = [];
+  const frag = document.createDocumentFragment();
+  let last = '';
+  for (const a of apps.all()) {
+    const el = icon(a, 'drawer');
+    const L = apps.letter(a);
+    if (L !== last) {
+      letters.push([L, el]);
+      last = L;
     }
+    frag.appendChild(el);
   }
-  b.append(box);
+  all.appendChild(frag);
+  const rail = $('#rail');
+  rail.innerHTML = letters.map(([L]) => `<b>${L}</b>`).join('');
+  renderFreq();
 }
-const sysSize = (w) => sys.sizeFor(w.w || 250, w.h || 110);
+function renderFreq() {
+  const f = $('#d-freq');
+  f.innerHTML = '';
+  const list = apps.frequent(4);
+  for (const a of list) f.appendChild(icon(a, 'drawer'));
+  $('#d-freq-wrap').classList.toggle('has', list.length >= 2);
+}
 
-function closeWidgets() {
-  wgOpen = false;
-  wgBox.classList.remove('on');
+function renderSearch() {
+  const text = q.value.trim();
+  $('#q-x').hidden = !q.value;
+  drawer.classList.toggle('searching', !!text);
+  $('#d-all').hidden = !!text;
+  $('#d-freq-wrap').hidden = !!text;
+  const found = $('#d-found');
+  const web = $('#d-web');
+  found.hidden = !text;
+  web.hidden = !text;
+  if (!text) return;
+  found.innerHTML = '';
+  for (const a of apps.search(text).slice(0, 24)) found.appendChild(icon(a, 'drawer'));
+  web.innerHTML = '';
+  const row = (ic, title, sub, url) => {
+    const b = document.createElement('button');
+    b.className = 'webq glass';
+    b.innerHTML = `<i>${ic}</i><div><b></b><span></span></div>`;
+    b.querySelector('b').textContent = title;
+    b.querySelector('span').textContent = sub;
+    b.onclick = () => {
+      rez.haptic('tick');
+      rez.openUrl(url);
+    };
+    web.appendChild(b);
+  };
+  const enc = encodeURIComponent(text);
+  row(ICONS.web, `«${text}»`, 'Найти в интернете', `https://yandex.ru/search/?text=${enc}`);
+  row(ICONS.store, `«${text}»`, 'Найти в Google Play', `https://play.google.com/store/search?q=${enc}&c=apps`);
+  scroller.scrollTop = 0;
 }
-$('wgclose').addEventListener('click', closeWidgets);
-$('wgscrim').addEventListener('click', closeWidgets);
-document.addEventListener('rez-open-widgets', () => {
-  settings.close();
-  openWidgets();
+q.addEventListener('input', renderSearch);
+q.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const first = $('#d-found .app');
+  if (first) launch(first);
+  else if (q.value.trim()) $('#d-web .webq')?.click();
+});
+$('#q-x').addEventListener('click', () => {
+  q.value = '';
+  renderSearch();
+  q.focus();
 });
 
-// ---------- wiring the parts ----------
-
-drag.hooks.closeDrawer = (instant) => drawer.closeDrawer(instant);
-drag.hooks.closeFolder = (instant) => folder.closeFolder(instant);
-drag.hooks.openFolder = (id, rect) => folder.openFolder(id, rect);
-drag.hooks.openSettings = (page) => settings.open(page);
-drag.hooks.openWidgets = openWidgets;
-drag.hooks.toast = toast;
-sys.hooks.toast = toast;
-sys.hooks.longMenu = (id) => drag.widgetMenu(id);
-drag.hooks.rename = (id) => folder.rename(id);
-drag.hooks.dragging = (on) => homeEl.classList.toggle('dragging', on);
-drag.attach($('home'));
-drag.attach($('drawer'));
-drag.attach($('folder'));
-
-document.addEventListener('rez-open-settings', () => settings.open());
-document.addEventListener('rez-open-search', () => drawer.openDrawer({ focus: true }));
-$('handle').addEventListener('click', () => drawer.openDrawer());
-
-// the buttons inside widgets (the press of the desktop does not take them)
-document.addEventListener('click', (e) => {
-  if (e.target.closest && e.target.closest('.np-b, .sr-pill') && e.target.closest('#home')) widgets.press(e.target);
-});
-
-// ---------- Back and Home ----------
-
-function closeAll() {
-  drag.hideMenu();
-  let any = false;
-  if (settings.opened()) {
-    settings.close();
-    any = true;
-  }
-  if (wgOpen) {
-    closeWidgets();
-    any = true;
-  }
-  if (folder.isOpen()) {
-    folder.closeFolder();
-    any = true;
-  }
-  if (drawer.isOpen()) {
-    drawer.closeDrawer();
-    any = true;
-  }
-  return any;
+// the letters along the edge: slide a finger to jump
+{
+  const rail = $('#rail');
+  const bubble = $('#rail-bubble');
+  let lastL = '';
+  const at = (y) => {
+    const r = rail.getBoundingClientRect();
+    const kids = rail.children;
+    if (!kids.length) return;
+    let i = 0;
+    for (; i < kids.length - 1; i++) {
+      const k = kids[i].getBoundingClientRect();
+      if (y < k.bottom) break;
+    }
+    const [L, el] = letters[i];
+    if (L === lastL) return;
+    for (const k of kids) k.classList.remove('on');
+    kids[i].classList.add('on');
+    lastL = L;
+    bubble.textContent = L;
+    const k = kids[i].getBoundingClientRect();
+    bubble.style.top = clamp(k.top + k.height / 2 - 32, r.top, r.bottom - 64) + 'px';
+    bubble.classList.add('on');
+    scroller.scrollTop = el.offsetTop - 16;
+    rez.haptic('tick');
+  };
+  rail.addEventListener('pointerdown', (e) => {
+    cap(rail, e.pointerId);
+    q.blur();
+    lastL = '';
+    at(e.clientY);
+  });
+  rail.addEventListener('pointermove', (e) => rail.hasPointerCapture(e.pointerId) && at(e.clientY));
+  const end = () => {
+    bubble.classList.remove('on');
+    for (const k of rail.children) k.classList.remove('on');
+  };
+  rail.addEventListener('pointerup', end);
+  rail.addEventListener('pointercancel', end);
 }
 
-function onBack() {
-  if (skipIntro) return skipIntro();
-  if (hello.on) return hideHello();
-  if (drag.isDragging()) return;
-  const menu = $('menu');
-  if (menu.classList.contains('on')) return drag.hideMenu();
-  if (settings.opened()) return void settings.back();
-  if (wgOpen) return closeWidgets();
-  if (folder.isOpen()) return folder.closeFolder();
-  if (drawer.isOpen()) return drawer.closeDrawer();
-  if (home.pageIndex() !== 0 || home.onFeed()) home.gotoGrid(0, true);
+// ---------- touch ----------
+
+// a finger's way: where it started, where it is, how fast it goes
+function track(e) {
+  return { x0: e.clientX, y0: e.clientY, t0: performance.now(), pts: [[e.clientX, e.clientY, performance.now()]] };
+}
+function step(t, x, y) {
+  t.pts.push([x, y, performance.now()]);
+  if (t.pts.length > 6) t.pts.shift();
+}
+function speedY(t) {
+  const a = t.pts[0];
+  const b = t.pts[t.pts.length - 1];
+  const dt = b[2] - a[2];
+  return dt > 0 ? (b[1] - a[1]) / dt : 0;
 }
 
-function onHome() {
-  if (skipIntro) return skipIntro();
-  if (drag.isDragging()) return;
-  if (closeAll()) return;
-  if (home.pageIndex() !== 0 || home.onFeed()) home.gotoGrid(0, true);
-  else if (S.feed && !home.geo.split) home.goto(0, true); // Home once more: the page «Сегодня»
+// drawer under the finger: up from home, down from the drawer
+const span = () => H() * 0.42;
+function release(v) {
+  const open = v < -0.35 ? true : v > 0.35 ? false : p > 0.4;
+  if (open && !drawerOpen) renderFreq();
+  settle(open);
 }
 
-on('key', (k) => {
-  if (k === 'back') onBack();
-  else if (k === 'home') onHome();
+let g = null; // the current gesture on the home screen
+home.addEventListener('pointerdown', (e) => {
+  if (g || e.button > 0) return;
+  if (e.target.closest('.np-b')) return;
+  if (menu.open || isSheet()) return;
+  cap(home, e.pointerId);
+  const item = e.target.closest('.app');
+  g = { ...track(e), id: e.pointerId, item, target: e.target, mode: null };
+  if (item) item.classList.add('down');
+  g.timer = setTimeout(() => {
+    if (!g || g.mode) return;
+    g.mode = 'long';
+    if (item) {
+      item.classList.remove('down');
+      openMenu(item, item.dataset.where, () => renderHome(true));
+    } else if (!e.target.closest('#np, #find, #top')) openSheet();
+    else g.mode = 'none';
+  }, LONG);
 });
-
-// ---------- the gestures of the desktop ----------
-
-let sw = null;
-
-homeEl.addEventListener('pointerdown', (e) => {
-  if (e.button > 0 || drag.isDragging()) return;
-  if (e.target.closest('.np-b, .sr-pill, .f-title')) return;
-  if (settings.opened() || wgOpen || folder.isOpen() || drawer.isOpen()) return;
-  sw = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), mode: '', last: 0, lt: 0, vy: 0 };
-});
-
-window.addEventListener('pointermove', (e) => {
-  if (!sw || e.pointerId !== sw.id) return;
-  if (drag.isDragging() || $('menu').classList.contains('on')) {
-    sw = null;
+home.addEventListener('pointermove', (e) => {
+  if (!g || e.pointerId !== g.id) return;
+  step(g, e.clientX, e.clientY);
+  const dx = e.clientX - g.x0;
+  const dy = e.clientY - g.y0;
+  const far = Math.hypot(dx, dy) > SLOP;
+  if (g.mode === 'drag') return dragMove(e.clientX, e.clientY);
+  if (g.mode === 'long') {
+    if (far && g.item && menu.open) {
+      g.mode = 'drag';
+      dragStart(g.item.dataset.pkg, e.clientX, e.clientY);
+    }
     return;
   }
-  const dx = e.clientX - sw.x;
-  const dy = e.clientY - sw.y;
-  const now = performance.now();
-  if (!sw.mode) {
-    if (Math.hypot(dx, dy) < 14) return;
-    if (Math.abs(dy) > Math.abs(dx) * 1.25) {
-      if (dy < 0) sw.mode = 'up';
-      else if (S.swipeDown !== 'none') sw.mode = 'down';
-      else {
-        sw = null;
-        return;
-      }
-    } else {
-      sw = null; // sideways: the pages scroll themselves
-      return;
+  if (g.mode === 'drawer') return setP(clamp(-dy / span(), 0, 1));
+  if (g.mode || !far) return;
+  clearTimeout(g.timer);
+  if (g.item) g.item.classList.remove('down');
+  if (Math.abs(dy) > Math.abs(dx)) {
+    g.mode = dy < 0 ? 'drawer' : 'shade';
+    if (g.mode === 'drawer') {
+      renderFreq();
+      drawer.classList.add('open');
     }
-  }
-  if (sw.mode === 'up') {
-    const p = Math.min(1, -dy / (home.geo.H * 0.5));
-    drawer.follow(p);
-    if (sw.lt) sw.vy = (e.clientY - sw.last) / Math.max(1, now - sw.lt);
-    sw.last = e.clientY;
-    sw.lt = now;
-  }
+  } else g.mode = 'none';
 });
-
-function endSwipe(e, cancelled) {
-  if (!sw || e.pointerId !== sw.id) return;
-  const s = sw;
-  sw = null;
-  if (s.mode === 'up') {
-    const dy = e.clientY - s.y;
-    const p = -dy / (home.geo.H * 0.5);
-    // a quick flick (vy < 0 is upwards) or a long enough pull
-    drawer.settle(!cancelled && (p > 0.28 || s.vy < -0.5));
-  } else if (s.mode === 'down' && !cancelled) {
-    const dy = e.clientY - s.y;
-    if (dy > 70) {
-      if (S.swipeDown === 'shade') {
-        if (!rez.notifications()) toast('Шторку открыть не вышло');
-      } else if (S.swipeDown === 'search') drawer.openDrawer({ focus: true });
-    }
+function homeUp(e, cancelled) {
+  if (!g || e.pointerId !== g.id) return;
+  const t = g;
+  g = null;
+  clearTimeout(t.timer);
+  if (t.item) t.item.classList.remove('down');
+  const dy = e.clientY - t.y0;
+  if (t.mode === 'drawer') return release(speedY(t));
+  if (t.mode === 'shade') {
+    if (!cancelled && dy > 50) rez.notifications();
+    return;
   }
+  if (t.mode === 'drag') return dragEnd(cancelled);
+  if (t.mode || cancelled) return;
+  // a tap
+  if (t.item) return launch(t.item);
+  const el = t.target;
+  if (el.closest('#clock')) {
+    const a = findApp(/deskclock|\.clock$|clock/);
+    if (a) rez.launch(a.pkg);
+  } else if (el.closest('#date')) {
+    const a = findApp(/calendar/);
+    if (a) rez.launch(a.pkg);
+  } else if (el.closest('#find')) {
+    rez.haptic('tick');
+    openDrawer(true);
+  } else if (el.closest('#np') && media.app) rez.launch(media.app);
 }
-window.addEventListener('pointerup', (e) => endSwipe(e, false));
-window.addEventListener('pointercancel', (e) => endSwipe(e, true));
+home.addEventListener('pointerup', (e) => homeUp(e, false));
+home.addEventListener('pointercancel', (e) => homeUp(e, true));
 
-// ---------- what the phone tells ----------
-
-on('insets', (d) => {
-  const old = home.insets();
-  home.setInsets(d);
-  if (d.t !== old.t || d.b !== old.b || d.l !== old.l || d.r !== old.r) relayout();
-});
-
-let relayoutTimer = 0;
-function relayout() {
-  clearTimeout(relayoutTimer);
-  relayoutTimer = setTimeout(() => {
-    const a = document.activeElement;
-    if (a && a.tagName === 'INPUT') return; // the keyboard: the screen only looks smaller
-    home.render();
-    if (drawer.isOpen()) drawer.render();
-    look.apply();
-  }, 140);
-}
-let lastW = window.innerWidth;
-window.addEventListener('resize', () => {
-  const w = window.innerWidth;
-  // a change of width is a turn or a folding; of height only — the keyboard
-  if (w !== lastW) {
-    lastW = w;
-    relayout();
-  } else if (!(document.activeElement && document.activeElement.tagName === 'INPUT') && home.insets().ime === 0) relayout();
-});
-
-on('visible', (v) => {
-  const visible = v === true || v === 'true';
-  look.setWaveState({ visible });
-  if (visible) {
-    refreshInfo();
-    widgets.setBattery(rez.battery());
-    widgets.tick();
-    home.setBadges(rez.badges());
-    if (settings.opened()) settings.refresh();
-  }
-});
-
-on('perm', () => {
-  refreshInfo();
-  rez.visualizer(S.hear);
-  if (settings.opened()) settings.refresh();
-});
-
-on('media', (m) => {
-  widgets.setMedia(m);
-  look.setWaveState({ music: !!(m && m.active && m.playing) });
-  if (S.palette === 'cover' && m && m.active && m.art) look.coverPalette(rez.artUrl(m.art));
-});
-
-on('badges', (b) => home.setBadges(b));
-
-// the icons were drawn: colours of plates and kinds of apps are known
-on('meta', () => {
-  clearTimeout(relayoutTimer);
-  relayoutTimer = setTimeout(() => home.render(), 200);
-});
-
-function onWeather(w) {
-  widgets.setWeather(w);
-}
-
-// ---------- what changed in the settings ----------
-
-onChange((patch) => {
-  const keys = Object.keys(patch);
-  const has = (...ks) => ks.some((k) => keys.indexOf(k) >= 0);
-  if (has('bg', 'palette', 'style', 'motion', 'fps', 'parallax', 'hear', 'wall')) look.apply();
-  if (has('hear')) rez.visualizer(S.hear);
-  if (has('orient')) rez.orientation(S.orient);
-  if (has('city')) weather.refresh();
-  if (has('weather') && S.weather) weather.start(onWeather);
-  homeEl.classList.toggle('no-handle', !S.drawerButton);
-  if (has('shape', 'plate', 'themed', 'iconSize', 'labels', 'badges', 'grid', 'dockLabels', 'addNew', 'feed', 'clockStyle', 'weather')) {
-    home.render();
-    home.setBadges(rez.badges());
-  }
-  if (has('drawerStyle', 'drawerCats', 'engine', 'shape', 'plate', 'themed', 'iconSize') && drawer.isOpen()) drawer.render();
-});
-
-// ---------- the first run: «make Резонанс the home screen» ----------
-
-const hello = { on: false };
-function showHello() {
-  const box = $('hello');
-  box.textContent = '';
-  const row = el('div', 'row');
-  const yes = el('button', 'btn', 'Выбрать');
-  const no = el('button', 'btn ghost', 'Позже');
-  yes.addEventListener('click', () => {
-    hideHello();
-    rez.openHomeSettings();
+// the drawer's head: pulled down, the drawer goes
+{
+  const head = $('#d-head');
+  let t = null;
+  head.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('#q-wrap')) return;
+    cap(head, e.pointerId);
+    t = track(e);
   });
-  no.addEventListener('click', hideHello);
-  row.append(yes, no);
-  box.append(el('b', '', 'Сделать Резонанс главным?'), el('p', '', 'Тогда кнопка «Домой» и свайп с края экрана будут открывать этот рабочий стол. Вернуть другой лаунчер можно в любой момент в настройках телефона.'), row);
-  box.classList.add('on');
-  hello.on = true;
-}
-function hideHello() {
-  $('hello').classList.remove('on');
-  hello.on = false;
-  save({ homeAsked: true });
-}
-
-// ---------- the start ----------
-
-function startIntro(then) {
-  const run = () => {
-    skipIntro = intro.play(() => {
-      skipIntro = null;
-      save({ introSeen: true });
-      if (then) then();
-    });
-  };
-  if (document.fonts && document.fonts.ready) {
-    let started = false;
-    const go = () => {
-      if (!started) {
-        started = true;
-        run();
-      }
-    };
-    document.fonts.ready.then(go);
-    setTimeout(go, 900);
-  } else run();
-}
-document.addEventListener('rez-play-intro', () => {
-  closeAll();
-  body.classList.add('intro-on');
-  startIntro();
-});
-body.addEventListener('pointerdown', () => skipIntro && skipIntro(), true);
-
-function boot() {
-  refreshInfo();
-  home.setInsets(INFO.insets || {});
-  look.apply();
-  homeEl.classList.toggle('no-handle', !S.drawerButton);
-  apps.onApps(() => home.render());
-  apps.load();
-  home.render();
-  home.setBadges(rez.badges());
-  widgets.setBattery(rez.battery());
-  setInterval(() => widgets.setBattery(rez.battery()), 60000);
-  let lastMin = -1;
-  setInterval(() => {
-    const m = new Date().getMinutes();
-    if (m !== lastMin) {
-      lastMin = m;
-      widgets.tick();
+  head.addEventListener('pointermove', (e) => {
+    if (!t) return;
+    step(t, e.clientX, e.clientY);
+    const dy = e.clientY - t.y0;
+    if (dy > SLOP || t.moved) {
+      if (!t.moved) q.blur();
+      t.moved = true;
+      setP(clamp(1 - dy / span(), 0, 1));
     }
-  }, 5000);
-  const m = rez.mediaState();
-  widgets.setMedia(m);
-  look.setWaveState({ music: !!(m && m.active && m.playing) });
-  weather.start(onWeather);
-  sys.start();
-  rez.visualizer(S.hear);
-  rez.orientation(S.orient);
-  rez.log(`Резонанс Лаунчер запущен: ${apps.all().length} приложений, ${home.geo.W}×${home.geo.H}, сетка ${home.geo.cols}×${home.geo.rows}, ${(navigator.userAgent.match(/Chrome\/[\d.]+/) || [''])[0]}`);
-
-  setTimeout(() => {
-    const first = document.querySelector('#pager .item.app');
-    const r = first && first.getBoundingClientRect();
-    rez.log(`экран: страниц ${L.pages.map((p) => p.length).join('+')}, значков в DOM ${document.querySelectorAll('#pager .item.app').length}, первый ${r ? [r.x, r.y, r.width, r.height].map(Math.round) : 'нет'}, виджетов ${document.querySelectorAll('.item.w').length}, видимых приложений ${apps.visible().length}`);
-  }, 2500);
-
-  const afterIntro = () => {
-    if (!S.homeAsked && !INFO.home && INFO.app) setTimeout(showHello, 1200);
+  });
+  const up = () => {
+    if (t && t.moved) release(speedY(t));
+    t = null;
   };
-  if (params.has('nointro') || S.introSeen) {
-    body.classList.remove('intro-on');
-    afterIntro();
-  } else startIntro(afterIntro);
+  head.addEventListener('pointerup', up);
+  head.addEventListener('pointercancel', up);
 }
 
-boot();
+// the drawer's list: scrolls by itself; pulled down at the top, the drawer goes;
+// a tap opens an app; a long press opens its menu, and moved, takes it home
+{
+  let t = null;
+  scroller.addEventListener('touchstart', (e) => {
+    const k = e.touches[0];
+    t = { x0: k.clientX, y0: k.clientY, top: scroller.scrollTop <= 0, pull: false, pts: [[k.clientX, k.clientY, performance.now()]] };
+  }, { passive: true });
+  scroller.addEventListener('touchmove', (e) => {
+    if (!t) return;
+    const k = e.touches[0];
+    step(t, k.clientX, k.clientY);
+    const dy = k.clientY - t.y0;
+    if (d && d.long) return e.preventDefault(); // a long press holds the list still
+    if (!t.pull && t.top && scroller.scrollTop <= 0 && dy > SLOP && Math.abs(dy) > Math.abs(k.clientX - t.x0)) {
+      t.pull = true;
+      q.blur();
+      cancelPress();
+    }
+    if (t.pull) {
+      e.preventDefault();
+      setP(clamp(1 - (dy - SLOP) / span(), 0, 1));
+    }
+  }, { passive: false });
+  const end = () => {
+    if (t && t.pull) release(speedY(t));
+    t = null;
+  };
+  scroller.addEventListener('touchend', end);
+  scroller.addEventListener('touchcancel', end);
+  scroller.addEventListener('scroll', () => q === document.activeElement && Math.abs(scroller.scrollTop) > 40 && q.blur(), { passive: true });
+
+  let d = null;
+  const cancelPress = () => {
+    if (!d) return;
+    clearTimeout(d.timer);
+    d.item.classList.remove('down');
+    if (!d.long) d = null;
+  };
+  scroller.addEventListener('pointerdown', (e) => {
+    const item = e.target.closest('.app');
+    if (!item || d) return;
+    d = { item, x0: e.clientX, y0: e.clientY, id: e.pointerId, long: false };
+    item.classList.add('down');
+    d.timer = setTimeout(() => {
+      if (!d) return;
+      d.long = true;
+      item.classList.remove('down');
+      cap(scroller, d.id);
+      q.blur();
+      openMenu(item, 'drawer', () => renderHome(false));
+    }, LONG);
+  });
+  scroller.addEventListener('pointermove', (e) => {
+    if (!d || e.pointerId !== d.id) return;
+    const far = Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > SLOP;
+    if (d.drag) return dragMove(e.clientX, e.clientY);
+    if (d.long && far && menu.open) {
+      d.drag = true;
+      settle(false);
+      dragStart(d.item.dataset.pkg, e.clientX, e.clientY, true);
+    } else if (!d.long && far) cancelPress();
+  });
+  const up = (e, cancelled) => {
+    if (!d || e.pointerId !== d.id) return;
+    const x = d;
+    d = null;
+    clearTimeout(x.timer);
+    x.item.classList.remove('down');
+    if (x.drag) return dragEnd(cancelled);
+    if (!x.long && !cancelled) launch(x.item);
+  };
+  scroller.addEventListener('pointerup', (e) => up(e, false));
+  scroller.addEventListener('pointercancel', (e) => up(e, true));
+}
+
+$('#scrim').addEventListener('pointerdown', () => {
+  closeMenu();
+  closeSheet();
+});
+
+// ---------- dragging an icon ----------
+
+let dr = null;
+const trash = $('#trash');
+function dragStart(pkg, x, y, fromDrawer) {
+  if (!ghost) return;
+  closeMenu(true);
+  rez.haptic('context');
+  ghost.g.classList.add('drag');
+  dr = { pkg, fromDrawer, w: ghost.r.width, h: ghost.r.height, hot: false, last: 0 };
+  if (fromDrawer && !(S.home || []).includes(pkg) && !(S.dock || []).includes(pkg)) {
+    dr.added = true;
+    if (S.home.length >= 20) {
+      toast('На главном экране нет места');
+      dr.full = true;
+    } else {
+      S.home = [...S.home, pkg];
+      renderHome(false);
+    }
+  }
+  const el = homeEls.get(pkg);
+  if (el) el.classList.add('hole', 'lift');
+  if (!fromDrawer) trash.classList.add('on');
+  dragMove(x, y);
+}
+
+function dragMove(x, y) {
+  if (!dr || !ghost) return;
+  ghost.g.style.transform = `translate3d(${x - dr.w / 2}px,${y - dr.h * 0.75}px,0) scale(1.12)`;
+  // over the "remove" pill
+  const tr = trash.getBoundingClientRect();
+  const hot = trash.classList.contains('on') && y < tr.bottom + 24;
+  if (hot !== dr.hot) {
+    dr.hot = hot;
+    trash.classList.toggle('hot', hot);
+    if (hot) rez.haptic('tick');
+  }
+  if (hot || dr.full) return;
+  const now = performance.now();
+  if (now - dr.last < 90) return;
+  // the nearest place in the grid or the dock
+  const dk = dock.getBoundingClientRect();
+  const inDock = y > dk.top - 12;
+  const box = inDock ? dock : grid;
+  const list = inDock ? S.dock : S.home;
+  const from = S.home.includes(dr.pkg) ? 'home' : 'dock';
+  let best = -1;
+  let bd = 1e9;
+  [...box.children].forEach((el, i) => {
+    const r = el.getBoundingClientRect();
+    const dd = Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y);
+    if (dd < bd) {
+      bd = dd;
+      best = i;
+    }
+  });
+  const to = inDock ? 'dock' : 'home';
+  if (best >= 0) {
+    const r = box.children[best].getBoundingClientRect();
+    if (x > r.right && best === box.children.length - 1 && to !== from) best++;
+  } else best = 0;
+  const cur = list.indexOf(dr.pkg);
+  if (to === from && (best === cur || best < 0)) return;
+  if (to === 'dock' && from !== 'dock' && S.dock.length >= 5) return;
+  dr.last = now;
+  const home2 = S.home.filter((p) => p !== dr.pkg);
+  const dock2 = S.dock.filter((p) => p !== dr.pkg);
+  (to === 'dock' ? dock2 : home2).splice(Math.min(best, (to === 'dock' ? dock2 : home2).length), 0, dr.pkg);
+  S.home = home2;
+  S.dock = dock2;
+  renderHome(true);
+  const el = homeEls.get(dr.pkg);
+  if (el) el.classList.add('hole', 'lift');
+  ghost.el = el || ghost.el;
+  rez.haptic('tick');
+}
+
+function dragEnd() {
+  if (!dr) return;
+  const x = dr;
+  dr = null;
+  trash.classList.remove('on', 'hot');
+  if (x.hot) {
+    S.home = S.home.filter((p) => p !== x.pkg);
+    S.dock = S.dock.filter((p) => p !== x.pkg);
+    if (ghost) {
+      ghost.g.style.transition = 'transform 0.25s, opacity 0.25s';
+      ghost.g.style.opacity = '0';
+      const g0 = ghost.g;
+      setTimeout(() => g0.remove(), 260);
+    }
+    drop(true);
+    renderHome(true);
+    toast(`${apps.get(x.pkg)?.label || 'Значок'} — убран с экрана`);
+  } else {
+    const el = homeEls.get(x.pkg);
+    if (el && ghost) ghost.el = el;
+    drop();
+  }
+  save({ home: S.home, dock: S.dock });
+}
+
+// ---------- the keys, the screen coming and going ----------
+
+on('key', (k) => {
+  if (dr) return;
+  if (menu.open) return closeMenu();
+  if (isSheet()) return closeSheet();
+  if (k === 'back') {
+    if (drawerOpen) closeDrawer();
+    return;
+  }
+  if (k === 'home') {
+    if (drawerOpen) closeDrawer();
+  }
+});
+
+function setVisible(v) {
+  look.set({ visible: v });
+  if (v) {
+    clock();
+    setMedia(rez.mediaState());
+    setBadges(rez.badges());
+  } else {
+    // coming back, the person finds the home screen, not the drawer they left
+    closeMenu();
+    drop(true);
+    closeSheet();
+    closeDrawer(false);
+    clearTimeout(barT);
+  }
+}
+on('visible', setVisible);
+document.addEventListener('visibilitychange', () => setVisible(!document.hidden));
+on('badges', (b) => setBadges(typeof b === 'string' ? JSON.parse(b) : b));
+on('perm', () => {
+  look.apply();
+});
+window.addEventListener('resize', () => setP(p));
+// a computer's keyboard (the preview, a tablet with keys): Esc is Back
+window.addEventListener('keydown', (e) => e.key === 'Escape' && window.__rezEmit('key', 'back'));
+
+// ---------- start ----------
+
+const info = rez.info();
+insets(info.insets);
+look.setYou(info.you);
+look.apply();
+apps.onApps(() => {
+  renderHome(false);
+  renderDrawer();
+});
+apps.reload();
+setP(0);
+clock();
+setMedia(rez.mediaState());
+setBadges(rez.badges());
+if (!native) body.classList.add('preview');
+requestAnimationFrame(() => body.classList.add('ready'));

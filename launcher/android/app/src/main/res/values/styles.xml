@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- a home app's window: the system's wallpaper is behind it (the page may be see-through) -->
-    <style name="Rez" parent="@android:style/Theme.Material.Wallpaper.NoTitleBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
+    <!-- the page paints the whole screen itself: no system wallpaper behind it -->
+    <style name="Rez" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/ink</item>
         <item name="android:colorBackground">@color/ink</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowContentOverlay">@null</item>
-        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowShowWallpaper">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:colorAccent">@color/violet</item>

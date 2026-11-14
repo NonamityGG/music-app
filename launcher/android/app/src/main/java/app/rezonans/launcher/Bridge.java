@@ -3,8 +3,6 @@ package app.rezonans.launcher;
 import android.Manifest;
 import android.app.ActivityManager;
 import android.app.ActivityOptions;
-import android.app.WallpaperInfo;
-import android.app.WallpaperManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -15,13 +13,11 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ShortcutInfo;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
-import android.os.IBinder;
 import android.os.Process;
 import android.provider.Settings;
 import android.util.Log;
@@ -279,7 +275,6 @@ final class Bridge {
             o.put("home", isDefaultHome());
             o.put("notif", MediaHub.listenerEnabled(a));
             o.put("mic", Build.VERSION.SDK_INT < 23 || a.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED);
-            o.put("liveWall", isLiveWallpaper());
             o.put("dark", (a.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
             ActivityManager am = (ActivityManager) a.getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -369,88 +364,9 @@ final class Bridge {
         a.ui.post(() -> Viz.resume(a));
     }
 
-    // ---------- the wallpaper ----------
-
-    /** The page's look for the live wallpaper (style, colours, background…) as JSON; the wallpaper redraws. */
-    @JavascriptInterface
-    public void wallpaper(String json) {
-        Prefs.putStr(a, "wall", json);
-        RezWallpaper.configChanged();
-    }
-
-    private boolean isLiveWallpaper() {
-        try {
-            WallpaperInfo wi = WallpaperManager.getInstance(a).getWallpaperInfo();
-            return wi != null && a.getPackageName().equals(wi.getPackageName());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /** Offers to make our live wallpaper the phone's (the system asks to confirm). */
-    @JavascriptInterface
-    public boolean setLiveWallpaper() {
-        Intent i = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
-        i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, new ComponentName(a, RezWallpaper.class));
-        return start(i) || start(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));
-    }
-
-    @JavascriptInterface
-    public boolean pickWallpaper() {
-        return start(Intent.createChooser(new Intent(Intent.ACTION_SET_WALLPAPER), "Обои"));
-    }
-
-    /** True: the page is see-through and the system's wallpaper (still or live) shows behind it. */
-    @JavascriptInterface
-    public void seeThrough(boolean on) {
-        a.ui.post(() -> {
-            if (a.web != null) a.web.setBackgroundColor(on ? Color.TRANSPARENT : Color.rgb(15, 11, 22));
-        });
-    }
-
-    /** The wallpaper slides with the pages: x is 0..1 across the pages. */
-    @JavascriptInterface
-    public void scroll(float x, int pages) {
-        a.ui.post(() -> {
-            try {
-                if (a.web == null) return;
-                IBinder tok = a.web.getWindowToken();
-                if (tok == null) return;
-                WallpaperManager wm = WallpaperManager.getInstance(a);
-                wm.setWallpaperOffsetSteps(pages > 1 ? 1f / (pages - 1) : 1f, 1f);
-                wm.setWallpaperOffsets(tok, Math.max(0f, Math.min(1f, x)), 0.5f);
-            } catch (Exception ignored) {
-            }
-        });
-    }
-
     // ---------- the screen and the touch ----------
 
     /** tick, press, context, confirm: a short vibration of the screen. */
-    // ---------- widgets of other apps ----------
-
-    @JavascriptInterface
-    public String widgets() {
-        return a.widgets == null ? "[]" : a.widgets.list();
-    }
-
-    @JavascriptInterface
-    public void widgetAdd(final String key) {
-        a.ui.post(() -> {
-            if (a.widgets != null) a.widgets.add(key);
-        });
-    }
-
-    @JavascriptInterface
-    public void widgetFrames(String json) {
-        if (a.widgets != null) a.widgets.frames(json);
-    }
-
-    @JavascriptInterface
-    public void widgetRemove(int id) {
-        if (a.widgets != null) a.widgets.remove(id);
-    }
-
     @JavascriptInterface
     public void haptic(String kind) {
         a.ui.post(() -> {
