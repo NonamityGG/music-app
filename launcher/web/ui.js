@@ -5,6 +5,7 @@ import { rez, on } from './bridge.js';
 import { S, save, used } from './store.js';
 import * as apps from './apps.js';
 import * as look from './look.js';
+import { KINDS } from './widgets.js';
 
 export const $ = (s) => document.querySelector(s);
 const svg = (d) => `<svg viewBox="0 0 24 24">${d}</svg>`;
@@ -19,6 +20,7 @@ export const ICONS = {
   home: svg('<path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1v-8z"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'),
   wall: svg('<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 15c3-3 5-3 8 0s5 3 8 0"/>'),
+  page: svg('<rect x="5" y="3" width="14" height="18" rx="3"/><path d="M12 9v6M9 12h6"/>'),
   bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 20a2 2 0 0 0 4 0"/>'),
 };
 
@@ -60,29 +62,39 @@ export function toast(text) {
   toastT = setTimeout(() => t.classList.remove('on'), 2200);
 }
 
-// ---------- the lifted icon (a long press, and what is dragged) ----------
+// ---------- the lifted icon or widget (a long press, and what is dragged) ----------
+
+// the part that is lifted: an icon's picture, a widget's card
+export const liftBox = (el) => el.querySelector('.ic') || el.querySelector('.wcard') || el;
 
 export let ghost = null;
 export function lift(el) {
   drop(true);
-  const ic = el.querySelector('.ic');
-  const r = ic.getBoundingClientRect();
+  const box = liftBox(el);
+  const r = box.getBoundingClientRect();
   const g = document.createElement('div');
   g.className = 'ghost';
   g.style.width = r.width + 'px';
   g.style.height = r.height + 'px';
-  g.innerHTML = '<img alt="">';
-  g.querySelector('img').src = el.querySelector('img').src;
+  const img = el.querySelector('.ic img');
+  if (img) {
+    g.innerHTML = '<img alt="">';
+    g.querySelector('img').src = img.src;
+  } else {
+    // a widget: a copy of its card (it shows the same), in the same palette
+    g.classList.add('wghost', ...[...el.classList].filter((c) => /^(wd-|s-)/.test(c)));
+    g.appendChild(box.cloneNode(true));
+  }
   g.style.transform = `translate3d(${r.left}px,${r.top}px,0)`;
   document.body.appendChild(g);
   ghost = { g, el, r, x: r.left, y: r.top };
   el.classList.add('lift');
   void g.offsetWidth; // the start is laid out, so the lift is animated
-  g.style.transform = `translate3d(${r.left}px,${r.top}px,0) scale(1.1)`;
+  g.style.transform = `translate3d(${r.left}px,${r.top}px,0) scale(${img ? 1.1 : 1.03})`;
   return ghost;
 }
 
-// the lifted icon goes back to where its icon is now (or simply fades)
+// the lifted one goes back to where it is now (or simply fades)
 export function drop(now) {
   if (!ghost) return;
   const { g, el } = ghost;
@@ -93,8 +105,10 @@ export function drop(now) {
     if (target) el.classList.remove('lift', 'hole');
     return;
   }
-  const r = el.querySelector('.ic').getBoundingClientRect();
+  const r = liftBox(el).getBoundingClientRect();
   g.classList.remove('drag');
+  g.style.width = r.width + 'px';
+  g.style.height = r.height + 'px';
   g.style.transform = `translate3d(${r.left}px,${r.top}px,0)`;
   setTimeout(() => {
     el.classList.remove('lift', 'hole');
@@ -104,32 +118,22 @@ export function drop(now) {
 
 // ---------- the menu of a long press ----------
 
-export const menu = { open: false, pkg: null };
+export const menu = { open: false, key: null };
 const pop = $('#menu');
 const scrim = $('#scrim');
 
-export function openMenu(el, where, onDone) {
-  const pkg = el.dataset.pkg;
-  const app = apps.get(pkg);
-  if (!app) return;
+const SIZE_NAMES = { '1x1': 'Мини', '2x1': 'Полоска', '2x2': 'Квадрат', '4x1': 'Широкий', '4x2': 'Большой' };
+
+// opts: { onHome, remove(), pin() } for an app; { widget: true, sizes, size, resize(s), remove() } for a widget
+export function openMenu(el, opts) {
+  const key = el.dataset.pkg || el.dataset.key;
+  const app = el.dataset.pkg ? apps.get(el.dataset.pkg) : null;
+  if (!app && !opts.widget) return;
   rez.haptic('press');
   lift(el);
   menu.open = true;
-  menu.pkg = pkg;
-  const onHome = (S.home || []).includes(pkg) || (S.dock || []).includes(pkg);
-  const shortcuts = rez.shortcuts(pkg).slice(0, 4);
+  menu.key = key;
   pop.innerHTML = '';
-  for (const s of shortcuts) {
-    const b = document.createElement('button');
-    b.className = 'row';
-    b.innerHTML = ICONS.sc + '<span></span>';
-    b.querySelector('span').textContent = s.label;
-    b.onclick = () => {
-      closeMenu();
-      rez.startShortcut(pkg, s.id);
-    };
-    pop.appendChild(b);
-  }
   const acts = document.createElement('div');
   acts.className = 'acts';
   const act = (cls, ic, label, fn) => {
@@ -142,26 +146,52 @@ export function openMenu(el, where, onDone) {
     };
     acts.appendChild(b);
   };
-  if (onHome) {
-    act('', ICONS.unpin, 'Убрать', () => {
-      save({ home: S.home.filter((p) => p !== pkg), dock: S.dock.filter((p) => p !== pkg) });
-      onDone && onDone();
-    });
+  let rows = 0;
+  if (app) {
+    const pkg = app.pkg;
+    for (const s of rez.shortcuts(pkg).slice(0, 4)) {
+      const b = document.createElement('button');
+      b.className = 'row';
+      b.innerHTML = ICONS.sc + '<span></span>';
+      b.querySelector('span').textContent = s.label;
+      b.onclick = () => {
+        closeMenu();
+        rez.startShortcut(pkg, s.id);
+      };
+      pop.appendChild(b);
+      rows++;
+    }
+    if (opts.onHome) act('', ICONS.unpin, 'Убрать', opts.remove);
+    else act('', ICONS.pin, 'На экран', opts.pin);
+    act('', ICONS.info, 'О приложении', () => rez.appInfo(pkg));
+    if (!app.sys) act('del', ICONS.del, 'Удалить', () => rez.uninstall(pkg));
   } else {
-    act('', ICONS.pin, 'На экран', () => {
-      if (S.home.length >= 20) return toast('На главном экране нет места');
-      save({ home: [...S.home, pkg] });
-      toast(`${app.label} — на главном экране`);
-      onDone && onDone(pkg);
-    });
+    // a widget: its sizes, as little pictures of the cells it would take
+    const sz = document.createElement('div');
+    sz.className = 'sizes';
+    for (const s of opts.sizes) {
+      const [w, h] = s.split('x').map(Number);
+      const b = document.createElement('button');
+      b.className = 'size' + (s === opts.size ? ' on' : '');
+      b.innerHTML = `<i style="--w:${w};--h:${h}"></i><span>${SIZE_NAMES[s] || s}</span>`;
+      b.onclick = () => {
+        rez.haptic('tick');
+        opts.resize(s);
+        closeMenu();
+      };
+      sz.appendChild(b);
+    }
+    if (opts.sizes.length > 1) {
+      pop.appendChild(sz);
+      rows++;
+    }
+    act('', ICONS.unpin, 'Убрать виджет', opts.remove);
   }
-  act('', ICONS.info, 'О приложении', () => rez.appInfo(pkg));
-  if (!app.sys) act('del', ICONS.del, 'Удалить', () => rez.uninstall(pkg));
-  if (!shortcuts.length) acts.style.cssText = 'margin-top:0;padding-top:0;border-top:0';
+  if (!rows) acts.style.cssText = 'margin-top:0;padding-top:0;border-top:0';
   pop.appendChild(acts);
 
   // above the icon when there is room, otherwise below it
-  const r = el.querySelector('.ic').getBoundingClientRect();
+  const r = liftBox(el).getBoundingClientRect();
   const W = window.innerWidth;
   const top0 = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--t')) || 24;
   const pw = Math.min(W - 32, Math.max(280, pop.offsetWidth));
@@ -169,7 +199,7 @@ export function openMenu(el, where, onDone) {
   let y = r.top - ph - 16;
   let below = false;
   if (y < top0 + 8) {
-    y = r.bottom + 30;
+    y = Math.min(r.bottom + (app ? 30 : 14), window.innerHeight - ph - 16);
     below = true;
   }
   const x = Math.max(16, Math.min(W - pw - 16, r.left + r.width / 2 - pw / 2));
@@ -194,6 +224,8 @@ export function closeMenu(keepGhost) {
 let sheetOpen = false;
 const sheet = $('#sheet');
 export const isSheet = () => sheetOpen;
+// what the home screen does for the sheet (main.js fills these in)
+export const homeHooks = { addWidget: () => {}, newPage: () => {} };
 
 export function openSheet() {
   rez.haptic('press');
@@ -228,6 +260,27 @@ function renderSheet() {
     body.appendChild(b);
     b.style.marginBottom = '22px';
   }
+
+  const ws = sec('Виджеты');
+  const wl = document.createElement('div');
+  wl.className = 'wpick';
+  for (const [kind, k] of Object.entries(KINDS)) {
+    const [w, h] = k.sizes[0].split('x').map(Number);
+    const b = document.createElement('button');
+    b.className = 'wp glass';
+    b.innerHTML = `<i class="wp-ic wp-${kind}" style="--w:${w};--h:${h}"></i><b></b><span></span>`;
+    b.querySelector('b').textContent = k.name;
+    b.querySelector('span').textContent = k.sub;
+    b.onclick = () => {
+      rez.haptic('tick');
+      closeSheet();
+      homeHooks.addWidget(kind);
+    };
+    wl.appendChild(b);
+  }
+  ws.appendChild(wl);
+  const np = link(ICONS.page, 'Новая страница', () => homeHooks.newPage());
+  ws.appendChild(np);
 
   const pal = sec('Палитра');
   const sw = document.createElement('div');

@@ -8,6 +8,8 @@ const KEY = 'rez-launcher-2';
 const DEFAULTS = {
   home: null, // [pkg] — null until first filled from the installed apps
   dock: null,
+  pages: null, // [[key]]: a key is a package or "#kind:n" for a widget
+  wsize: {}, // widget key -> "WxH"
   palette: 'violet',
   style: 'ribbons',
   hear: false, // the waves hear what plays (needs the microphone permission)

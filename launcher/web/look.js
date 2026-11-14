@@ -34,24 +34,11 @@ waves.setSource({
 const canvas = document.getElementById('waves');
 waves.addSurface('bg', canvas, {
   dpr: Math.min(1.5, 1100 / Math.max(1, window.innerWidth)),
-  // the waves run through the free space between the clock (or what's playing) and the icons
+  // the waves run across the middle of the screen, behind the pages
   center: () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const above = document.querySelector('#np:not([hidden])') || document.getElementById('top');
-    const below = document.getElementById('grid');
-    let y = h * 0.45;
-    let gap = h * 0.2;
-    if (above && below) {
-      const a = above.getBoundingClientRect().bottom;
-      const b = below.firstElementChild ? below.getBoundingClientRect().top : document.getElementById('find').getBoundingClientRect().top;
-      if (b > a) {
-        y = (a + b) / 2;
-        gap = b - a;
-      }
-    }
-    const amp = Math.max(Math.min(w, h) * 0.13, Math.min(gap * 0.5, h * 0.2)) * (state.music ? 1.15 : 0.85);
-    return { x: w / 2, y, amp, r: 0 };
+    return { x: w / 2, y: h * 0.44, amp: Math.min(w, h) * (state.music ? 0.19 : 0.14), r: 0 };
   },
 });
 waves.setActive('bg');

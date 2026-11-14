@@ -1,21 +1,22 @@
-// Резонанс Лаунчер: the home screen (clock, what's playing, the person's apps,
-// the dock), the drawer with every app and the search, and the touch: a swipe
-// up opens the drawer under the finger, a swipe down pulls the notification
-// shade, a long press opens an icon's menu (and, moved, drags the icon), a long
-// press on an empty place opens the settings.
+// Резонанс Лаунчер: the home screen (pages of apps and widgets, the dock), the
+// drawer with every app and the search, and the touch: a swipe up opens the
+// drawer under the finger, a swipe down pulls the notification shade, sideways
+// turns the pages, a long press opens an icon's or a widget's menu (and, moved,
+// drags it — to another page at the screen's side), a long press on an empty
+// place opens the settings.
 
 import { rez, on, native } from './bridge.js';
 import { S, save } from './store.js';
 import * as apps from './apps.js';
 import * as look from './look.js';
-import { $, icon, launch, toast, ghost, lift, drop, menu, openMenu, closeMenu, openSheet, closeSheet, isSheet, setBadges, ICONS } from './ui.js';
+import { $, icon, launch, toast, ghost, drop, menu, openMenu, closeMenu, openSheet, closeSheet, isSheet, setBadges, ICONS, homeHooks } from './ui.js';
+import * as W from './widgets.js';
 import './graph.js';
 
 const body = document.body;
 const root = document.documentElement;
 const home = $('#home');
 const drawer = $('#drawer');
-const grid = $('#grid');
 const dock = $('#dock');
 const q = $('#q');
 
@@ -41,104 +42,103 @@ function insets(i) {
 }
 on('insets', insets);
 
-// ---------- clock, date, battery ----------
+// ---------- the home screen: pages of apps and widgets, and the dock ----------
 
-const fmtDay = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-let clockT = 0;
-function clock() {
-  const d = new Date();
-  $('#time').textContent = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  $('#day').textContent = fmtDay.format(d);
-  const b = rez.battery();
-  const bt = $('#batt');
-  bt.textContent = b.level >= 0 ? b.level + '%' : '';
-  bt.classList.toggle('low', b.level >= 0 && b.level <= 15 && !b.charging);
-  bt.classList.toggle('charging', !!b.charging);
-  clearTimeout(clockT);
-  clockT = setTimeout(clock, 60000 - (Date.now() % 60000) + 30);
+const hpages = $('#hpages');
+const hdots = $('#hdots');
+const homeEls = new Map(); // key (a package, or "#kind:n" for a widget) -> its element
+
+// the first time: what used to be the one home screen becomes the first page,
+// with the clock and what's playing on top
+function migrate() {
+  if (Array.isArray(S.pages) && S.pages.length) return;
+  S.pages = [['#clock:1', '#music:1', ...(S.home || [])]];
+  save({ pages: S.pages });
+}
+const valid = (k) => (W.isWidget(k) ? !!W.KINDS[W.kindOf(k)] : !!apps.get(k));
+const pageOf = (k) => S.pages.findIndex((pg) => pg.includes(k));
+const onHome = (k) => pageOf(k) >= 0 || S.dock.includes(k);
+const cur = () => clamp(Math.round(hpages.scrollLeft / Math.max(1, hpages.clientWidth)), 0, S.pages.length - 1);
+function goPage(i, smooth) {
+  const left = i * hpages.clientWidth;
+  if (smooth) hpages.scrollTo({ left, behavior: 'smooth' });
+  else hpages.scrollLeft = left;
 }
 
-const findApp = (re) => apps.all().find((a) => re.test(a.pkg));
-
-// ---------- what's playing ----------
-
-let media = { active: false };
-let mediaAt = 0;
-let barT = 0;
-function setMedia(m) {
-  media = m || { active: false };
-  mediaAt = performance.now();
-  const np = $('#np');
-  const show = !!media.active && !!(media.title || media.artist);
-  np.hidden = !show;
-  look.set({ music: show && !!media.playing });
-  if (!show) return;
-  $('#np-title').textContent = media.title || media.appLabel || '';
-  $('#np-artist').textContent = media.artist || media.appLabel || '';
-  const art = $('#np-art');
-  const src = media.art ? rez.artUrl(media.art) : rez.iconUrl(media.app);
-  if (art.dataset.src !== src) {
-    art.dataset.src = src;
-    art.src = src;
-  }
-  np.classList.toggle('paused', !media.playing);
-  $('.np-play').setAttribute('aria-label', media.playing ? 'Пауза' : 'Играть');
-  bar();
-}
-function bar() {
-  clearTimeout(barT);
-  const i = $('#np-bar i');
-  if (!media.active || !media.dur) return (i.style.transform = 'scaleX(0)');
-  const pos = media.pos + (media.playing ? performance.now() - mediaAt : 0);
-  i.style.transform = `scaleX(${clamp(pos / media.dur, 0, 1).toFixed(4)})`;
-  if (media.playing && !document.hidden) barT = setTimeout(bar, 1000);
-}
-on('media', setMedia);
-for (const b of document.querySelectorAll('.np-b')) {
-  b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    rez.haptic('tick');
-    const a = b.dataset.a;
-    rez.media(a);
-    if (a === 'toggle') setMedia({ ...media, playing: !media.playing, pos: media.pos + (media.playing ? performance.now() - mediaAt : 0) });
-  });
-}
-
-// ---------- the home screen ----------
-
-const homeEls = new Map(); // pkg -> element on the home screen or the dock
-
-function homeEl(pkg, where) {
-  let el = homeEls.get(pkg);
-  const a = apps.get(pkg);
-  if (!a) return null;
+function homeEl(key, where) {
+  let el = homeEls.get(key);
   if (!el) {
-    el = icon(a, where);
-    homeEls.set(pkg, el);
+    if (W.isWidget(key)) el = W.make(key);
+    else {
+      const a = apps.get(key);
+      if (!a) return null;
+      el = icon(a, where);
+    }
+    homeEls.set(key, el);
   }
   el.dataset.where = where;
   return el;
 }
 
-// draws the grid and the dock; icons that only moved glide to their new place
+// rows of a page: as many as fit comfortably; the cells share the height evenly
+let rows = 5;
+function measure() {
+  const h = hpages.clientHeight || H() * 0.6;
+  rows = clamp(Math.round(h / 124), 3, 7);
+  hpages.style.setProperty('--rows', rows);
+}
+
+function fill(box, list, where) {
+  const els = list.map((k) => homeEl(k, where)).filter(Boolean);
+  els.forEach((el, i) => {
+    if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
+  });
+  while (box.children.length > els.length) box.lastChild.remove();
+}
+function fillAll() {
+  while (hpages.children.length < S.pages.length) {
+    const pg = document.createElement('div');
+    pg.className = 'hpage';
+    hpages.appendChild(pg);
+  }
+  while (hpages.children.length > S.pages.length) hpages.lastChild.remove();
+  S.pages.forEach((list, i) => fill(hpages.children[i], list, 'home'));
+  fill(dock, S.dock, 'dock');
+}
+
+// a page that ran over (a bigger widget, one more icon) gives its last items to the next page
+function overflow() {
+  let moved = false;
+  for (let i = 0; i < S.pages.length; i++) {
+    const box = hpages.children[i];
+    if (!box) break;
+    const limit = box.clientHeight + 4;
+    const last = box.lastElementChild;
+    if (S.pages[i].length > 1 && last && last.offsetTop + last.offsetHeight > limit) {
+      const k = S.pages[i].pop();
+      if (!S.pages[i + 1]) S.pages.push([]);
+      S.pages[i + 1].unshift(k);
+      moved = true;
+    }
+  }
+  return moved;
+}
+
+// draws the pages and the dock; what only moved glides to its new place
 function renderHome(animate) {
   const before = new Map();
-  if (animate) for (const [p, el] of homeEls) if (el.isConnected) before.set(p, el.getBoundingClientRect());
-  const fill = (box, list, where) => {
-    const els = list.map((p) => homeEl(p, where)).filter(Boolean);
-    els.forEach((el, i) => {
-      if (box.children[i] !== el) box.insertBefore(el, box.children[i] || null);
-    });
-    while (box.children.length > els.length) box.lastChild.remove();
-  };
-  fill(grid, S.home || [], 'home');
-  fill(dock, S.dock || [], 'dock');
-  dock.style.setProperty('--cols', Math.max(4, (S.dock || []).length));
-  const keep = new Set([...(S.home || []), ...(S.dock || [])]);
-  for (const p of [...homeEls.keys()]) if (!keep.has(p)) homeEls.delete(p);
+  if (animate) for (const [k, el] of homeEls) if (el.isConnected) before.set(k, el.getBoundingClientRect());
+  fillAll();
+  for (let n = 0; n < 30 && overflow(); n++) fillAll();
+  dock.style.setProperty('--cols', Math.max(4, S.dock.length));
+  const keep = new Set([...S.pages.flat(), ...S.dock]);
+  for (const k of [...homeEls.keys()]) if (!keep.has(k)) homeEls.delete(k);
+  hdots.innerHTML = S.pages.length > 1 ? '<i></i>'.repeat(S.pages.length) : '';
+  markHomeDot();
+  W.weatherWatch();
   if (!animate) return;
-  for (const [p, el] of homeEls) {
-    const a = before.get(p);
+  for (const [k, el] of homeEls) {
+    const a = before.get(k);
     if (!a || !el.isConnected) continue;
     const b = el.getBoundingClientRect();
     const dx = a.left - b.left;
@@ -151,6 +151,111 @@ function renderHome(animate) {
     el.style.transform = '';
   }
 }
+const saveHome = () => save({ pages: S.pages, dock: S.dock });
+
+function markHomeDot() {
+  const i = cur();
+  [...hdots.children].forEach((d, k) => d.classList.toggle('on', k === i));
+}
+let hdotT = 0;
+hpages.addEventListener(
+  'scroll',
+  () => {
+    if (!hdotT) hdotT = setTimeout(() => ((hdotT = 0), markHomeDot()), 50);
+  },
+  { passive: true },
+);
+
+// empty pages go (the first one stays), except the one being looked at
+function prune(keep) {
+  const was = cur();
+  let before = 0;
+  for (let i = S.pages.length - 1; i > 0; i--) {
+    if (!S.pages[i].length && i !== keep) {
+      S.pages.splice(i, 1);
+      if (i < was) before++;
+    }
+  }
+  if (!before && hpages.children.length === S.pages.length) return;
+  renderHome(false);
+  goPage(Math.max(0, was - before), false);
+  saveHome();
+}
+
+function removeKey(k) {
+  S.pages = S.pages.map((pg) => pg.filter((x) => x !== k));
+  S.dock = S.dock.filter((x) => x !== k);
+  renderHome(true);
+  saveHome();
+}
+function addKey(k, atStart) {
+  const pg = S.pages[cur()] || S.pages[0];
+  if (atStart) pg.unshift(k);
+  else pg.push(k);
+  renderHome(true);
+  saveHome();
+}
+
+const appMenu = (pkg) => ({
+  onHome: onHome(pkg),
+  remove: () => removeKey(pkg),
+  pin: () => {
+    addKey(pkg);
+    toast(`${apps.get(pkg)?.label || 'Значок'} — на главном экране`);
+  },
+});
+const widgetMenu = (el) => {
+  const key = el.dataset.key;
+  return {
+    widget: true,
+    sizes: W.KINDS[W.kindOf(key)].sizes,
+    size: W.sizeName(key),
+    resize: (s) => {
+      W.resize(el, s);
+      renderHome(true);
+      saveHome();
+    },
+    remove: () => removeKey(key),
+  };
+};
+// a new widget goes after what is on the page being looked at; when it does not
+// fit there, it gets a page of its own right after it (the icons stay where they are)
+homeHooks.addWidget = (kind) => {
+  const key = W.newKey(kind, S.pages);
+  const c = cur();
+  const before = S.pages.map((pg) => pg.slice());
+  S.pages[c].push(key);
+  renderHome(false);
+  if (pageOf(key) !== c) {
+    S.pages = before;
+    S.pages.splice(c + 1, 0, [key]);
+    renderHome(false);
+    goPage(c + 1, true);
+  }
+  const el = homeEls.get(key);
+  if (el) el.classList.add('new');
+  saveHome();
+  toast(`«${W.KINDS[kind].name}» — на экране. Подержи, чтобы сменить размер`);
+};
+homeHooks.newPage = () => {
+  S.pages.push([]);
+  renderHome(false);
+  goPage(S.pages.length - 1, true);
+  saveHome();
+  toast('Новая страница: перетащи сюда значки или добавь виджет');
+};
+
+// a music widget's buttons
+hpages.addEventListener('click', (e) => {
+  const b = e.target.closest('.np-b');
+  if (!b) return;
+  e.stopPropagation();
+  W.musicButton(b);
+});
+on('media', (m) => {
+  W.setMedia(m);
+  look.set({ music: W.playing() });
+});
 
 // ---------- the drawer ----------
 
@@ -355,7 +460,7 @@ home.addEventListener('pointerdown', (e) => {
   if (e.target.closest('.np-b')) return;
   if (menu.open || isSheet()) return;
   cap(home, e.pointerId);
-  const item = e.target.closest('.app');
+  const item = e.target.closest('.app, .wd');
   g = { ...track(e), id: e.pointerId, item, target: e.target, mode: null };
   if (item) item.classList.add('down');
   g.timer = setTimeout(() => {
@@ -363,8 +468,8 @@ home.addEventListener('pointerdown', (e) => {
     g.mode = 'long';
     if (item) {
       item.classList.remove('down');
-      openMenu(item, item.dataset.where, () => renderHome(true));
-    } else if (!e.target.closest('#np, #find, #top')) openSheet();
+      openMenu(item, item.dataset.key ? widgetMenu(item) : appMenu(item.dataset.pkg));
+    } else if (!e.target.closest('#find')) openSheet();
     else g.mode = 'none';
   }, LONG);
 });
@@ -378,7 +483,7 @@ home.addEventListener('pointermove', (e) => {
   if (g.mode === 'long') {
     if (far && g.item && menu.open) {
       g.mode = 'drag';
-      dragStart(g.item.dataset.pkg, e.clientX, e.clientY);
+      dragStart(g.item.dataset.pkg || g.item.dataset.key, e.clientX, e.clientY);
     }
     return;
   }
@@ -389,8 +494,16 @@ home.addEventListener('pointermove', (e) => {
   if (Math.abs(dy) > Math.abs(dx)) {
     g.mode = dy < 0 ? 'drawer' : 'shade';
     if (g.mode === 'drawer') drawer.classList.add('open');
-  } else g.mode = 'none';
+  } else g.mode = 'pages'; // sideways: the browser turns the pages
 });
+// a held icon keeps the pages still; so does the drawer coming up
+home.addEventListener(
+  'touchmove',
+  (e) => {
+    if (g && g.mode && g.mode !== 'pages') e.preventDefault();
+  },
+  { passive: false },
+);
 function homeUp(e, cancelled) {
   if (!g || e.pointerId !== g.id) return;
   const t = g;
@@ -406,18 +519,12 @@ function homeUp(e, cancelled) {
   if (t.mode === 'drag') return dragEnd(cancelled);
   if (t.mode || cancelled) return;
   // a tap
+  if (t.item && t.item.dataset.key) return W.tap(t.item, t.target);
   if (t.item) return launch(t.item);
-  const el = t.target;
-  if (el.closest('#clock')) {
-    const a = findApp(/deskclock|\.clock$|clock/);
-    if (a) rez.launch(a.pkg);
-  } else if (el.closest('#date')) {
-    const a = findApp(/calendar/);
-    if (a) rez.launch(a.pkg);
-  } else if (el.closest('#find')) {
+  if (t.target.closest('#find')) {
     rez.haptic('tick');
     openDrawer(true);
-  } else if (el.closest('#np') && media.app) rez.launch(media.app);
+  }
 }
 home.addEventListener('pointerup', (e) => homeUp(e, false));
 home.addEventListener('pointercancel', (e) => homeUp(e, true));
@@ -439,7 +546,7 @@ home.addEventListener('pointercancel', (e) => homeUp(e, true));
       item.classList.remove('down');
       cap(area, d.id);
       q.blur();
-      openMenu(item, 'drawer', () => renderHome(false));
+      openMenu(item, appMenu(item.dataset.pkg));
     }, LONG);
   });
   area.addEventListener('pointermove', (e) => {
@@ -498,55 +605,98 @@ $('#scrim').addEventListener('pointerdown', () => {
   closeSheet();
 });
 
-// ---------- dragging an icon ----------
+// ---------- dragging an icon or a widget ----------
 
 let dr = null;
 const trash = $('#trash');
-function dragStart(pkg, x, y, fromDrawer) {
+const where = (k) => (S.dock.includes(k) ? 'dock' : pageOf(k));
+function holeOn() {
+  const el = homeEls.get(dr.key);
+  if (el) el.classList.add('hole', 'lift');
+  if (el && ghost) ghost.el = el;
+}
+function dragStart(key, x, y, fromDrawer) {
   if (!ghost) return;
   closeMenu(true);
   rez.haptic('context');
   ghost.g.classList.add('drag');
-  dr = { pkg, fromDrawer, w: ghost.r.width, h: ghost.r.height, hot: false, last: 0 };
-  if (fromDrawer && !(S.home || []).includes(pkg) && !(S.dock || []).includes(pkg)) {
-    dr.added = true;
-    if (S.home.length >= 20) {
-      toast('На главном экране нет места');
-      dr.full = true;
-    } else {
-      S.home = [...S.home, pkg];
-      renderHome(false);
-    }
+  dr = { key, fromDrawer, wid: W.isWidget(key), w: ghost.r.width, h: ghost.r.height, gx: x - ghost.r.left, gy: y - ghost.r.top, hot: false, armed: false, last: 0, edgeAt: 0 };
+  if (fromDrawer && !onHome(key)) {
+    S.pages[cur()].push(key);
+    renderHome(false);
   }
-  const el = homeEls.get(pkg);
-  if (el) el.classList.add('hole', 'lift');
+  holeOn();
   if (!fromDrawer) trash.classList.add('on');
   dragMove(x, y);
 }
 
+function moveTo(list, i) {
+  S.pages = S.pages.map((pg) => pg.filter((x) => x !== dr.key));
+  S.dock = S.dock.filter((x) => x !== dr.key);
+  // the lists were rebuilt: find the target again
+  const target = list === 'dock' ? S.dock : S.pages[list];
+  target.splice(clamp(i, 0, target.length), 0, dr.key);
+}
+
+// held at a side of the screen: the next page (a new one after the last)
+function turnPage(dir) {
+  const i = cur() + dir;
+  if (i < 0) return;
+  if (i >= S.pages.length) {
+    if (S.pages[S.pages.length - 1].length === 1 && S.pages[S.pages.length - 1][0] === dr.key) return;
+    S.pages.push([]);
+  }
+  moveTo(i, S.pages[i].length);
+  renderHome(false);
+  goPage(i, true);
+  holeOn();
+  rez.haptic('context');
+}
+
 function dragMove(x, y) {
   if (!dr || !ghost) return;
-  ghost.g.style.transform = `translate3d(${x - dr.w / 2}px,${y - dr.h * 0.75}px,0) scale(1.12)`;
+  const s = dr.wid ? 1.03 : 1.12;
+  const gx = dr.wid ? x - dr.gx : x - dr.w / 2;
+  const gy = dr.wid ? y - dr.gy : y - dr.h * 0.75;
+  ghost.g.style.transform = `translate3d(${gx}px,${gy}px,0) scale(${s})`;
   // over the "remove" pill
-  const tr = trash.getBoundingClientRect();
-  const hot = trash.classList.contains('on') && y < tr.bottom + 24;
+  // it counts only once the finger has been below it: an icon of the top row,
+  // picked up right next to the pill, is not removed by just being let go
+  // (where the pill ends once it has slid in: offsetTop ignores its sliding)
+  const zone = trash.offsetTop + trash.offsetHeight + 8;
+  if (y > zone + 16) dr.armed = true;
+  const hot = trash.classList.contains('on') && !!dr.armed && y < zone;
   if (hot !== dr.hot) {
     dr.hot = hot;
     trash.classList.toggle('hot', hot);
     if (hot) rez.haptic('tick');
   }
-  if (hot || dr.full) return;
+  if (hot) return;
   const now = performance.now();
+  // a side of the screen
+  const edge = x < 24 ? -1 : x > window.innerWidth - 24 ? 1 : 0;
+  if (edge) {
+    if (!dr.edgeAt) dr.edgeAt = now;
+    else if (now - dr.edgeAt > 480) {
+      dr.edgeAt = now + 500; // one page at a time
+      turnPage(edge);
+    }
+    return;
+  }
+  dr.edgeAt = 0;
   if (now - dr.last < 90) return;
-  // the nearest place in the grid or the dock
+  // the nearest place on the page or in the dock (widgets stay on pages)
   const dk = dock.getBoundingClientRect();
-  const inDock = y > dk.top - 12;
-  const box = inDock ? dock : grid;
-  const list = inDock ? S.dock : S.home;
-  const from = S.home.includes(dr.pkg) ? 'home' : 'dock';
-  let best = -1;
+  const inDock = !dr.wid && y > dk.top - 12;
+  const pi = cur();
+  const box = inDock ? dock : hpages.children[pi];
+  const to = inDock ? 'dock' : pi;
+  if (!box) return;
+  if (inDock && where(dr.key) !== 'dock' && S.dock.length >= 5) return;
+  let best = 0;
   let bd = 1e9;
-  [...box.children].forEach((el, i) => {
+  const kids = [...box.children];
+  kids.forEach((el, i) => {
     const r = el.getBoundingClientRect();
     const dd = Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y);
     if (dd < bd) {
@@ -554,24 +704,16 @@ function dragMove(x, y) {
       best = i;
     }
   });
-  const to = inDock ? 'dock' : 'home';
-  if (best >= 0) {
-    const r = box.children[best].getBoundingClientRect();
-    if (x > r.right && best === box.children.length - 1 && to !== from) best++;
-  } else best = 0;
-  const cur = list.indexOf(dr.pkg);
-  if (to === from && (best === cur || best < 0)) return;
-  if (to === 'dock' && from !== 'dock' && S.dock.length >= 5) return;
+  if (kids.length) {
+    const r = kids[best].getBoundingClientRect();
+    if (best === kids.length - 1 && (y > r.bottom || (x > r.right && y > r.top)) && kids[best] !== homeEls.get(dr.key)) best = kids.length;
+  }
+  const list = to === 'dock' ? S.dock : S.pages[to];
+  if (where(dr.key) === to && list.indexOf(dr.key) === best) return;
   dr.last = now;
-  const home2 = S.home.filter((p) => p !== dr.pkg);
-  const dock2 = S.dock.filter((p) => p !== dr.pkg);
-  (to === 'dock' ? dock2 : home2).splice(Math.min(best, (to === 'dock' ? dock2 : home2).length), 0, dr.pkg);
-  S.home = home2;
-  S.dock = dock2;
+  moveTo(to, best);
   renderHome(true);
-  const el = homeEls.get(dr.pkg);
-  if (el) el.classList.add('hole', 'lift');
-  ghost.el = el || ghost.el;
+  holeOn();
   rez.haptic('tick');
 }
 
@@ -581,23 +723,18 @@ function dragEnd() {
   dr = null;
   trash.classList.remove('on', 'hot');
   if (x.hot) {
-    S.home = S.home.filter((p) => p !== x.pkg);
-    S.dock = S.dock.filter((p) => p !== x.pkg);
     if (ghost) {
-      ghost.g.style.transition = 'transform 0.25s, opacity 0.25s';
-      ghost.g.style.opacity = '0';
       const g0 = ghost.g;
+      g0.style.transition = 'transform 0.25s, opacity 0.25s';
+      g0.style.opacity = '0';
       setTimeout(() => g0.remove(), 260);
     }
     drop(true);
-    renderHome(true);
-    toast(`${apps.get(x.pkg)?.label || 'Значок'} — убран с экрана`);
-  } else {
-    const el = homeEls.get(x.pkg);
-    if (el && ghost) ghost.el = el;
-    drop();
-  }
-  save({ home: S.home, dock: S.dock });
+    removeKey(x.key);
+    toast(W.isWidget(x.key) ? 'Виджет убран' : `${apps.get(x.key)?.label || 'Значок'} — убран с экрана`);
+  } else drop();
+  prune(cur());
+  saveHome();
 }
 
 // ---------- the keys, the screen coming and going ----------
@@ -606,20 +743,17 @@ on('key', (k) => {
   if (dr) return;
   if (menu.open) return closeMenu();
   if (isSheet()) return closeSheet();
-  if (k === 'back') {
-    if (drawerOpen) closeDrawer();
-    return;
-  }
-  if (k === 'home') {
-    if (drawerOpen) closeDrawer();
-  }
+  if (drawerOpen) return closeDrawer();
+  // Home on the home screen: back to the first page
+  if (k === 'home' && cur() !== 0) goPage(0, true);
 });
 
 function setVisible(v) {
   look.set({ visible: v });
   if (v) {
-    clock();
-    setMedia(rez.mediaState());
+    W.tick();
+    W.setMedia(rez.mediaState());
+    look.set({ music: W.playing() });
     setBadges(rez.badges());
   } else {
     // coming back, the person finds the home screen, not the drawer they left
@@ -627,7 +761,8 @@ function setVisible(v) {
     drop(true);
     closeSheet();
     closeDrawer(false);
-    clearTimeout(barT);
+    W.stop();
+    prune(cur());
   }
 }
 on('visible', setVisible);
@@ -636,7 +771,15 @@ on('badges', (b) => setBadges(typeof b === 'string' ? JSON.parse(b) : b));
 on('perm', () => {
   look.apply();
 });
-window.addEventListener('resize', () => setP(p));
+window.addEventListener('resize', () => {
+  setP(p);
+  // the keyboard (the drawer's search) makes the page shorter for a while: the pages stay as they are
+  if (document.activeElement === q) return;
+  const was = cur();
+  measure();
+  renderHome(false);
+  goPage(was, false);
+});
 // a computer's keyboard (the preview, a tablet with keys): Esc is Back
 window.addEventListener('keydown', (e) => e.key === 'Escape' && window.__rezEmit('key', 'back'));
 
@@ -646,14 +789,20 @@ const info = rez.info();
 insets(info.insets);
 look.setYou(info.you);
 look.apply();
+measure();
 apps.onApps(() => {
+  migrate();
+  S.pages = S.pages.map((pg) => pg.filter(valid));
+  if (!S.pages.length) S.pages = [[]];
+  S.dock = (S.dock || []).filter(valid);
   renderHome(false);
   renderDrawer();
 });
 apps.reload();
 setP(0);
-clock();
-setMedia(rez.mediaState());
+W.tick();
+W.setMedia(rez.mediaState());
+look.set({ music: W.playing() });
 setBadges(rez.badges());
 if (!native) body.classList.add('preview');
 // shown once the fonts are in (a moment at most), so nothing appears in a stand-in font
