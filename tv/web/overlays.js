@@ -368,7 +368,7 @@ export const settings = {
   dim: false,
   page: 'main',
   onAct: null,
-  open(page = 'main', focusKey) {
+  open(page = 'main', focusKey, keepY = 0) {
     settings.page = page;
     setEl.textContent = '';
     // rebuilt while already on screen (a setting changed, a sub-page): no slide-in again
@@ -396,7 +396,14 @@ export const settings = {
     setEl.appendChild(panel);
     settings._in = inner;
     settings._view = view;
-    inner._y = 0;
+    // rebuilt in place (a setting changed): the list stays where it was, with no
+    // slide from the top back down
+    inner._y = keepY;
+    if (keepY) {
+      inner.style.transition = 'none';
+      inner.style.transform = `translate3d(0,${-keepY}px,0)`;
+      requestAnimationFrame(() => requestAnimationFrame(() => (inner.style.transition = '')));
+    }
     const want = focusKey ? Array.prototype.find.call(inner.querySelectorAll('.opt'), (o) => o._item && (o._item.key === focusKey || o._item.act === focusKey)) : null;
     if (layers.isOpen(settings)) nav.setScope(setEl, want || inner.querySelector('.opt'));
     else layers.push(settings, want || inner.querySelector('.opt'));
@@ -406,9 +413,7 @@ export const settings = {
     const c = nav.current();
     const key = c && c._item ? c._item.key || c._item.act : null;
     const y = settings._in ? settings._in._y : 0;
-    settings.open(settings.page, key);
-    settings._in._y = y;
-    settings._in.style.transform = `translate3d(0,${-y}px,0)`;
+    settings.open(settings.page, key, y);
   },
   key(k) {
     const o = nav.current();
