@@ -46,6 +46,7 @@ export function fmt(ms) {
 export function mediaState(onChange) {
   const st = { status: 'none', title: '', artist: '', album: '', app: '', pos: 0, dur: 0, canNext: false, canPrev: false, thumb: '' };
   let posAt = performance.now();
+  let lastRep = null; // the last position the player itself reported, and when it changed
   const api = {
     st,
     active: () => !!(st.status && st.status !== 'none' && (st.title || st.artist)),
@@ -72,7 +73,22 @@ export function mediaState(onChange) {
       Object.assign(st, { status: 'none', title: '', artist: '', album: '', app: '', pos: 0, dur: 0, thumb: '' });
     } else {
       const thumbChanged = m.thumb !== undefined && m.thumb !== st.thumb;
+      const now = performance.now();
+      const running = api.position();
+      const same = st.status === 'playing' && m.status !== 'paused' && m.status !== 'stopped' && (m.title === undefined || m.title === st.title) && (m.app === undefined || m.app === st.app);
+      let keep = !('pos' in m);
+      if (!keep && same) {
+        // Some players (browsers) keep reporting the same position while the
+        // song plays on, or one a little behind: the clock here runs on instead
+        // of stepping back every second (the lyrics flickered with it). A real
+        // seek — a new position, or one far back — is taken at once.
+        const frozen = lastRep && Math.abs(m.pos - lastRep.pos) < 250 && now - lastRep.at > 700;
+        const behind = running - m.pos;
+        if (frozen || (behind > 0 && behind < 1500)) keep = true;
+      }
+      if ('pos' in m && (!lastRep || Math.abs(m.pos - lastRep.pos) >= 250)) lastRep = { pos: m.pos, at: now };
       Object.assign(st, m);
+      if (keep) st.pos = running;
       if (m.thumb === undefined) st.thumb = st.thumb || '';
       st._thumbChanged = thumbChanged;
     }
