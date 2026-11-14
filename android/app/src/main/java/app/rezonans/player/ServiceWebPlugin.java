@@ -177,9 +177,14 @@ public class ServiceWebPlugin extends Plugin {
 
         panel.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         panel.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // The keyboard is already taken care of above us: Capacitor's SystemBars pads the
+        // whole window by its height. Adding it here again squeezed the sign-in page to a
+        // sliver that slid up out of sight. Only the bars, and none at the bottom while
+        // the keyboard is open (it covers them).
         ViewCompat.setOnApplyWindowInsetsListener(panel, (v, insets) -> {
-            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.ime());
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            boolean keyboard = insets.isVisible(WindowInsetsCompat.Type.ime());
+            v.setPadding(bars.left, bars.top, bars.right, keyboard ? 0 : bars.bottom);
             return insets;
         });
         panel.setVisibility(View.INVISIBLE);

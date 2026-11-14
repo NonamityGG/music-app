@@ -413,8 +413,11 @@ export function searchView() {
     );
   };
 
-  const run = async (q) => {
-    input.value = q;
+  // typed: the text came from the field itself. It is never written back then —
+  // writing into the field while the keyboard is still composing a word made it
+  // lose or replace letters.
+  const run = async (q, typed) => {
+    if (!typed && input.value !== q) input.value = q;
     clearBtn.hidden = !q;
     q = q.trim();
     const my = ++seq;
@@ -469,7 +472,7 @@ export function searchView() {
     }
   };
 
-  const debounced = debounce((q) => run(q), 450);
+  const debounced = debounce((q) => run(q, true), 450);
   input.addEventListener('input', () => {
     clearBtn.hidden = !input.value;
     debounced(input.value);

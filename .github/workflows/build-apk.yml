@@ -2,7 +2,8 @@ name: Собрать APK
 
 on:
   push:
-    branches: [main]
+    # player-*: test builds of the phone app (no release; the APK goes to the ci-player-test branch)
+    branches: [main, 'player-*']
     # the PC app has its own build (build-desktop.yml)
     paths-ignore:
       - 'desktop/**'
@@ -32,7 +33,10 @@ jobs:
 
       # 1.1.0 is build 8; every build after it counts up
       - name: Version
-        run: echo "APP_VERSION_NAME=1.1.$(( ${{ github.run_number }} - 8 ))" >> "$GITHUB_ENV"
+        run: |
+          v="1.1.$(( ${{ github.run_number }} - 8 ))"
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then v="$v-test"; fi
+          echo "APP_VERSION_NAME=$v" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -72,7 +76,24 @@ jobs:
           name: Rezonans-${{ env.APP_VERSION_NAME }}
           path: Rezonans-*.apk
 
+      - name: Share the test APK
+        if: github.ref != 'refs/heads/main'
+        run: |
+          dir="$RUNNER_TEMP/player-test"
+          mkdir -p "$dir"
+          cp Rezonans-*.apk "$dir/"
+          echo "run ${{ github.run_number }} ${{ github.sha }} ${{ github.ref_name }}" > "$dir/run.txt"
+          cd "$dir"
+          git init -q
+          git config user.name ci
+          git config user.email ci@users.noreply.github.com
+          git checkout -q -b ci-player-test
+          git add -A
+          git commit -q -m "player test ${{ github.run_number }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-player-test
+
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
