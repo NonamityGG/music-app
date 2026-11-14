@@ -235,8 +235,9 @@ final class CastSession {
             }
             audioSource = factory.createAudioSource(mc);
             AudioTrack at = factory.createAudioTrack("sound", audioSource);
-            // its own stream: the TV must not hold the picture back to match the sound (lip sync)
-            pc.addTrack(at, new ArrayList<>()); // no stream: the TV adds it to the picture's, unsynced
+            // the picture's stream: the TV keeps lips and sound together (the captured sound comes
+            // ~0.5 s late; unsynced, the picture ran ahead of it)
+            pc.addTrack(at, Collections.singletonList("rez"));
         }
         preferH264();
 
