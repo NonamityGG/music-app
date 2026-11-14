@@ -18,6 +18,16 @@ export const KINDS = {
   battery: { sizes: ['2x1', '1x1', '2x2'], name: 'Заряд', sub: 'батарея телефона' },
 };
 
+// each widget's own little picture (the list of widgets to add): white on the palette's colours
+export const GLYPHS = {
+  clock: '<text x="12" y="15" text-anchor="middle" font-size="7" font-weight="700" font-family="Unbounded, Onest, sans-serif" fill="currentColor" stroke="none">12:30</text>',
+  music: '<path d="M9 17.5V6.5l10-2v11"/><circle cx="6.8" cy="17.5" r="2.4" fill="currentColor"/><circle cx="16.8" cy="15.5" r="2.4" fill="currentColor"/>',
+  weather: '<circle cx="9" cy="9" r="3.4"/><path d="M9 2.6v1.2M3.6 9h1.2M5.2 5.2l.8.8M12.8 5.2l-.8.8"/><path d="M8.5 19h8.2a3.2 3.2 0 0 0 .4-6.4 4.4 4.4 0 0 0-8.4 1.2A2.6 2.6 0 0 0 8.5 19z" fill="currentColor" stroke="none"/>',
+  calendar: '<rect x="4" y="5.5" width="16" height="14.5" rx="3"/><path d="M4 10h16M8.5 3.5v3M15.5 3.5v3"/><circle cx="14.5" cy="15" r="1.7" fill="currentColor" stroke="none"/>',
+  analog: '<circle cx="12" cy="12" r="8.2"/><path d="M12 12V7.2M12 12l3.4 2"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/>',
+  battery: '<circle cx="12" cy="12" r="7.6" opacity=".35"/><path d="M12 4.4a7.6 7.6 0 1 1-7.2 10"/><path d="M12.8 8.6l-2.2 3.6h2.8l-2.2 3.6" stroke-width="1.6"/>',
+};
+
 export const isWidget = (key) => key && key[0] === '#';
 export const kindOf = (key) => key.slice(1).split(':')[0];
 export function sizeName(key) {

@@ -801,13 +801,36 @@ body.ready {
   font-size: 12px;
   color: var(--dim);
 }
+.wp-top {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
 .wp-ic {
-  display: block;
-  width: calc(var(--w) * 12px + (var(--w) - 1) * 3px);
-  height: calc(var(--h) * 12px + (var(--h) - 1) * 3px);
-  border-radius: 5px;
-  margin-bottom: 8px;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  color: #fff;
   background: linear-gradient(135deg, var(--a1), var(--a3));
+  box-shadow: 0 8px 18px -8px rgba(var(--r1), 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.wp-ic svg {
+  width: 28px;
+  height: 28px;
+  stroke-width: 1.7;
+}
+.wp-top em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dim);
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* ---------- icons ---------- */

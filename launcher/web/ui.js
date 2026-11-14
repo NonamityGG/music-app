@@ -5,7 +5,7 @@ import { rez, on } from './bridge.js';
 import { S, save, used } from './store.js';
 import * as apps from './apps.js';
 import * as look from './look.js';
-import { KINDS } from './widgets.js';
+import { KINDS, GLYPHS } from './widgets.js';
 import * as weather from './weather.js';
 
 export const $ = (s) => document.querySelector(s);
@@ -269,7 +269,7 @@ function renderSheet() {
     const [w, h] = k.sizes[0].split('x').map(Number);
     const b = document.createElement('button');
     b.className = 'wp glass';
-    b.innerHTML = `<i class="wp-ic wp-${kind}" style="--w:${w};--h:${h}"></i><b></b><span></span>`;
+    b.innerHTML = `<div class="wp-top"><i class="wp-ic"><svg viewBox="0 0 24 24">${GLYPHS[kind] || ""}</svg></i><em>${w}×${h}</em></div><b></b><span></span>`;
     b.querySelector('b').textContent = k.name;
     b.querySelector('span').textContent = k.sub;
     b.onclick = () => {
