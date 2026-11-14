@@ -271,6 +271,30 @@ namespace Rezonans
             Bring(h);
         }
 
+        // the window of a program on the taskbar (0 when it has none open)
+        internal static long WindowOfExe(string exe)
+        {
+            if (string.IsNullOrEmpty(exe)) return 0;
+            var name = System.IO.Path.GetFileName(exe);
+            long found = 0;
+            EnumWindows((h, l) =>
+            {
+                try
+                {
+                    if (!Taskworthy(h)) return true;
+                    var e = ExeOf(h) ?? "";
+                    if (System.IO.Path.GetFileName(e).Equals(name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found = h.ToInt64();
+                        return false;
+                    }
+                }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
+            return found;
+        }
+
         internal static void Front(long hwnd)
         {
             var h = new IntPtr(hwnd);

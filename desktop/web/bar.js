@@ -7,6 +7,7 @@ import * as graph from './graph.js';
 import { BANDS } from './graph.js';
 import * as listen from './listen.js';
 import { coverColors } from './looks.js';
+import { beatMeter } from './common.js';
 
 const $ = (id) => document.getElementById(id);
 const player = $('player');
@@ -90,6 +91,8 @@ window.rez.onMedia((m) => {
     coverColors(thumb).then((c) => {
       coverCols = c;
       paintColors();
+      // the pointers follow the cover too (the main process draws them)
+      if (c) window.rez.shell('coverColors', { colors: c });
     });
   }
   posAt = performance.now();
@@ -186,6 +189,13 @@ const REST = [0.42, 1, 0.66, 0.32];
 const bands = new Float32Array(BANDS);
 const wave = new Float32Array(256);
 const level = [0, 0, 0, 0];
+const beat = new Float32Array(4);
+const markMeter = beatMeter([
+  [0, 6],
+  [6, 18],
+  [18, 36],
+  [36, 60],
+]);
 let last = 0;
 
 function frame(t) {
@@ -196,22 +206,12 @@ function frame(t) {
   if (listen.heard() && settings.barMark !== false) {
     const r = graph.read(bands, wave);
     if (r.ok) {
-      const groups = [
-        [0, 6],
-        [6, 18],
-        [18, 36],
-        [36, 60],
-      ];
-      groups.forEach(([a, b], i) => {
-        let v = 0;
-        for (let k = a; k < b; k++) v = Math.max(v, bands[k]);
-        level[i] += (v - level[i]) * (v > level[i] ? 0.6 : 0.18);
-        if (v > 0.05) loud = true;
-      });
+      loud = markMeter(bands, beat);
+      for (let i = 0; i < 4; i++) level[i] += (beat[i] - level[i]) * (beat[i] > level[i] ? 0.6 : 0.2);
     }
   }
   bars.forEach((el, i) => {
-    const h = loud ? 0.25 + 0.75 * Math.min(1, level[i] * 1.15) : REST[i];
+    const h = loud ? 0.25 + 0.75 * Math.min(1, level[i]) : REST[i];
     el.style.setProperty('--h', h.toFixed(3));
   });
 }

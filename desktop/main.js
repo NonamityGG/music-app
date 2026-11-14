@@ -20,10 +20,13 @@ const { spawn } = require('child_process');
 const readline = require('readline');
 const lyrics = require('./lib/lyrics');
 const colors = require('./lib/colors');
+const castLib = require('./lib/cast');
 
 // The wallpaper sits under other windows: Chromium must not decide it is hidden
 // and stop drawing it.
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+// (and «На телевизор» talks WebRTC on the home network with real addresses, not
+// random .local names an old TV box can't look up)
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,WebRtcHideLocalIpsWithMdns');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
@@ -422,8 +425,10 @@ function applyShell() {
 }
 
 // the pointers, drawn by the helper in the palette's colours ("from the cover":
-// the last fixed palette, so they don't change with every song)
+// the colours of what's playing, as the bar works them out from the cover;
+// the last fixed palette until it has)
 let cursorsSent = '';
+let coverNow = null;
 function applyCursors(force) {
   if (!hostInfo) return;
   if (!settings.winCursors) {
@@ -432,7 +437,7 @@ function applyCursors(force) {
     return;
   }
   const pal = settings.palette === 'cover' ? settings.lastPalette : settings.palette;
-  const [c1, c2, c3] = colors.PALETTES[pal] || colors.PALETTES.violet;
+  const [c1, c2, c3] = settings.palette === 'cover' && coverNow ? coverNow : colors.PALETTES[pal] || colors.PALETTES.violet;
   const sig = [c1, c2, c3].join();
   if (!force && sig === cursorsSent) return;
   cursorsSent = sig;
@@ -507,7 +512,7 @@ function onMedia(m) {
 
 function mediaWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, quickWin, startWin);
+  list.push(bar, island, panel, quickWin, startWin, taskbarWin, trayWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -599,6 +604,51 @@ function guardPage(win, name, recover) {
     }, 300);
   });
   win.webContents.on('unresponsive', () => log(`окно «${name}» не отвечает`));
+  // the page's own errors go to the log: an empty window then says why
+  let said = 0;
+  win.webContents.on('console-message', (e, lvl, msg, line, src) => {
+    const level = typeof e.level === 'string' ? e.level : lvl === 3 ? 'error' : '';
+    if (level !== 'error' || said >= 20) return;
+    said++;
+    const text = typeof e.message === 'string' ? e.message : msg;
+    const where = String(e.sourceId || src || '').split('/').pop() + ':' + (e.lineNumber || line || '');
+    log(`окно «${name}»: ошибка страницы: ${text} (${where})`);
+  });
+}
+
+// A window that is up but shows nothing (seen after an update: the bar and the
+// taskbar came up as empty strips until Резонанс was restarted): a few seconds
+// after it appears, its picture is checked; an empty one is made again — at
+// most twice in five minutes, so a driver that keeps failing doesn't loop.
+const blankRedo = {};
+function watchBlank(win, name, recover) {
+  for (const ms of [3500, 9000]) {
+    setTimeout(async () => {
+      if (!win || win.isDestroyed() || !win.isVisible() || topHide.size > 0) return;
+      let img;
+      try {
+        img = await win.webContents.capturePage();
+      } catch {
+        return;
+      }
+      if (win.isDestroyed() || !win.isVisible()) return;
+      const bmp = img.isEmpty() ? null : img.toBitmap();
+      let drawn = 0;
+      if (bmp) for (let i = 3; i < bmp.length; i += 64) if (bmp[i] > 40) drawn++;
+      if (drawn > 4) return;
+      const now = Date.now();
+      const list = (blankRedo[name] || []).filter((t) => now - t < 5 * 60 * 1000);
+      if (list.length >= 2) return log(`окно «${name}» пустое — уже пересоздавал дважды, жду`);
+      list.push(now);
+      blankRedo[name] = list;
+      log(`окно «${name}» показано, но пустое — создаю заново`);
+      try {
+        recover();
+      } catch (er) {
+        log('восстановление: ' + er.message);
+      }
+    }, ms);
+  }
 }
 
 // a menu may open while its page is still loading (just created, or brought
@@ -788,6 +838,7 @@ function createBar() {
   bar.once('ready-to-show', () => {
     bar._ready = true;
     placeTop(bar);
+    watchBlank(bar, 'строка', () => scheduleRebuild('строка пустая'));
     barShown = true;
     registerAppBar();
     sendOwn();
@@ -1609,7 +1660,11 @@ function toggleTray(x) {
   trayWin.focus();
   tbMenus({ tray: true });
   const w = trayWin;
-  whenLoaded(w, () => !w.isDestroyed() && w.webContents.send('shell', { open: true, list: trayList }));
+  whenLoaded(w, () => {
+    if (w.isDestroyed()) return;
+    if (lastMedia) w.webContents.send('media', lastMedia);
+    w.webContents.send('shell', { open: true, list: trayList });
+  });
   hostSend({ cmd: 'tray' });
 }
 
@@ -1675,6 +1730,10 @@ function createTaskbar() {
     tb._ready = true;
     placeTop(tb);
     nudgePaint(tb);
+    watchBlank(tb, 'панель задач', () => {
+      closeTaskbar();
+      if (settings.taskbar) enableTaskbar(true);
+    });
     registerTaskbar();
     sendOwn();
     styleWindows();
@@ -1684,6 +1743,7 @@ function createTaskbar() {
     tbClear = null;
     updateTaskbarClear();
     if (trayList.length) tb.webContents.send('tray', trayList);
+    if (lastMedia) tb.webContents.send('media', lastMedia);
     hostSend({ cmd: 'taskpins' });
     hostSend({ cmd: 'tray' });
     hostSend({ cmd: 'taskwins', force: true });
@@ -2087,6 +2147,21 @@ function rebuild(why) {
 
 let tray = null;
 
+// ---------- «На телевизор» (Резонанс Connect, lib/cast.js) ----------
+
+let castCtl = null;
+let castState = { live: false, tv: '' };
+function sendCastState() {
+  for (const w of [quickWin, panel]) if (w && !w.isDestroyed()) w.webContents.send('cast-state', castState);
+}
+function toggleCast() {
+  if (!castCtl) return;
+  hideQuick();
+  hidePanel();
+  if (castCtl.isLive()) castCtl.stop();
+  else castCtl.open();
+}
+
 // ---------- self-test (CI only) ----------
 
 // Plays a soft beat with media info in a hidden window, so the build machine can
@@ -2185,6 +2260,21 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('settings', () => view());
     ipcMain.handle('info', () => info());
     ipcMain.handle('pick-image', () => pickImage());
+    castCtl = castLib.create({
+      BrowserWindow,
+      session,
+      desktopCapturer,
+      screen,
+      app,
+      preload,
+      log,
+      onChange: (st) => {
+        castState = st;
+        sendCastState();
+      },
+    });
+    ipcMain.handle('cast', (e, cmd, arg) => castCtl.handle(String(cmd || ''), arg));
+    ipcMain.handle('cast-state', () => castState);
     ipcMain.on('set', (e, patch) => saveSettingsPatch(patch));
     ipcMain.on('media', (e, action, pos) => hostSend({ cmd: 'media', action, pos: typeof pos === 'number' ? Math.round(pos) : -1 }));
     ipcMain.on('panel', (e, cmd) => {
@@ -2219,6 +2309,13 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
     ipcMain.on('shell', (e, cmd, arg) => {
       if (cmd === 'startClose') hideStart();
+      else if (cmd === 'coverColors') {
+        const c = arg && Array.isArray(arg.colors) ? arg.colors.map(String) : [];
+        if (c.length === 3 && c.every((x) => /^#[0-9a-f]{6}$/i.test(x))) {
+          coverNow = c;
+          if (settings.palette === 'cover') applyCursors();
+        }
+      }
       else if (cmd === 'quickHeight') fitQuick(arg && arg.h);
       else if (cmd === 'quickClose') hideQuick();
       else if (cmd === 'launch') {
@@ -2235,6 +2332,7 @@ if (!app.requestSingleInstanceLock()) {
       else if (cmd === 'status') hostSend({ cmd: 'status' });
       else if (cmd === 'media') hostSend({ cmd: 'media', action: arg && arg.action, pos: -1 });
       else if (cmd === 'settings') showPanel('center', arg && arg.tab);
+      else if (cmd === 'cast') toggleCast();
       else if (cmd === 'openStart') showStart();
       else if (cmd === 'openQuick') showQuick();
       // from the taskbar (it never takes the focus, so the menus don't hear the
@@ -2312,7 +2410,8 @@ if (!app.requestSingleInstanceLock()) {
     tray.on('right-click', () => togglePanel('tray'));
 
     startHost();
-    createPanel();
+    // the panel, Start and Quick settings are made when first opened: a window
+    // made while everything is starting can stay empty on screen for good
     if (settings.wallpaper) createWallpapers();
     if (settings.bar) createBar();
     if (settings.island) createIsland();
@@ -2335,13 +2434,33 @@ if (!app.requestSingleInstanceLock()) {
         closeTaskbar();
         enableTaskbar(true);
       }
+      // the bar too (it once came up as an empty strip after an update), and any
+      // menu opened in these first seconds
+      if (settings.bar && bar && !bar.isDestroyed()) {
+        log('строка: создаю заново после запуска');
+        closeBar();
+        createBar();
+      }
+      for (const [name, get, drop] of [
+        ['панель', () => panel, () => (panel = null)],
+        ['Пуск', () => startWin, () => (startWin = null)],
+        ['быстрые настройки', () => quickWin, () => (quickWin = null)],
+      ]) {
+        const w = get();
+        if (!w || w.isDestroyed()) continue;
+        log(name + ': создаю заново после запуска');
+        const was = w.isVisible();
+        drop();
+        w.destroy();
+        if (was && name === 'панель') showPanel('bar', 'home');
+      }
     }, 5000);
     if (SELFTEST) setTimeout(selftest, 3000);
     else if (settings.seen !== app.getVersion()) {
       // a new version: show the new panel once
       settings.seen = app.getVersion();
       writeSettings();
-      setTimeout(() => showPanel('bar', 'home'), 3500);
+      setTimeout(() => showPanel('bar', 'home'), 6500);
     }
 
     screen.on('display-added', () => scheduleRebuild('новый экран'));
@@ -2402,6 +2521,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     quitting = true;
+    if (castCtl && castCtl.isLive()) castCtl.stop();
     hostSend({ cmd: 'appbarRemove' });
     hostSend({ cmd: 'taskbarHide', on: false });
     hostSend({ cmd: 'refreshWallpaper' });
