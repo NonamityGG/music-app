@@ -7,6 +7,7 @@
 
 import { h, clear } from '../../src/util.js';
 import * as shellwaves from './shellwaves.js';
+import { coverAccent } from './coverlook.js';
 
 const $ = (id) => document.getElementById(id);
 const q = $('q');
@@ -98,19 +99,34 @@ function toFront(p) {
 
 // ---------- the look ----------
 
+let settings = null;
+let media = { status: 'none' };
+
+// the palette's colours; "from the cover" — the colours of what's playing
+function paint() {
+  coverAccent(settings, media, (c, pal) => {
+    body.style.setProperty('--acc', c[0]);
+    body.style.setProperty('--acc3', c[1]);
+    body.style.setProperty('--acc2', c[2]);
+    shellwaves.look(pal);
+  });
+}
+
 function colors(s) {
   if (!s) return;
-  const c = s.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
-  body.style.setProperty('--acc', c[0]);
-  body.style.setProperty('--acc3', c[1]);
-  body.style.setProperty('--acc2', c[2]);
+  settings = s;
+  paint();
   wavesOn = s.shellWaves !== 'off';
   body.classList.toggle('no-waves', !wavesOn);
-  shellwaves.look(s.palette === 'cover' ? s.lastPalette : s.palette);
   if (wavesOn) shellwaves.setMode(s.shellWaves);
   else shellwaves.show(false);
 }
 window.rez.onSettings(colors);
+window.rez.onMedia((m) => {
+  if (!m) return;
+  media = m.status === 'none' ? { status: 'none' } : { ...media, ...m };
+  if (settings && settings.palette === 'cover') paint();
+});
 
 // ---------- items ----------
 
@@ -339,6 +355,7 @@ window.rez.onShell((d) => {
   clearTimeout(wavesTimer);
   if (d.open) {
     if (d.apps) apps = d.apps;
+    if (d.media) media = d.media;
     if (d.settings) colors(d.settings);
     if (d.user) {
       $('uname').textContent = d.user;

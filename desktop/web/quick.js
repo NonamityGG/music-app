@@ -6,6 +6,7 @@
 
 import { h, clear } from '../../src/util.js';
 import * as shellwaves from './shellwaves.js';
+import { coverAccent } from './coverlook.js';
 
 const $ = (id) => document.getElementById(id);
 const body = document.body;
@@ -57,15 +58,21 @@ let settings = {};
 let media = { status: 'none' };
 let wavesOn = true;
 
+// the palette's colours; "from the cover" — the colours of what's playing
+function paint() {
+  coverAccent(settings, media, (c, pal) => {
+    body.style.setProperty('--acc', c[0]);
+    body.style.setProperty('--acc3', c[1]);
+    body.style.setProperty('--acc2', c[2]);
+    shellwaves.look(pal);
+  });
+}
+
 function colors(s) {
   settings = s || settings;
-  const c = settings.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
-  body.style.setProperty('--acc', c[0]);
-  body.style.setProperty('--acc3', c[1]);
-  body.style.setProperty('--acc2', c[2]);
+  paint();
   wavesOn = settings.shellWaves !== 'off';
   body.classList.toggle('no-waves', !wavesOn);
-  shellwaves.look(settings.palette === 'cover' ? settings.lastPalette : settings.palette);
   if (wavesOn) shellwaves.setMode(settings.shellWaves);
   else shellwaves.show(false);
   renderTiles();
@@ -281,6 +288,7 @@ window.rez.onSettings(colors);
 window.rez.onMedia((m) => {
   if (!m) return;
   media = m.status === 'none' ? { status: 'none' } : { ...media, ...m };
+  if (settings.palette === 'cover') paint();
   renderMedia();
 });
 

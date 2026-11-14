@@ -507,7 +507,7 @@ function onMedia(m) {
 
 function mediaWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, quickWin);
+  list.push(bar, island, panel, quickWin, startWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -1436,7 +1436,7 @@ function showStart() {
   const sw = startWin;
   whenLoaded(sw, () => {
     if (sw.isDestroyed()) return;
-    sw.webContents.send('shell', { open: true, apps: appList, settings: view(), user: process.env.USERNAME || '' });
+    sw.webContents.send('shell', { open: true, apps: appList, settings: view(), user: process.env.USERNAME || '', media: lastMedia });
     sw.show();
     sw.focus();
   });
