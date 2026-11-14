@@ -370,7 +370,8 @@ export const settings = {
   open(page = 'main', focusKey) {
     settings.page = page;
     setEl.textContent = '';
-    const panel = el('div', 'panel');
+    // rebuilt while already on screen (a setting changed, a sub-page): no slide-in again
+    const panel = el('div', layers.isOpen(settings) ? 'panel still' : 'panel');
     const head = el('div', 'panel-head');
     const mark = el('span', 'mark');
     for (let i = 0; i < 4; i++) mark.appendChild(el('i'));

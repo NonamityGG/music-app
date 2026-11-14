@@ -1014,6 +1014,10 @@ svg {
   overflow: hidden;
 }
 
+.panel.still {
+  animation: none;
+}
+
 @keyframes panel-in {
   from {
     transform: translateX(100%);
