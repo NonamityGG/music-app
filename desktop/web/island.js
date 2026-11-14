@@ -6,7 +6,7 @@ import { icon } from '../../src/util.js';
 import * as graph from './graph.js';
 import { BANDS } from './graph.js';
 import * as listen from './listen.js';
-import { $, appName, fmt, mediaState } from './common.js';
+import { $, appName, fmt, mediaState, beatMeter } from './common.js';
 import { coverColors } from './looks.js';
 
 const isl = $('isl');
@@ -284,6 +284,8 @@ const GROUPS = [
   [26, 40],
   [40, 60],
 ];
+const eqMeter = beatMeter(GROUPS);
+const beat = new Float32Array(5);
 let raf = 0;
 let last = 0;
 
@@ -307,12 +309,8 @@ function frame(t) {
   if (listen.heard()) {
     const r = graph.read(bands, wave);
     if (r.ok) {
-      GROUPS.forEach(([a, b], i) => {
-        let v = 0;
-        for (let k = a; k < b; k++) v = Math.max(v, bands[k]);
-        lv[i] += (v - lv[i]) * (v > lv[i] ? 0.65 : 0.2);
-        if (v > 0.04) loud = true;
-      });
+      loud = eqMeter(bands, beat);
+      for (let i = 0; i < 5; i++) lv[i] += (beat[i] - lv[i]) * (beat[i] > lv[i] ? 0.65 : 0.22);
     }
   }
   if (!loud) {
@@ -320,8 +318,8 @@ function frame(t) {
     const s = t / 1000;
     for (let i = 0; i < 5; i++) lv[i] = 0.35 + 0.3 * Math.abs(Math.sin(s * (2.1 + i * 0.7) + i));
   }
-  small.forEach((el, i) => el.style.setProperty('--h', (0.22 + 0.78 * Math.min(1, lv[i] * 1.1)).toFixed(3)));
-  big.forEach((el, i) => el.style.setProperty('--h', (0.18 + 0.82 * Math.min(1, lv[i] * 1.1)).toFixed(3)));
+  small.forEach((el, i) => el.style.setProperty('--h', (0.22 + 0.78 * Math.min(1, lv[i])).toFixed(3)));
+  big.forEach((el, i) => el.style.setProperty('--h', (0.18 + 0.82 * Math.min(1, lv[i])).toFixed(3)));
 }
 
 listen.start({ name: 'остров', playing: () => media.playing() });
