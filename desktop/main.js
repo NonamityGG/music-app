@@ -422,8 +422,10 @@ function applyShell() {
 }
 
 // the pointers, drawn by the helper in the palette's colours ("from the cover":
-// the last fixed palette, so they don't change with every song)
+// the colours of what's playing, as the bar works them out from the cover;
+// the last fixed palette until it has)
 let cursorsSent = '';
+let coverNow = null;
 function applyCursors(force) {
   if (!hostInfo) return;
   if (!settings.winCursors) {
@@ -432,7 +434,7 @@ function applyCursors(force) {
     return;
   }
   const pal = settings.palette === 'cover' ? settings.lastPalette : settings.palette;
-  const [c1, c2, c3] = colors.PALETTES[pal] || colors.PALETTES.violet;
+  const [c1, c2, c3] = settings.palette === 'cover' && coverNow ? coverNow : colors.PALETTES[pal] || colors.PALETTES.violet;
   const sig = [c1, c2, c3].join();
   if (!force && sig === cursorsSent) return;
   cursorsSent = sig;
@@ -2224,6 +2226,13 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
     ipcMain.on('shell', (e, cmd, arg) => {
       if (cmd === 'startClose') hideStart();
+      else if (cmd === 'coverColors') {
+        const c = arg && Array.isArray(arg.colors) ? arg.colors.map(String) : [];
+        if (c.length === 3 && c.every((x) => /^#[0-9a-f]{6}$/i.test(x))) {
+          coverNow = c;
+          if (settings.palette === 'cover') applyCursors();
+        }
+      }
       else if (cmd === 'quickHeight') fitQuick(arg && arg.h);
       else if (cmd === 'quickClose') hideQuick();
       else if (cmd === 'launch') {

@@ -91,6 +91,8 @@ window.rez.onMedia((m) => {
     coverColors(thumb).then((c) => {
       coverCols = c;
       paintColors();
+      // the pointers follow the cover too (the main process draws them)
+      if (c) window.rez.shell('coverColors', { colors: c });
     });
   }
   posAt = performance.now();
