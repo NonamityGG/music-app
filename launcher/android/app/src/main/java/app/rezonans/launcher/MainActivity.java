@@ -169,6 +169,16 @@ public class MainActivity extends Activity implements Page {
             l = ins.getSystemWindowInsetLeft();
             r = ins.getSystemWindowInsetRight();
         }
+        // the keyboard: the page is made shorter so that it ends at the keyboard's top
+        // (drawn edge to edge, the window is not resized by the system, and the
+        // WebView would only slide the page up under the status bar)
+        if (web != null && web.getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+            android.view.ViewGroup.MarginLayoutParams m = (android.view.ViewGroup.MarginLayoutParams) web.getLayoutParams();
+            if (m.bottomMargin != ime) {
+                m.bottomMargin = ime;
+                web.setLayoutParams(m);
+            }
+        }
         String j = "{\"t\":" + Math.round(t / d) + ",\"b\":" + Math.round(b / d) + ",\"l\":" + Math.round(l / d) + ",\"r\":" + Math.round(r / d) + ",\"ime\":" + Math.round(ime / d) + "}";
         if (j.equals(lastInsets)) return;
         lastInsets = j;

@@ -34,10 +34,10 @@ const SLOP = 10;
 function insets(i) {
   if (!i) return;
   root.style.setProperty('--t', (i.t || 0) + 'px');
-  root.style.setProperty('--b', (i.b || 0) + 'px');
+  // the keyboard: the Android side ends the page at its top, and the bar under it is hidden
+  root.style.setProperty('--b', (i.ime > 0 ? 0 : i.b || 0) + 'px');
   root.style.setProperty('--l', (i.l || 0) + 'px');
   root.style.setProperty('--r', (i.r || 0) + 'px');
-  // the keyboard: the page shrinks above it by itself (interactive-widget=resizes-content), nothing to add
 }
 on('insets', insets);
 
