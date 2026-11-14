@@ -5,7 +5,7 @@
 // being seen, the screen capture, WebRTC — is in CastPlugin.java.
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { h, icon, clear, toast } from './util.js';
+import { h, icon, clear, toast, add } from './util.js';
 import { sheet, closeSheet, spinner } from './components.js';
 import { cleanCode, unhideCandidates, opusStereo, startBitrate, countCandidates, errorText } from './connect.js';
 
@@ -116,14 +116,14 @@ function paint() {
   if (!box) return;
   clear(box);
   if (view === 'live' && live) {
-    box.append(
+    add(box, 
       h('div', { class: 'cast-live' }, icon('tv', 40), h('div', { class: 'cast-live-t' }, `Экран телефона на «${live.name}»`), h('div', { class: 'muted small' }, 'Можно открыть любое приложение — картинка и звук идут на телевизор. Остановить можно и в шторке уведомлений, и кнопкой «Назад» на пульте.')),
       h('button', { class: 'btn btn-primary cast-btn', onclick: () => stop() }, 'Остановить показ')
     );
     return;
   }
   if (view === 'code' && codeFor) {
-    const input = h('input', { class: 'cast-code', inputmode: 'numeric', maxlength: '4', autocomplete: 'one-time-code', placeholder: '····' });
+    const input = h('input', { class: 'cast-code', type: 'tel', inputmode: 'numeric', pattern: '[0-9]*', maxlength: '4', autocomplete: 'one-time-code', placeholder: '····' });
     input.addEventListener('input', () => {
       const c = cleanCode(input.value);
       if (c !== input.value) input.value = c;
@@ -132,7 +132,7 @@ function paint() {
         start(codeFor, c);
       }
     });
-    box.append(
+    add(box, 
       h('div', { class: 'cast-ask' }, `Введи код с экрана «${codeFor.name}»`),
       input,
       note ? h('div', { class: 'cast-note' }, note) : null,
@@ -142,19 +142,19 @@ function paint() {
     return;
   }
   if (view === 'wait') {
-    box.append(spinner(note || 'Подключаюсь…'));
+    add(box, spinner(note || 'Подключаюсь…'));
     return;
   }
   const list = [...tvsById.values()];
-  if (note) box.append(h('div', { class: 'cast-note' }, note));
+  if (note) add(box, h('div', { class: 'cast-note' }, note));
   if (!list.length) {
-    box.append(
+    add(box, 
       spinner('Ищу телевизоры с Резонанс OS…'),
       h('div', { class: 'muted small cast-hint' }, 'Телевизор должен быть включён и в той же сети Wi-Fi, что и телефон. Обычно он находится за пару секунд.')
     );
     return;
   }
-  box.append(
+  add(box, 
     h(
       'div',
       { class: 'sheet-items' },

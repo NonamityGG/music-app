@@ -4156,7 +4156,10 @@ html[data-fullscreen] .statusline {
   border-radius: 16px;
   background: transparent;
   color: inherit;
-  font: 600 40px/1 inherit;
+  font-family: inherit;
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
   letter-spacing: 0.6ch;
   text-align: center;
 }
