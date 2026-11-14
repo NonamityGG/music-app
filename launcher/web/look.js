@@ -80,3 +80,42 @@ export function preview() {
   clearTimeout(preview.t);
   preview.t = setTimeout(() => set({ preview: false }), 1800);
 }
+
+// ---------- the phone's wallpaper in the launcher's look ----------
+
+// The home screen without the icons, at the screen's real size: plum ink, the
+// palette's glow, the waves at rest through the middle. Returns a data: URL.
+export function wallpaperImage() {
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.round(window.innerWidth * dpr);
+  const Hh = Math.round(window.innerHeight * dpr);
+  const out = document.createElement('canvas');
+  out.width = W;
+  out.height = Hh;
+  const ctx = out.getContext('2d');
+  const c = palette().colors;
+  ctx.fillStyle = '#140f1f';
+  ctx.fillRect(0, 0, W, Hh);
+  const glow = (x, y, r, color, a) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color + Math.round(a * 255).toString(16).padStart(2, '0'));
+    g.addColorStop(1, color + '00');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, Hh);
+  };
+  glow(W * 0.15, 0, W * 1.1, c[0], 0.3);
+  glow(W * 0.9, Hh, W * 1.0, c[2], 0.12);
+  // the waves: drawn by the phone app's own code on a canvas of their band's size
+  const band = document.createElement('canvas');
+  band.style.cssText = `position:fixed;left:-10000px;top:0;width:${window.innerWidth}px;height:${Math.round(window.innerHeight * 0.34)}px`;
+  document.body.appendChild(band);
+  waves.renderPreview(band, S.style || 'ribbons', palette().id);
+  ctx.globalAlpha = 0.85;
+  ctx.globalCompositeOperation = 'lighter';
+  const bh = Hh * 0.34;
+  ctx.drawImage(band, 0, Hh * 0.45 - bh / 2, W, bh);
+  band.remove();
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  return out.toDataURL('image/jpeg', 0.93);
+}

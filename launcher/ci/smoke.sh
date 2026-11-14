@@ -28,8 +28,12 @@ shot 1-home
 adb shell input swipe $X $((H * 75 / 100)) $X $((H * 25 / 100)) 350
 sleep 1.5
 shot 2-drawer
-# search: the field is at the top of the drawer
-adb shell input tap $X $((H * 9 / 100))
+# sideways: the next page of apps
+adb shell input swipe $((W * 85 / 100)) $((H / 2)) $((W * 15 / 100)) $((H / 2)) 250
+sleep 1.2
+shot 2b-drawer-page2
+# search: the field is at the bottom of the drawer (as in the phone's own А–Я layout)
+adb shell input tap $((W * 40 / 100)) $((H * 93 / 100))
 sleep 1
 adb shell input text "set"
 sleep 1.2

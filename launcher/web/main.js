@@ -17,7 +17,6 @@ const home = $('#home');
 const drawer = $('#drawer');
 const grid = $('#grid');
 const dock = $('#dock');
-const scroller = $('#d-scroll');
 const q = $('#q');
 
 const H = () => window.innerHeight;
@@ -189,7 +188,8 @@ function settle(open, animate = true) {
           q.value = '';
           renderSearch();
         }
-        scroller.scrollTop = 0;
+        pages.scrollLeft = 0;
+        markDot();
       }
     },
     animate ? 440 : 0,
@@ -197,55 +197,88 @@ function settle(open, animate = true) {
   if (!open) q.blur();
 }
 function openDrawer(withKeyboard) {
-  if (!drawerOpen) renderFreq();
   settle(true);
   if (withKeyboard) q.focus();
 }
 const closeDrawer = (animate = true) => drawerOpen && settle(false, animate);
 
-let letters = [];
-function renderDrawer() {
-  const all = $('#d-all');
-  all.innerHTML = '';
-  letters = [];
-  const frag = document.createDocumentFragment();
-  let last = '';
-  for (const a of apps.all()) {
-    const el = icon(a, 'drawer');
-    const L = apps.letter(a);
-    if (L !== last) {
-      letters.push([L, el]);
-      last = L;
-    }
-    frag.appendChild(el);
-  }
-  all.appendChild(frag);
-  const rail = $('#rail');
-  rail.innerHTML = letters.map(([L]) => `<b>${L}</b>`).join('');
-  renderFreq();
+// pages of 4 × N in А…Я, A…Z order, turned sideways — the phone's own "А–Я" layout
+const pages = $('#pages');
+const dots = $('#dots');
+let grid0 = '';
+function layout() {
+  const cols = window.innerWidth >= 600 ? 6 : 4;
+  const h = pages.clientHeight || H() * 0.72;
+  const rows = clamp(Math.floor(h / 118), 3, 6);
+  return { cols, rows };
 }
-function renderFreq() {
-  const f = $('#d-freq');
-  f.innerHTML = '';
-  const list = apps.frequent(4);
-  for (const a of list) f.appendChild(icon(a, 'drawer'));
-  $('#d-freq-wrap').classList.toggle('has', list.length >= 2);
+function renderDrawer() {
+  const { cols, rows } = layout();
+  grid0 = cols + 'x' + rows;
+  const per = cols * rows;
+  const list = apps.all();
+  const w = Math.max(1, pages.clientWidth);
+  const was = Math.round(pages.scrollLeft / w);
+  const n = Math.max(1, Math.ceil(list.length / per));
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const pg = document.createElement('div');
+    pg.className = 'page apps';
+    pg.style.setProperty('--cols', cols);
+    pg.style.setProperty('--rows', rows);
+    for (const a of list.slice(i * per, (i + 1) * per)) pg.appendChild(icon(a, 'drawer'));
+    frag.appendChild(pg);
+  }
+  pages.innerHTML = '';
+  pages.appendChild(frag);
+  dots.innerHTML = n > 1 ? '<i></i>'.repeat(n) : '';
+  pages.scrollLeft = Math.min(was, n - 1) * w;
+  markDot();
+}
+function markDot() {
+  const i = Math.round(pages.scrollLeft / Math.max(1, pages.clientWidth));
+  [...dots.children].forEach((d, k) => d.classList.toggle('on', k === i));
+}
+let dotT = 0;
+pages.addEventListener(
+  'scroll',
+  () => {
+    if (!dotT) dotT = setTimeout(() => ((dotT = 0), markDot()), 50);
+  },
+  { passive: true },
+);
+window.addEventListener('resize', () => {
+  const { cols, rows } = layout();
+  if (cols + 'x' + rows !== grid0) renderDrawer();
+});
+
+// the part of a name that matched, in bold (as the phone's own search does)
+function mark(el, a, text) {
+  const qn = apps.norm(text);
+  const label = a.label.trim();
+  const i = a.key.indexOf(qn);
+  if (i < 0 || !qn) return;
+  const lb = el.querySelector('.lb');
+  lb.textContent = '';
+  const b = document.createElement('b');
+  b.textContent = label.slice(i, i + qn.length);
+  lb.append(label.slice(0, i), b, label.slice(i + qn.length));
 }
 
 function renderSearch() {
   const text = q.value.trim();
   $('#q-x').hidden = !q.value;
   drawer.classList.toggle('searching', !!text);
-  $('#d-all').hidden = !!text;
-  $('#d-freq-wrap').hidden = !!text;
   const found = $('#d-found');
   const web = $('#d-web');
-  found.hidden = !text;
-  web.hidden = !text;
-  if (!text) return;
   found.innerHTML = '';
-  for (const a of apps.search(text).slice(0, 24)) found.appendChild(icon(a, 'drawer'));
   web.innerHTML = '';
+  if (!text) return;
+  for (const a of apps.search(text).slice(0, 24)) {
+    const el = icon(a, 'drawer');
+    mark(el, a, text);
+    found.appendChild(el);
+  }
   const row = (ic, title, sub, url) => {
     const b = document.createElement('button');
     b.className = 'webq glass';
@@ -261,7 +294,7 @@ function renderSearch() {
   const enc = encodeURIComponent(text);
   row(ICONS.web, `«${text}»`, 'Найти в интернете', `https://yandex.ru/search/?text=${enc}`);
   row(ICONS.store, `«${text}»`, 'Найти в Google Play', `https://play.google.com/store/search?q=${enc}&c=apps`);
-  scroller.scrollTop = 0;
+  $('#d-results').scrollTop = 0;
 }
 q.addEventListener('input', renderSearch);
 q.addEventListener('keydown', (e) => {
@@ -275,47 +308,11 @@ $('#q-x').addEventListener('click', () => {
   renderSearch();
   q.focus();
 });
-
-// the letters along the edge: slide a finger to jump
-{
-  const rail = $('#rail');
-  const bubble = $('#rail-bubble');
-  let lastL = '';
-  const at = (y) => {
-    const r = rail.getBoundingClientRect();
-    const kids = rail.children;
-    if (!kids.length) return;
-    let i = 0;
-    for (; i < kids.length - 1; i++) {
-      const k = kids[i].getBoundingClientRect();
-      if (y < k.bottom) break;
-    }
-    const [L, el] = letters[i];
-    if (L === lastL) return;
-    for (const k of kids) k.classList.remove('on');
-    kids[i].classList.add('on');
-    lastL = L;
-    bubble.textContent = L;
-    const k = kids[i].getBoundingClientRect();
-    bubble.style.top = clamp(k.top + k.height / 2 - 32, r.top, r.bottom - 64) + 'px';
-    bubble.classList.add('on');
-    scroller.scrollTop = el.offsetTop - 16;
-    rez.haptic('tick');
-  };
-  rail.addEventListener('pointerdown', (e) => {
-    cap(rail, e.pointerId);
-    q.blur();
-    lastL = '';
-    at(e.clientY);
-  });
-  rail.addEventListener('pointermove', (e) => rail.hasPointerCapture(e.pointerId) && at(e.clientY));
-  const end = () => {
-    bubble.classList.remove('on');
-    for (const k of rail.children) k.classList.remove('on');
-  };
-  rail.addEventListener('pointerup', end);
-  rail.addEventListener('pointercancel', end);
-}
+$('#d-more').addEventListener('click', (e) => {
+  e.preventDefault();
+  q.blur();
+  openSheet();
+});
 
 // ---------- touch ----------
 
@@ -338,7 +335,6 @@ function speedY(t) {
 const span = () => H() * 0.42;
 function release(v) {
   const open = v < -0.35 ? true : v > 0.35 ? false : p > 0.4;
-  if (open && !drawerOpen) renderFreq();
   settle(open);
 }
 
@@ -381,10 +377,7 @@ home.addEventListener('pointermove', (e) => {
   if (g.item) g.item.classList.remove('down');
   if (Math.abs(dy) > Math.abs(dx)) {
     g.mode = dy < 0 ? 'drawer' : 'shade';
-    if (g.mode === 'drawer') {
-      renderFreq();
-      drawer.classList.add('open');
-    }
+    if (g.mode === 'drawer') drawer.classList.add('open');
   } else g.mode = 'none';
 });
 function homeUp(e, cancelled) {
@@ -418,107 +411,75 @@ function homeUp(e, cancelled) {
 home.addEventListener('pointerup', (e) => homeUp(e, false));
 home.addEventListener('pointercancel', (e) => homeUp(e, true));
 
-// the drawer's head: pulled down, the drawer goes
+// the drawer under the finger: pulled down, it goes; sideways, the pages turn
+// (the browser does that); a tap opens an app; a long press opens its menu,
+// and moved, takes the icon to the home screen
 {
-  const head = $('#d-head');
-  let t = null;
-  head.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('#q-wrap')) return;
-    cap(head, e.pointerId);
-    t = track(e);
-  });
-  head.addEventListener('pointermove', (e) => {
-    if (!t) return;
-    step(t, e.clientX, e.clientY);
-    const dy = e.clientY - t.y0;
-    if (dy > SLOP || t.moved) {
-      if (!t.moved) q.blur();
-      t.moved = true;
-      setP(clamp(1 - dy / span(), 0, 1));
-    }
-  });
-  const up = () => {
-    if (t && t.moved) release(speedY(t));
-    t = null;
-  };
-  head.addEventListener('pointerup', up);
-  head.addEventListener('pointercancel', up);
-}
-
-// the drawer's list: scrolls by itself; pulled down at the top, the drawer goes;
-// a tap opens an app; a long press opens its menu, and moved, takes it home
-{
-  let t = null;
-  scroller.addEventListener('touchstart', (e) => {
-    const k = e.touches[0];
-    t = { x0: k.clientX, y0: k.clientY, top: scroller.scrollTop <= 0, pull: false, pts: [[k.clientX, k.clientY, performance.now()]] };
-  }, { passive: true });
-  scroller.addEventListener('touchmove', (e) => {
-    if (!t) return;
-    const k = e.touches[0];
-    step(t, k.clientX, k.clientY);
-    const dy = k.clientY - t.y0;
-    if (d && d.long) return e.preventDefault(); // a long press holds the list still
-    if (!t.pull && t.top && scroller.scrollTop <= 0 && dy > SLOP && Math.abs(dy) > Math.abs(k.clientX - t.x0)) {
-      t.pull = true;
-      q.blur();
-      cancelPress();
-    }
-    if (t.pull) {
-      e.preventDefault();
-      setP(clamp(1 - (dy - SLOP) / span(), 0, 1));
-    }
-  }, { passive: false });
-  const end = () => {
-    if (t && t.pull) release(speedY(t));
-    t = null;
-  };
-  scroller.addEventListener('touchend', end);
-  scroller.addEventListener('touchcancel', end);
-  scroller.addEventListener('scroll', () => q === document.activeElement && Math.abs(scroller.scrollTop) > 40 && q.blur(), { passive: true });
-
   let d = null;
-  const cancelPress = () => {
-    if (!d) return;
-    clearTimeout(d.timer);
-    d.item.classList.remove('down');
-    if (!d.long) d = null;
-  };
-  scroller.addEventListener('pointerdown', (e) => {
+  const area = $('#d-body');
+  area.addEventListener('pointerdown', (e) => {
+    if (d || e.button > 0) return;
     const item = e.target.closest('.app');
-    if (!item || d) return;
-    d = { item, x0: e.clientX, y0: e.clientY, id: e.pointerId, long: false };
-    item.classList.add('down');
+    d = { ...track(e), id: e.pointerId, item, mode: null };
+    if (item) item.classList.add('down');
     d.timer = setTimeout(() => {
-      if (!d) return;
-      d.long = true;
+      if (!d || d.mode || !item) return;
+      d.mode = 'long';
       item.classList.remove('down');
-      cap(scroller, d.id);
+      cap(area, d.id);
       q.blur();
       openMenu(item, 'drawer', () => renderHome(false));
     }, LONG);
   });
-  scroller.addEventListener('pointermove', (e) => {
+  area.addEventListener('pointermove', (e) => {
     if (!d || e.pointerId !== d.id) return;
-    const far = Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > SLOP;
-    if (d.drag) return dragMove(e.clientX, e.clientY);
-    if (d.long && far && menu.open) {
-      d.drag = true;
-      settle(false);
-      dragStart(d.item.dataset.pkg, e.clientX, e.clientY, true);
-    } else if (!d.long && far) cancelPress();
+    step(d, e.clientX, e.clientY);
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+    const far = Math.hypot(dx, dy) > SLOP;
+    if (d.mode === 'drag') return dragMove(e.clientX, e.clientY);
+    if (d.mode === 'long') {
+      if (far && d.item && menu.open) {
+        d.mode = 'drag';
+        settle(false);
+        dragStart(d.item.dataset.pkg, e.clientX, e.clientY, true);
+      }
+      return;
+    }
+    if (d.mode === 'pull') return setP(clamp(1 - (dy - SLOP) / span(), 0, 1));
+    if (d.mode || !far) return;
+    clearTimeout(d.timer);
+    if (d.item) d.item.classList.remove('down');
+    const searching = drawer.classList.contains('searching');
+    if (dy > 0 && Math.abs(dy) > Math.abs(dx) * 1.2 && (!searching || $('#d-results').scrollTop <= 0)) {
+      d.mode = 'pull';
+      cap(area, d.id);
+      q.blur();
+    } else d.mode = 'scroll';
   });
+  // a held icon keeps the pages still, and so does pulling the drawer down
+  area.addEventListener(
+    'touchmove',
+    (e) => {
+      if (d && (d.mode === 'long' || d.mode === 'drag' || d.mode === 'pull')) e.preventDefault();
+    },
+    { passive: false },
+  );
   const up = (e, cancelled) => {
     if (!d || e.pointerId !== d.id) return;
     const x = d;
     d = null;
     clearTimeout(x.timer);
-    x.item.classList.remove('down');
-    if (x.drag) return dragEnd(cancelled);
-    if (!x.long && !cancelled) launch(x.item);
+    if (x.item) x.item.classList.remove('down');
+    if (x.mode === 'pull') return release(speedY(x));
+    if (x.mode === 'drag') return dragEnd(cancelled);
+    if (x.mode || cancelled) return;
+    if (x.item) launch(x.item);
+    else q.blur();
   };
-  scroller.addEventListener('pointerup', (e) => up(e, false));
-  scroller.addEventListener('pointercancel', (e) => up(e, true));
+  area.addEventListener('pointerup', (e) => up(e, false));
+  area.addEventListener('pointercancel', (e) => up(e, true));
+  $('#d-results').addEventListener('scroll', () => q.blur(), { passive: true });
 }
 
 $('#scrim').addEventListener('pointerdown', () => {

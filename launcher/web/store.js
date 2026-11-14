@@ -12,6 +12,7 @@ const DEFAULTS = {
   style: 'ribbons',
   hear: false, // the waves hear what plays (needs the microphone permission)
   labels: true,
+  syncWall: false, // the phone's wallpaper follows the palette
   uses: {}, // pkg -> { n, at }
 };
 

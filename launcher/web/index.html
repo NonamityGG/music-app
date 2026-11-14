@@ -39,22 +39,22 @@
 </main>
 
 <section id="drawer" aria-hidden="true">
-  <div id="d-head">
-    <i class="grab"></i>
+  <div id="d-body">
+    <div id="pages"></div>
+    <div id="dots"></div>
+    <div id="d-results">
+      <div id="d-found" class="apps"></div>
+      <div id="d-web"></div>
+    </div>
+  </div>
+  <div id="d-bottom">
     <label id="q-wrap" class="glass">
       <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
       <input id="q" type="search" placeholder="Поиск приложений" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
       <button id="q-x" class="bare" aria-label="Очистить" hidden><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></button>
+      <button id="d-more" class="bare" aria-label="Настройки"><svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.3" fill="currentColor" stroke="none"/></svg></button>
     </label>
   </div>
-  <div id="d-scroll">
-    <div id="d-freq-wrap"><h3>Часто</h3><div id="d-freq" class="apps"></div></div>
-    <div id="d-all" class="apps"></div>
-    <div id="d-found" class="apps" hidden></div>
-    <div id="d-web" hidden></div>
-  </div>
-  <div id="rail"></div>
-  <b id="rail-bubble"></b>
 </section>
 
 <div id="scrim"></div>

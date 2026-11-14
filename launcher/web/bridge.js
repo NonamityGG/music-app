@@ -48,6 +48,7 @@ export const rez = {
   media: (a) => has('media') && N.media(a),
   mediaState: () => (has('mediaState') ? json(N.mediaState(), { active: false }) : { active: false }),
   visualizer: (v) => has('visualizer') && N.visualizer(!!v),
+  setWallpaper: (dataUrl) => has('setWallpaper') && (N.setWallpaper(dataUrl), true),
   haptic: (k) => has('haptic') && N.haptic(k || 'tick'),
   notifications: () => has('notifications') && N.notifications(),
   storeGet: () => (has('storeGet') ? N.storeGet() : ''),

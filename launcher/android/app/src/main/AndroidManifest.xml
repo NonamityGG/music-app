@@ -18,6 +18,8 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- swipe down on the home screen pulls the notification shade -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- only when the person asks: the phone's wallpaper in the launcher's colours -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />

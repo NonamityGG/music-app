@@ -364,6 +364,36 @@ final class Bridge {
         a.ui.post(() -> Viz.resume(a));
     }
 
+    // ---------- the phone's wallpaper ----------
+
+    /**
+     * The page's picture (a data: URL, PNG or JPEG) becomes the phone's home
+     * screen wallpaper — the one the system shows behind apps while switching
+     * between them. Only when the person asks for it in the settings. The answer
+     * comes back as the event "wall" (true / false).
+     */
+    @JavascriptInterface
+    public void setWallpaper(final String dataUrl) {
+        worker.execute(() -> {
+            boolean ok = false;
+            try {
+                String b64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+                byte[] bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT);
+                android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                if (bmp != null) {
+                    android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(a);
+                    if (Build.VERSION.SDK_INT >= 24) wm.setBitmap(bmp, null, true, android.app.WallpaperManager.FLAG_SYSTEM);
+                    else wm.setBitmap(bmp);
+                    bmp.recycle();
+                    ok = true;
+                }
+            } catch (Exception e) {
+                Log.w(MainActivity.TAG, "wallpaper: " + e);
+            }
+            a.emit("wall", ok ? "true" : "false");
+        });
+    }
+
     // ---------- the screen and the touch ----------
 
     /** tick, press, context, confirm: a short vibration of the screen. */

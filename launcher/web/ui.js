@@ -1,7 +1,7 @@
 // Small pieces shared by the home screen and the drawer: an icon, a toast,
 // the menu of a long press with its lifted icon, and the settings sheet.
 
-import { rez } from './bridge.js';
+import { rez, on } from './bridge.js';
 import { S, save, used } from './store.js';
 import * as apps from './apps.js';
 import * as look from './look.js';
@@ -18,6 +18,7 @@ export const ICONS = {
   store: svg('<path d="M5 8h14l-1 11H6L5 8zM9 8V6a3 3 0 0 1 6 0v2"/>'),
   home: svg('<path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1v-8z"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/>'),
+  wall: svg('<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 15c3-3 5-3 8 0s5 3 8 0"/>'),
   bell: svg('<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16zM10 20a2 2 0 0 0 4 0"/>'),
 };
 
@@ -240,6 +241,7 @@ function renderSheet() {
       save({ palette: p.id });
       look.apply();
       look.preview();
+      wallSoon();
       rez.haptic('tick');
       renderSheet();
     };
@@ -258,6 +260,7 @@ function renderSheet() {
       save({ style: s.id });
       look.apply();
       look.preview();
+      wallSoon();
       rez.haptic('tick');
       renderSheet();
     };
@@ -282,12 +285,58 @@ function renderSheet() {
     }),
   );
 
+  const wp = sec('Обои телефона');
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = 'Их видно, когда листаешь между приложениями. Картинка — как этот экран: палитра и волны.';
+  wp.appendChild(hint);
+  const set = link(ICONS.wall, 'Поставить обои Резонанса', () => setWall(), true);
+  wp.appendChild(set);
+  wp.appendChild(
+    toggle('Менять вместе с палитрой', 'Новая палитра или волны — новые обои', !!S.syncWall, () => {
+      save({ syncWall: !S.syncWall });
+      if (S.syncWall) setWall();
+      renderSheet();
+    }),
+  );
+
   if (info.notif === false) body.appendChild(link(ICONS.bell, 'Сейчас играет и точки уведомлений', () => rez.openNotificationAccess()));
   body.appendChild(link(ICONS.gear, 'Настройки телефона', () => rez.openSettings()));
   const v = document.createElement('div');
   v.className = 'ver';
   v.textContent = 'Резонанс Лаунчер' + (info.app ? ' ' + info.app : '');
   body.appendChild(v);
+}
+
+// ---------- the phone's wallpaper ----------
+
+let wallBusy = false;
+export function setWall() {
+  if (wallBusy) return;
+  wallBusy = true;
+  toast('Рисую обои…');
+  // a frame for the toast to show before the picture is drawn
+  setTimeout(() => {
+    try {
+      if (!rez.setWallpaper(look.wallpaperImage())) {
+        wallBusy = false;
+        toast('Обои ставятся только на телефоне');
+      }
+    } catch (e) {
+      wallBusy = false;
+      toast('Не получилось нарисовать обои');
+    }
+  }, 60);
+}
+on('wall', (ok) => {
+  wallBusy = false;
+  toast(ok ? 'Обои телефона — в стиле Резонанса' : 'Не получилось поставить обои');
+});
+let wallT = 0;
+function wallSoon() {
+  if (!S.syncWall) return;
+  clearTimeout(wallT);
+  wallT = setTimeout(setWall, 1500);
 }
 
 function toggle(title, sub, on, fn) {

@@ -72,6 +72,7 @@ function mock() {
     battery:function(){return JSON.stringify({level:76,charging:false})},
     badges:function(){return JSON.stringify({'org.telegram.messenger':3,'com.google.android.gm':1})},
     mediaState:function(){return JSON.stringify(media)}, media:function(a){if(a==='toggle'){media.playing=!media.playing}},
+    setWallpaper:function(d){window.__wall=d;setTimeout(function(){window.__rezEmit('wall',true)},300)},
     visualizer:function(){}, haptic:function(){}, notifications:function(){console.log('shade');return true},
     storeGet:function(){return store}, storeSet:function(s){store=s}, log:function(m){console.log(m)}
   };
