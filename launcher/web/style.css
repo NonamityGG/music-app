@@ -524,10 +524,13 @@ body.nolabels #grid .lb {
   scrollbar-width: none;
 }
 #drawer.searching #pages,
-#drawer.searching #dots {
+#drawer.searching #dots,
+#drawer.typing #pages,
+#drawer.typing #dots {
   display: none;
 }
-#drawer.searching #d-results {
+#drawer.searching #d-results,
+#drawer.typing #d-results {
   display: block;
   animation: rise 0.28s var(--ease) both;
 }
@@ -547,8 +550,7 @@ body.nolabels #grid .lb {
 
 #d-bottom {
   flex: none;
-  padding: 4px calc(var(--r) + var(--side)) calc(var(--b) + var(--ime) + 14px) calc(var(--l) + var(--side));
-  transition: padding-bottom 0.22s var(--ease);
+  padding: 4px calc(var(--r) + var(--side)) calc(var(--b) + 14px) calc(var(--l) + var(--side));
 }
 #q-wrap {
   display: flex;

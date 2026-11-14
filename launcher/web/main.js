@@ -37,7 +37,7 @@ function insets(i) {
   root.style.setProperty('--b', (i.b || 0) + 'px');
   root.style.setProperty('--l', (i.l || 0) + 'px');
   root.style.setProperty('--r', (i.r || 0) + 'px');
-  root.style.setProperty('--ime', Math.max(0, (i.ime || 0) - (i.b || 0)) + 'px');
+  // the keyboard: the WebView shrinks the page above it by itself, nothing to add
 }
 on('insets', insets);
 
@@ -247,9 +247,20 @@ pages.addEventListener(
   },
   { passive: true },
 );
-window.addEventListener('resize', () => {
+// a turn of the phone changes the pages; the keyboard (the page shrinks while
+// typing) does not — the pages are hidden then anyway
+const relayout = () => {
+  if (document.activeElement === q) return;
   const { cols, rows } = layout();
   if (cols + 'x' + rows !== grid0) renderDrawer();
+};
+window.addEventListener('resize', relayout);
+
+// typing: the pages give way to the results, the field sits on the keyboard
+q.addEventListener('focus', () => drawer.classList.add('typing'));
+q.addEventListener('blur', () => {
+  drawer.classList.remove('typing');
+  setTimeout(relayout, 350);
 });
 
 // the part of a name that matched, in bold (as the phone's own search does)
