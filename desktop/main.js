@@ -1379,11 +1379,23 @@ function hideQuick() {
   setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && !menusOpen.quick && quickWin.hide(), 130);
 }
 
+// where Start and Quick sit: the work area, but never over our own taskbar —
+// in the first seconds after launch Windows has not reserved its room yet,
+// so the work area still runs to the bottom of the screen
+function shellArea() {
+  const d = screen.getPrimaryDisplay();
+  const wa = { ...d.workArea };
+  if (settings.taskbar) {
+    const bottom = Math.min(wa.y + wa.height, d.bounds.y + d.bounds.height - tbH());
+    wa.height = bottom - wa.y;
+  }
+  return wa;
+}
+
 function showStart() {
   if (Date.now() - startHiddenAt < 250) return hideStart();
   if (!startWin || startWin.isDestroyed()) createStart();
-  const d = screen.getPrimaryDisplay();
-  const wa = d.workArea;
+  const wa = shellArea();
   const h = Math.min(START_H, wa.height - 24);
   // above the taskbar: centred like Windows 11, or at the left with a left taskbar
   const left = settings.taskbar && settings.taskbarAlign === 'left';
@@ -1411,7 +1423,7 @@ function fitQuick(want) {
   const n = Math.round(Number(want));
   if (!Number.isFinite(n) || n < 120) return;
   quickFit = Math.min(n, QUICK_H);
-  const wa = screen.getPrimaryDisplay().workArea;
+  const wa = shellArea();
   const h = Math.min(n, QUICK_H, wa.height - 24) + 2 * SHELL_PAD;
   const b = quickWin.getBounds();
   if (Math.abs(b.height - h) < 2) return;
@@ -1422,8 +1434,7 @@ function fitQuick(want) {
 function showQuick() {
   if (Date.now() - quickHiddenAt < 250) return hideQuick();
   if (!quickWin || quickWin.isDestroyed()) createQuick();
-  const d = screen.getPrimaryDisplay();
-  const wa = d.workArea;
+  const wa = shellArea();
   const h = Math.min(quickFit || QUICK_H, wa.height - 24);
   const x = wa.x + wa.width - QUICK_W - 12; // above the tray, bottom-right
   const y = wa.y + wa.height - h - 12;
