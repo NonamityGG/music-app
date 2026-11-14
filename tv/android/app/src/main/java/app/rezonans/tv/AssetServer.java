@@ -62,7 +62,7 @@ final class AssetServer {
     private static final Set<String> HOSTS = new HashSet<>(Arrays.asList(
         "api.open-meteo.com", "geocoding-api.open-meteo.com", "nominatim.openstreetmap.org",
         "get.geojs.io", "ipwho.is", "api.sypexgeo.net", "ipapi.co", "freeipapi.com", "ipinfo.io",
-        "lrclib.net"));
+        "lrclib.net", "www.yr.no"));
     private static final String UA = "RezonansOS/1.0 (Android TV; https://github.com/NonamityGG/music-app)";
 
     private static WebResourceResponse net(String target) {

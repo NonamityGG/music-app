@@ -1,8 +1,9 @@
 // Резонанс OS: the weather where the TV is. The place is the town chosen in the
 // settings, or found from the internet address (no GPS on a TV): several
 // services are asked in turn, since some are unreachable from some networks.
-// The forecast is Open-Meteo's (no key). Everything goes through the Android
-// side (tv.net), so the box's browser engine can't get in the way.
+// The forecast is Open-Meteo's, or yr.no's where Open-Meteo is cut off (some
+// providers block its hosting); neither needs a key. Everything goes through
+// the Android side (tv.net), so the box's browser engine can't get in the way.
 
 import { tv } from './tv.js';
 import { S, cacheGet, cacheSet } from './store.js';
@@ -29,6 +30,7 @@ const cyr = (s) => /[а-яё]/i.test(s || '');
 
 // each one: url and how to read it
 const FINDERS = [
+  ['ipinfo.io', 'https://ipinfo.io/json', (g) => g && g.loc && { lat: num(g.loc.split(',')[0]), lon: num(g.loc.split(',')[1]), city: g.city || '' }],
   ['api.sypexgeo.net', 'https://api.sypexgeo.net/json/', (g) => g && g.city && { lat: num(g.city.lat), lon: num(g.city.lon), city: g.city.name_ru || g.city.name_en || '' }],
   ['get.geojs.io', 'https://get.geojs.io/v1/ip/geo.json', (g) => g && { lat: num(g.latitude), lon: num(g.longitude), city: g.city || '' }],
   ['ipwho.is', 'https://ipwho.is/?lang=ru', (g) => g && g.success !== false && { lat: num(g.latitude), lon: num(g.longitude), city: g.city || '' }],
@@ -73,18 +75,40 @@ async function place() {
   return p;
 }
 
+const KEY = () => 'wx4|' + (S.city ? S.city.name : 'auto');
+// an old forecast is not today's weather: not shown after this long
+const TOO_OLD = 12 * 3600e3;
+
 async function forecast(force) {
-  const key = 'wx4|' + (S.city ? S.city.name : 'auto');
+  const key = KEY();
   const hit = !force && cacheGet(key, 20 * 60e3);
   if (hit) return hit;
   const p = await place();
   if (!p) throw new Error('не удалось определить, где телевизор');
+  const order = cacheGet('wxsrc', 6 * 3600e3) === 'yr' ? [fromYr, fromOpenMeteo] : [fromOpenMeteo, fromYr];
+  const fails = [];
+  for (const get of order) {
+    try {
+      const w = await get(p);
+      w.city = p.city;
+      w.at = Date.now();
+      cacheSet('wxsrc', get === fromYr ? 'yr' : 'om');
+      cacheSet(key, w);
+      return w;
+    } catch (e) {
+      fails.push((get === fromYr ? 'yr.no' : 'open-meteo') + ': ' + (e && e.message ? e.message : e));
+    }
+  }
+  throw new Error(fails.join('; '));
+}
+
+async function fromOpenMeteo(p) {
   const q =
     `latitude=${p.lat}&longitude=${p.lon}` +
     '&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,relative_humidity_2m' +
     '&hourly=temperature_2m,weather_code,is_day&forecast_hours=26' +
     '&daily=temperature_2m_max,temperature_2m_min,weather_code&forecast_days=5&timezone=auto&wind_speed_unit=ms';
-  const r = await getJson('https://api.open-meteo.com/v1/forecast?' + q);
+  const r = await getJson('https://api.open-meteo.com/v1/forecast?' + q, 9000);
   const c = r && r.current;
   if (!c) throw new Error('пустой прогноз');
   const hours = [];
@@ -118,20 +142,68 @@ async function forecast(force) {
     hum: c.relative_humidity_2m != null ? Math.round(c.relative_humidity_2m) : null,
     max: r.daily ? Math.round(r.daily.temperature_2m_max[0]) : null,
     min: r.daily ? Math.round(r.daily.temperature_2m_min[0]) : null,
-    city: p.city,
     hours,
     days,
-    at: Date.now(),
   };
-  cacheSet(key, w);
   return w;
+}
+
+// yr.no's symbols in the weather codes the icons know (WMO)
+function wmo(sym) {
+  const s = String(sym || '').replace(/_(day|night|polartwilight)$/, '');
+  if (s === 'clearsky') return 0;
+  if (s === 'fair') return 1;
+  if (s === 'partlycloudy') return 2;
+  if (s === 'cloudy') return 3;
+  if (s === 'fog') return 45;
+  if (/thunder/.test(s)) return 95;
+  if (/snowshowers/.test(s)) return 85;
+  if (/snow/.test(s)) return /heavy/.test(s) ? 75 : /light/.test(s) ? 71 : 73;
+  if (/sleet/.test(s)) return 67;
+  if (/rainshowers/.test(s)) return 80;
+  if (/rain/.test(s)) return /heavy/.test(s) ? 65 : /light/.test(s) ? 61 : 63;
+  return 3;
+}
+const isDay = (sym) => !/_night$/.test(String(sym || ''));
+const round = (v) => (v == null || isNaN(v) ? null : Math.round(v));
+
+async function fromYr(p) {
+  const r = await getJson(`https://www.yr.no/api/v0/locations/${p.lat.toFixed(3)},${p.lon.toFixed(3)}/forecast`, 12000);
+  const sh = (r && r.shortIntervals) || [];
+  const c = sh[0];
+  if (!c) throw new Error('пустой прогноз');
+  const sym = (x) => x && x.symbolCode && (x.symbolCode.next1Hour || x.symbolCode.next6Hours);
+  const hours = [];
+  for (let i = 2; i < sh.length && hours.length < 6; i += 2) {
+    const t = sh[i];
+    hours.push({ h: String(t.start || '').slice(11, 13), t: round(t.temperature && t.temperature.value), code: wmo(sym(t)), day: isDay(sym(t)) });
+  }
+  const di = (r && r.dayIntervals) || [];
+  const days = [];
+  for (let i = 1; i < di.length && days.length < 4; i++) {
+    const d = di[i];
+    days.push({ date: String(d.start || '').slice(0, 10), max: round(d.temperature && d.temperature.max), min: round(d.temperature && d.temperature.min), code: wmo(d.twentyFourHourSymbol) });
+  }
+  const today = di[0] && di[0].temperature;
+  return {
+    temp: round(c.temperature && c.temperature.value),
+    feels: round(c.feelsLike && c.feelsLike.value),
+    code: wmo(sym(c)),
+    day: c.symbol && c.symbol.sunup != null ? !!c.symbol.sunup : isDay(sym(c)),
+    wind: round(c.wind && c.wind.speed),
+    hum: round(c.humidity && c.humidity.value),
+    max: today ? round(today.max) : null,
+    min: today ? round(today.min) : null,
+    hours,
+    days,
+  };
 }
 
 const DAY = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
 export const deg = (v) => (v == null ? '' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v) + '°');
 
 export function describe(w) {
-  if (!w) return null;
+  if (!w || !w.at || Date.now() - w.at > TOO_OLD) return null;
   const look = weatherLook(w.code, w.day);
   return {
     ...w,
@@ -161,14 +233,14 @@ async function tick(force) {
     state = { status: 'fail', why: e && e.message ? e.message : String(e) };
     tv.log('погода: ' + state.why);
   }
-  current = describe(w || cacheGet('wx4|' + (S.city ? S.city.name : 'auto'), 0));
+  current = describe(w || cacheGet(KEY(), 0));
   listener(current);
-  timer = setTimeout(tick, w ? 20 * 60e3 : 2 * 60e3);
+  timer = setTimeout(tick, w ? 20 * 60e3 : 5 * 60e3);
 }
 
 export function start(fn) {
   if (fn) listener = fn;
-  const old = cacheGet('wx4|' + (S.city ? S.city.name : 'auto'), 0);
+  const old = cacheGet(KEY(), 0);
   current = describe(old);
   if (current) listener(current);
   tick();

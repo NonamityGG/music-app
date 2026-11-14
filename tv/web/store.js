@@ -25,6 +25,7 @@ export const DEFAULTS = {
   favs: null, // [pkg] in order; null until first chosen
   hidden: [],
   seen: [], // packages already shown (others get the "Новое" badge)
+  recent: [], // the last apps opened, newest first
 };
 
 function load() {

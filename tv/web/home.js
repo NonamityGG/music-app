@@ -187,6 +187,14 @@ export function render(keep) {
   if (!favs.length) r1._track.appendChild(toolCard('allApps', 'Добавь любимое', 'Удерживай OK на приложении', 'star'));
   rowsEl.appendChild(r1);
 
+  // what was opened lately, so it is one press away (not the favourites again)
+  const recent = apps.recents().filter((a) => !apps.isFav(a.pkg));
+  if (recent.length) {
+    const rr = row('recent', 'Недавние');
+    for (const a of recent) rr._track.appendChild(appCard(a));
+    rowsEl.appendChild(rr);
+  }
+
   const rest = apps.others();
   if (rest.length) {
     const r2 = row('apps', 'Приложения');

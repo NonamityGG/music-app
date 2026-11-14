@@ -33,6 +33,7 @@ export function toast(text) {
 // opening an app: a short zoom of its card, then the app
 export function launch(app, cardEl) {
   apps.markSeen(app.pkg);
+  apps.markLaunched(app.pkg);
   if (cardEl && cardEl.animate && !look.eco()) {
     cardEl.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1.18)', opacity: 0.6 }, { transform: 'scale(1.1)', opacity: 1 }], { duration: 420, easing: 'ease-out' });
   }

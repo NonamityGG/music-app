@@ -77,6 +77,20 @@ export function markSeen(pkg) {
   save({ seen: (S.seen || []).concat(pkg) });
 }
 
+const RECENT = 8;
+
+// an app was opened: first in «Недавние»
+export function markLaunched(pkg) {
+  const r = (S.recent || []).filter((p) => p !== pkg);
+  r.unshift(pkg);
+  save({ recent: r.slice(0, RECENT) });
+}
+
+// the last apps opened (installed and not hidden), newest first
+export function recents() {
+  return (S.recent || []).map(byPkg).filter((a) => a && !hidden(a));
+}
+
 export function toggleFav(pkg) {
   const favs = (S.favs || []).slice();
   const i = favs.indexOf(pkg);

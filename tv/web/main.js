@@ -141,7 +141,7 @@ onChange((patch) => {
   if (has('tint') && !S.tint) look.tint(null);
   if (has('hear')) tv.visualizer(S.hear);
   if (has('guard')) tv.setGuard(S.guard);
-  if (has('favs', 'hidden', 'tools')) home.render(true);
+  if (has('favs', 'hidden', 'tools', 'recent')) home.render(true);
   if (has('np')) home.setMedia(home.media());
   if (has('clockSec')) home.tick();
   if (has('weather')) weather.start(onWeather);
