@@ -321,7 +321,9 @@ final class CastSession {
         if (err[0] != null) throw err[0];
         // start sharp: WebRTC would start at 300 kbit/s and climb for many seconds
         try {
-            pc.setBitrate(1_500_000, 4_000_000, 12_000_000);
+            // a TV box's Wi-Fi queues anything above a few Mbit/s: seconds of delay (seen 0.5–1.1 s
+            // round trip at 4–8 Mbit/s, 25–70 ms at 2–3 Mbit/s)
+            pc.setBitrate(1_000_000, 2_500_000, 4_000_000);
         } catch (Exception e) {
             Log.w(TAG, "битрейт: " + e);
         }
@@ -334,8 +336,8 @@ final class CastSession {
                 RtpParameters p = s.getParameters();
                 if (p.encodings == null || p.encodings.isEmpty()) continue;
                 if ("video".equals(t.kind())) {
-                    p.encodings.get(0).maxBitrateBps = 12_000_000;
-                    p.encodings.get(0).minBitrateBps = 1_500_000;
+                    p.encodings.get(0).maxBitrateBps = 4_000_000;
+                    p.encodings.get(0).minBitrateBps = 1_000_000;
                     p.encodings.get(0).maxFramerate = 30;
                     p.encodings.get(0).scaleResolutionDownBy = 1.0;
                     // a screen: text and details stay sharp; under load fewer frames, not a smaller picture
