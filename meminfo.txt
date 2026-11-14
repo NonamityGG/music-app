@@ -1,0 +1,30 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 139500 Realtime: 139500
+
+** MEMINFO in pid 2868 [app.rezonans.tv] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    18652    18608        0        0    20608    33228    20069     2655
+  Dalvik Heap     1638     1540        0        0     5592     4811     2406     2405
+ Dalvik Other      844      704        0        0     1568                           
+        Stack      804      804        0        0      812                           
+       Ashmem     2260      160        0        0     4368                           
+    Other dev      176      152       24        0      340                           
+     .so mmap     3185      192      308        2    35016                           
+    .jar mmap     1033        0        0        0    24168                           
+    .apk mmap    31634      208    11052        0    79488                           
+    .dex mmap      959       12      344        0     2324                           
+    .oat mmap      750        0        0        0    15228                           
+    .art mmap     1191      828        0        0    14608                           
+   Other mmap      409       40       12        0     1908                           
+      Unknown     6058     6052        0        0     6336                           
+        TOTAL    69595    29300    11740        2    69595    38039    22475     5060
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:     2368                          20200
+         Native Heap:    18608                          20608
+                Code:    12120                         156560
+               Stack:      804                            812

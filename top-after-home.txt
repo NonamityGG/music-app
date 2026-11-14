@@ -1,0 +1,1 @@
+    mResumedActivity: ActivityRecord{d71d525 u0 app.rezonans.tv/.MainActivity t5}

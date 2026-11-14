@@ -1,0 +1,32 @@
+--------- beginning of main
+--------- beginning of system
+11-14 14:44:50.098  2868  3075 I RezTV   : page: погода: место по api.sypexgeo.net: Дублин (53.33, -6.25)
+11-14 14:44:51.096  2868  2868 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+11-14 14:44:51.509  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:44:55.325  2868  2868 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+11-14 14:44:55.556  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:45:02.099  2868  3075 I RezTV   : page: погода: The user aborted a request.
+11-14 14:45:02.369  2868  2988 W RezTV   : net api.open-meteo.com: java.net.SocketTimeoutException: Read timed out
+11-14 14:45:21.035  2868  3075 I RezTV   : page: Назад (закрываю menu)
+11-14 14:45:25.501  2868  3075 I RezTV   : page: Назад (закрываю menu)
+11-14 14:45:34.364  2868  3075 I RezTV   : page: OK: settings
+11-14 14:45:40.694  2868  3075 I RezTV   : page: Назад (закрываю settings)
+11-14 14:45:45.624  2868  3075 I RezTV   : page: OK: allApps
+11-14 14:45:48.314  2868  3075 I RezTV   : page: Назад (закрываю grid)
+11-14 14:45:52.831  2868  3075 I RezTV   : page: OK: YouTube
+11-14 14:45:53.026  2868  2868 I RezTV   : в окне: com.google.android.youtube.tv/android.widget.FrameLayout
+11-14 14:45:57.838  2868  2868 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+11-14 14:45:58.031  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:46:01.834  2868  2868 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+11-14 14:46:01.929  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:46:06.858  2868  2868 I RezTV   : в окне: com.google.android.tvlauncher/com.google.android.tvlauncher.MainActivity
+11-14 14:46:06.961  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:46:16.712  2868  3075 I RezTV   : page: OK: saver
+11-14 14:46:25.001  2868  2868 I RezTV   : заставка системы: app.rezonans.tv/app.rezonans.tv.Dream
+11-14 14:46:27.141  2868  2868 I RezTV   : в окне: com.android.systemui/android.widget.FrameLayout
+11-14 14:46:27.277  2868  2868 I RezTV   : в окне: app.rezonans.tv/app.rezonans.tv.MainActivity
+11-14 14:46:27.385  2868  2868 I RezTV   : заставка Резонанс OS поверх приложений
+11-14 14:46:27.577  2868  3075 I RezTV   : заставка: заставка открыта
+11-14 14:46:39.578  2868  3075 I RezTV   : заставка: погода: The user aborted a request.
+11-14 14:46:39.624  2868  2988 W RezTV   : net api.open-meteo.com: java.net.SocketTimeoutException: Read timed out
+11-14 14:46:42.651  2868  2868 I RezTV   : заставка системы: com.google.android.backdrop/.Backdrop
