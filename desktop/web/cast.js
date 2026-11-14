@@ -275,15 +275,15 @@ async function start(t, code) {
   try {
     const prep = await cast('prepare', { displayId, mute });
     const d = prep.display || { w: 1920, h: 1080 };
-    // at most 720p: a TV box's Wi-Fi queues anything above a few Mbit/s (on a SberBox
-    // 1080p at 6 Mbit/s grew to 0.6 s behind); 720p at 3–4.5 Mbit/s stays sharp and quick
-    const size = fitSize(d.w, d.h, Math.min(t.w || 1280, 1280), Math.min(t.h || 720, 720));
+    // the full 1080p: text on a PC screen must stay readable (720p, let alone the
+    // 960×540 WebRTC fell to on a SberBox's Wi-Fi, was not)
+    const size = fitSize(d.w, d.h, t.w, t.h);
     stream = await capture(size);
     if (my !== attempt) return cleanup();
     const vt = stream.getVideoTracks()[0];
     if (vt) {
-      // films and games: smooth motion matters more than sharp still text
-      vt.contentHint = 'motion';
+      // a PC screen is mostly text and windows: sharp detail first, fewer frames under load
+      vt.contentHint = 'detail';
       vt.addEventListener('ended', () => stop('ended'));
     }
 
@@ -327,7 +327,7 @@ async function start(t, code) {
       }
       return failed(errorText(r.error));
     }
-    await p.setRemoteDescription({ type: 'answer', sdp: startBitrate(opusStereo(unhideCandidates(r.sdp, t.ip)), 3000, 1500, 4500) });
+    await p.setRemoteDescription({ type: 'answer', sdp: startBitrate(opusStereo(unhideCandidates(r.sdp, t.ip)), 3000, 1500, 6000) });
     if (!countCandidates(r.sdp)) window.rez.log('трансляция: в ответе телевизора нет адресов — жду его сам');
 
     // a clear picture on the home network; under load keep the motion smooth
@@ -337,9 +337,10 @@ async function start(t, code) {
         const prm = s.getParameters();
         if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
         if (s.track.kind === 'video') {
-          prm.encodings[0].maxBitrate = 4500000;
+          prm.encodings[0].maxBitrate = 6000000;
           prm.encodings[0].maxFramerate = 30;
-          prm.degradationPreference = 'maintain-framerate';
+          // never a smaller picture: when the box's Wi-Fi can't take more, fewer frames
+          prm.degradationPreference = 'maintain-resolution';
         } else {
           prm.encodings[0].maxBitrate = 192000;
         }
