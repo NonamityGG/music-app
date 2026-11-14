@@ -634,6 +634,9 @@ namespace Rezonans
         private static GlobalSystemMediaTransportControlsSessionManager _mgr;
         private static string _key = "";
         private static string _thumbKey = "";
+        // browsers name the track first and fetch its picture a moment later:
+        // with no cover yet, ask again for a while
+        private static int _thumbRetries = 0;
         private static string _sent = "";
         private static DateTime _lastPos = DateTime.MinValue;
         private static int _tick;
@@ -720,9 +723,24 @@ namespace Rezonans
                         string thumb = "";
                         try { thumb = ReadThumb(props.Thumbnail); }
                         catch (Exception e) { Program.Log("обложка: " + e.Message); }
+                        _thumbRetries = thumb.Length == 0 ? 15 : 0;
                         _key = key;
                         Emit(s, app, thumb, true);
                         return;
+                    }
+                    if (_thumbRetries > 0)
+                    {
+                        _thumbRetries--;
+                        string late = "";
+                        try { late = ReadThumb(props.Thumbnail); }
+                        catch { }
+                        if (late.Length > 0)
+                        {
+                            _thumbRetries = 0;
+                            _key = key;
+                            Emit(s, app, late, true);
+                            return;
+                        }
                     }
                     _key = key;
                 }

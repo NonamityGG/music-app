@@ -1,7 +1,7 @@
 {
   "name": "rezonans-pc",
   "productName": "Rezonans",
-  "version": "1.4.2",
+  "version": "1.5.2",
   "description": "Резонанс для ПК — живые обои-волны, которые слышат музыку, остров-плеер, слова песни за волнами и Windows в цветах Резонанса",
   "main": "main.js",
   "private": true,

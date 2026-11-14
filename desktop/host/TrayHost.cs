@@ -309,6 +309,9 @@ namespace Rezonans
                     GetWindowThreadProcessId(ic.Hwnd, out ic.Pid);
                     ic.Exe = ExeOf(ic.Pid);
                 }
+                // Windows' own icons (Explorer's) that never said where their clicks
+                // go would do nothing: not shown
+                if (ic.Callback == 0 && Path.GetFileName(ic.Exe).Equals("explorer.exe", StringComparison.OrdinalIgnoreCase)) continue;
                 if (ic.Hidden)
                 {
                     bool first;
@@ -401,7 +404,28 @@ namespace Rezonans
             }
             if (ic.Callback == 0 || !IsWindow(ic.Hwnd))
             {
-                Program.Log("трей: клик " + button + " — значок без окна (" + ic.Exe + ", id " + ic.Id + ", окно " + ic.Hwnd.ToInt64() + (IsWindow(ic.Hwnd) ? "" : " нет") + ", сообщение " + ic.Callback + ")");
+                // The program put its icon up before Резонанс took the tray and never
+                // said where its clicks go: bring its window up, or start it again —
+                // a program that is already running then shows itself
+                if (ic.Pid == 0 && IsWindow(ic.Hwnd)) GetWindowThreadProcessId(ic.Hwnd, out ic.Pid);
+                if (ic.Exe.Length == 0 && ic.Pid != 0) ic.Exe = ExeOf(ic.Pid);
+                var name = Path.GetFileName(ic.Exe);
+                if (name.Length == 0 || name.Equals("explorer.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    Program.Log("трей: клик " + button + " — значок без окна (" + ic.Exe + ", id " + ic.Id + ")");
+                    return;
+                }
+                var w = Taskbar.WindowOfExe(ic.Exe);
+                if (w != 0)
+                {
+                    Program.Log("трей: клик " + button + " → " + name + " без сообщения — показываю его окно");
+                    Taskbar.Front(w);
+                }
+                else if (File.Exists(ic.Exe))
+                {
+                    Program.Log("трей: клик " + button + " → " + name + " без сообщения — запускаю, чтобы показался");
+                    Apps.Launch(ic.Exe, "");
+                }
                 return;
             }
             GetCursorPos(out var pt);

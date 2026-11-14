@@ -38,11 +38,14 @@ const ISL_W = 560;
 const ISL_H = 300;
 const PANEL_W = 420;
 const PANEL_H = 680;
-const START_W = 680;
-const START_H = 760;
+const START_W = 660;
+const START_H = 720;
+// the Start and Quick windows are see-through: a margin round the panel holds its shadow
+const SHELL_PAD = 12;
 const QUICK_W = 400;
-const QUICK_H = 600;
-const TASKBAR_H = 52; // DIP — the Резонанс taskbar along the bottom
+const QUICK_H = 640; // at most: the panel is as tall as what's in it
+// DIP — the Резонанс taskbar along the bottom (a setting: normal or small)
+const tbH = () => (settings.taskbarSize === 'small' ? 44 : 52);
 const SELFTEST = process.env.REZONANS_SELFTEST === '1';
 
 // ---------- settings and log ----------
@@ -86,11 +89,16 @@ const DEFAULTS = {
   shellKeys: true, // the Win key, the Start button and the tray open Резонанс
   guardGames: true, // sleep the shell (the Win-key hook; windows step aside) while CS2 runs
   taskbar: true, // Резонанс's own taskbar at the bottom (Windows' one auto-hides)
-  startRecent: true, // the recent files on the Start menu
-  shellWaves: 'music', // the wave in Start and Quick settings: music (hears the PC) | simple (drifts)
+  shellWaves: 'music', // the wave in Start and Quick settings: music (hears the PC) | simple (drifts) | off
   shellOsd: true, // the volume keys show Резонанс's volume pill instead of Windows'
   shellAltTab: true, // Alt+Tab shows Резонанс's window switcher instead of Windows'
   taskbarClear: false, // a see-through taskbar (frosted again under Start or a maximised window)
+  taskbarAlign: 'center', // the Start button and the apps: center | left
+  taskbarSize: 'normal', // normal | small
+  taskbarDate: true, // the date under the clock
+  taskbarSeconds: false, // seconds on the clock
+  taskbarDesk: true, // the sliver at the right edge that shows the desktop
+  taskbarTray: true, // the arrow with the programs' tray icons
   // the taskbar, as the user arranged it (Windows' own pins are never touched):
   pinsAdd: [], // apps pinned in Резонанс: [{ path, name }]
   pinsHide: [], // Windows-pinned shortcuts unpinned in Резонанс: [lowercased .lnk path]
@@ -110,7 +118,9 @@ const CHOICES = {
   textFont: ['display', 'body', 'thin'],
   textPos: ['center', 'top'],
   attachMode: ['auto', 'child', 'layered', 'worker'],
-  shellWaves: ['music', 'simple'],
+  shellWaves: ['music', 'simple', 'off'],
+  taskbarAlign: ['center', 'left'],
+  taskbarSize: ['normal', 'small'],
   fps: [30, 60, 144],
 };
 const RANGES = {
@@ -396,9 +406,9 @@ function toggleQuick() {
 }
 
 // rounded corners and a quiet border for the panel (Windows 11)
-function styleWindows() {
-  if (panel && !panel.isDestroyed()) hostSend({ cmd: 'style', hwnd: hwndOf(panel), corner: 2, border: '#3a2d58', dark: true });
-}
+// the panel is see-through now and draws its own corners and border: Windows'
+// rounding would cut its shadow off
+function styleWindows() {}
 
 function fontsDir() {
   return app.isPackaged ? path.join(process.resourcesPath, 'fonts') : path.join(__dirname, 'build', 'fonts');
@@ -500,7 +510,7 @@ function onMedia(m) {
 
 function mediaWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, quickWin);
+  list.push(bar, island, panel, quickWin, startWin, taskbarWin, trayWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -1029,9 +1039,12 @@ let panelShownAt = 0;
 let dialogOpen = false;
 
 function createPanel() {
+  // see-through like Start and Quick settings: on some PCs an ordinary (or
+  // acrylic) window of ours stays an empty box although its page has drawn —
+  // the see-through ones always show. The page draws the panel and its shadow.
   panel = new BrowserWindow({
-    width: PANEL_W,
-    height: PANEL_H,
+    width: PANEL_W + 2 * SHELL_PAD,
+    height: PANEL_H + 2 * SHELL_PAD,
     frame: false,
     show: false,
     skipTaskbar: true,
@@ -1041,10 +1054,11 @@ function createPanel() {
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
-    hasShadow: true,
+    hasShadow: false,
+    roundedCorners: false,
+    transparent: true,
+    thickFrame: false,
     backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
-    roundedCorners: true,
     title: 'Резонанс',
     webPreferences: webPrefs,
   });
@@ -1065,7 +1079,6 @@ function createPanel() {
     panel = null;
   });
   panel.once('ready-to-show', () => {
-    styleWindows();
     sendOwn();
     if (lastMedia) panel.webContents.send('media', lastMedia);
   });
@@ -1085,7 +1098,7 @@ function showPanel(from = 'bar', tab) {
   if (!panel || panel.isDestroyed()) createPanel();
   const target = from === 'tray' && tray ? tray.getBounds() : null;
   const d = target ? screen.getDisplayNearestPoint({ x: target.x + 1, y: target.y + 1 }) : screen.getPrimaryDisplay();
-  const wa = d.workArea;
+  const wa = d.id === screen.getPrimaryDisplay().id ? shellArea() : d.workArea;
   const h = Math.min(PANEL_H, wa.height - 20);
   let x;
   let y;
@@ -1099,19 +1112,47 @@ function showPanel(from = 'bar', tab) {
     x = wa.x + 8;
     y = wa.y + 8;
   }
-  panel.setBounds({ x, y, width: PANEL_W, height: h });
+  panel.setBounds({ x: x - SHELL_PAD, y: y - SHELL_PAD, width: PANEL_W + 2 * SHELL_PAD, height: h + 2 * SHELL_PAD });
   const openMsg = { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null };
   const p = panel;
-  whenLoaded(p, () => {
-    if (p.isDestroyed()) return;
+  const send = () => {
     p.webContents.send('panel', openMsg);
     p.webContents.send('info', info());
     if (lastMedia) p.webContents.send('media', lastMedia);
+  };
+  // the window comes up once the page has drawn the open panel (it says so),
+  // or after a moment anyway; a page that never answers is loaded again
+  panelPainted = false;
+  panelTimers.forEach(clearTimeout);
+  panelReveal = () => {
+    if (p.isDestroyed() || p.isVisible()) return;
+    p.show();
+    p.focus();
+    panelShownAt = Date.now();
+    if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
+  };
+  whenLoaded(p, () => {
+    if (p.isDestroyed()) return;
+    send();
+    panelTimers = [
+      setTimeout(() => panelReveal && panelReveal(), 90),
+      setTimeout(() => {
+        if (panelPainted || p.isDestroyed() || !p.isVisible()) return;
+        log('панель: страница не нарисовалась — загружаю заново');
+        p.webContents.once('did-finish-load', () => !p.isDestroyed() && send());
+        p.webContents.reload();
+      }, 1800),
+    ];
   });
-  panel.show();
-  panel.focus();
-  panelShownAt = Date.now();
-  if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
+}
+
+let panelPainted = false;
+let panelReveal = null;
+let panelTimers = [];
+function panelDrawn() {
+  panelPainted = true;
+  clearTimeout(panelTimers[0]);
+  if (panelReveal) panelReveal();
 }
 
 function togglePanel(from, tab) {
@@ -1150,10 +1191,11 @@ function createShellWindow(w, h) {
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
-    hasShadow: true,
-    roundedCorners: true,
+    hasShadow: false,
+    roundedCorners: false,
+    transparent: true,
+    thickFrame: false,
     backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
     title: 'Резонанс',
     webPreferences: shellPrefs(),
   });
@@ -1164,7 +1206,7 @@ function styleShell(win) {
 }
 
 function createStart() {
-  startWin = createShellWindow(START_W, START_H);
+  startWin = createShellWindow(START_W + 2 * SHELL_PAD, START_H + 2 * SHELL_PAD);
   startWin.loadFile(path.join(__dirname, 'app', 'start.html'));
   guardPage(startWin, 'Пуск', () => {
     const was = startWin && !startWin.isDestroyed() && startWin.isVisible();
@@ -1179,11 +1221,11 @@ function createStart() {
   startWin.on('closed', () => {
     startWin = null;
   });
-  startWin.once('ready-to-show', () => { styleShell(startWin); sendOwn(); });
+  startWin.once('ready-to-show', () => sendOwn());
 }
 
 function createQuick() {
-  quickWin = createShellWindow(QUICK_W, QUICK_H);
+  quickWin = createShellWindow(QUICK_W + 2 * SHELL_PAD, QUICK_H + 2 * SHELL_PAD);
   quickWin.loadFile(path.join(__dirname, 'app', 'quick.html'));
   guardPage(quickWin, 'быстрые настройки', () => {
     const was = quickWin && !quickWin.isDestroyed() && quickWin.isVisible();
@@ -1198,7 +1240,7 @@ function createQuick() {
   quickWin.on('closed', () => {
     quickWin = null;
   });
-  quickWin.once('ready-to-show', () => { styleShell(quickWin); sendOwn(); });
+  quickWin.once('ready-to-show', () => sendOwn());
 }
 
 let startHiddenAt = 0;
@@ -1361,52 +1403,90 @@ function hideStart() {
   startHiddenAt = Date.now();
   startWin.webContents.send('shell', { open: false });
   tbMenus({ start: false });
-  setTimeout(() => startWin && !startWin.isDestroyed() && !startWin._reopen && startWin.hide(), 180);
+  setTimeout(() => startWin && !startWin.isDestroyed() && !startWin._reopen && !menusOpen.start && startWin.hide(), 130);
 }
 function hideQuick() {
   if (!quickWin || quickWin.isDestroyed() || !quickWin.isVisible()) return;
   quickHiddenAt = Date.now();
   quickWin.webContents.send('shell', { open: false });
   tbMenus({ quick: false });
-  setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && quickWin.hide(), 180);
+  setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && !menusOpen.quick && quickWin.hide(), 130);
+}
+
+// where Start, Quick and the panel sit: the work area, but never over our own taskbar —
+// in the first seconds after launch Windows has not reserved its room yet,
+// so the work area still runs to the bottom of the screen
+function shellArea() {
+  const d = screen.getPrimaryDisplay();
+  const wa = { ...d.workArea };
+  if (settings.taskbar) {
+    const bottom = Math.min(wa.y + wa.height, d.bounds.y + d.bounds.height - tbH());
+    wa.height = bottom - wa.y;
+  }
+  // and never under our bar at the top, for the same reason
+  if (settings.bar) {
+    const top = Math.max(wa.y, d.bounds.y + BAR_H);
+    wa.height -= top - wa.y;
+    wa.y = top;
+  }
+  return wa;
 }
 
 function showStart() {
   if (Date.now() - startHiddenAt < 250) return hideStart();
   if (!startWin || startWin.isDestroyed()) createStart();
-  const d = screen.getPrimaryDisplay();
-  const wa = d.workArea;
-  const h = Math.min(START_H, wa.height - 12);
-  // above the taskbar, centred — where Windows 11 opens Start on a centred taskbar
-  const x = Math.round(Math.max(wa.x + 12, Math.min(wa.x + wa.width - START_W - 12, wa.x + (wa.width - START_W) / 2)));
+  const wa = shellArea();
+  const h = Math.min(START_H, wa.height - 24);
+  // above the taskbar: centred like Windows 11, or at the left with a left taskbar
+  const left = settings.taskbar && settings.taskbarAlign === 'left';
+  const x = left ? wa.x + 12 : Math.round(Math.max(wa.x + 12, Math.min(wa.x + wa.width - START_W - 12, wa.x + (wa.width - START_W) / 2)));
   const y = wa.y + wa.height - h - 12;
-  startWin.setBounds({ x, y, width: START_W, height: h });
-  startWin.show();
-  startWin.focus();
+  const P = SHELL_PAD;
+  startWin.setBounds({ x: x - P, y: y - P, width: START_W + 2 * P, height: h + 2 * P });
   tbMenus({ start: true });
   const sw = startWin;
   whenLoaded(sw, () => {
-    if (!sw.isDestroyed()) sw.webContents.send('shell', { open: true, apps: appList, recent: recentList, settings: view(), recentOn: settings.startRecent, user: process.env.USERNAME || '' });
+    if (sw.isDestroyed()) return;
+    sw.webContents.send('shell', { open: true, apps: appList, settings: view(), user: process.env.USERNAME || '', media: lastMedia });
+    sw.show();
+    sw.focus();
   });
   refreshApps();
   if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
 }
 
+// Quick settings is as tall as what's in it (the page says): the window keeps
+// its bottom edge above the tray and grows or shrinks upwards
+let quickFit = 0;
+function fitQuick(want) {
+  if (!quickWin || quickWin.isDestroyed()) return;
+  const n = Math.round(Number(want));
+  if (!Number.isFinite(n) || n < 120) return;
+  quickFit = Math.min(n, QUICK_H);
+  const wa = shellArea();
+  const h = Math.min(n, QUICK_H, wa.height - 24) + 2 * SHELL_PAD;
+  const b = quickWin.getBounds();
+  if (Math.abs(b.height - h) < 2) return;
+  const bottom = b.y + b.height;
+  quickWin.setBounds({ x: b.x, y: bottom - h, width: b.width, height: h });
+}
+
 function showQuick() {
   if (Date.now() - quickHiddenAt < 250) return hideQuick();
   if (!quickWin || quickWin.isDestroyed()) createQuick();
-  const d = screen.getPrimaryDisplay();
-  const wa = d.workArea;
-  const h = Math.min(QUICK_H, wa.height - 12);
+  const wa = shellArea();
+  const h = Math.min(quickFit || QUICK_H, wa.height - 24);
   const x = wa.x + wa.width - QUICK_W - 12; // above the tray, bottom-right
   const y = wa.y + wa.height - h - 12;
-  quickWin.setBounds({ x, y, width: QUICK_W, height: h });
-  quickWin.show();
-  quickWin.focus();
+  const P = SHELL_PAD;
+  quickWin.setBounds({ x: x - P, y: y - P, width: QUICK_W + 2 * P, height: h + 2 * P });
   tbMenus({ quick: true });
   const qw = quickWin;
   whenLoaded(qw, () => {
-    if (!qw.isDestroyed()) qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
+    if (qw.isDestroyed()) return;
+    qw.webContents.send('shell', { open: true, status: lastStatus, settings: view(), media: lastMedia });
+    qw.show();
+    qw.focus();
   });
   hostSend({ cmd: 'status' });
   hostSend({ cmd: 'outputs' });
@@ -1532,7 +1612,11 @@ function toggleTray(x) {
   trayWin.focus();
   tbMenus({ tray: true });
   const w = trayWin;
-  whenLoaded(w, () => !w.isDestroyed() && w.webContents.send('shell', { open: true, list: trayList }));
+  whenLoaded(w, () => {
+    if (w.isDestroyed()) return;
+    if (lastMedia) w.webContents.send('media', lastMedia);
+    w.webContents.send('shell', { open: true, list: trayList });
+  });
   hostSend({ cmd: 'tray' });
 }
 
@@ -1562,7 +1646,7 @@ let traySaid = -1;
 
 function taskbarBounds() {
   const d = screen.getPrimaryDisplay();
-  return { x: d.bounds.x, y: d.bounds.y + d.bounds.height - TASKBAR_H, width: d.bounds.width, height: TASKBAR_H };
+  return { x: d.bounds.x, y: d.bounds.y + d.bounds.height - tbH(), width: d.bounds.width, height: tbH() };
 }
 
 function createTaskbar() {
@@ -1585,7 +1669,6 @@ function createTaskbar() {
     // it can't fade): the page draws its own frosted tint and fades it.
     transparent: true,
     backgroundColor: '#00000000',
-    ...(settings.taskbarClear ? {} : { backgroundMaterial: 'acrylic' }),
     title: 'Rezonans taskbar',
     webPreferences: webPrefs,
   });
@@ -1608,6 +1691,7 @@ function createTaskbar() {
     tbClear = null;
     updateTaskbarClear();
     if (trayList.length) tb.webContents.send('tray', trayList);
+    if (lastMedia) tb.webContents.send('media', lastMedia);
     hostSend({ cmd: 'taskpins' });
     hostSend({ cmd: 'tray' });
     hostSend({ cmd: 'taskwins', force: true });
@@ -1623,7 +1707,7 @@ function registerTaskbar(fresh) {
   if (!taskbarWin || taskbarWin.isDestroyed()) return;
   const d = screen.getPrimaryDisplay();
   const r = screen.dipToScreenRect(null, d.bounds);
-  hostSend({ cmd: 'appbar', fresh: !!fresh, hwnd: hwndOf(taskbarWin), edge: 'bottom', x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(TASKBAR_H * d.scaleFactor) });
+  hostSend({ cmd: 'appbar', fresh: !!fresh, hwnd: hwndOf(taskbarWin), edge: 'bottom', x: r.x, y: r.y, w: r.width, h: r.height, height: Math.round(tbH() * d.scaleFactor) });
 }
 
 function hookTaskbar() {
@@ -1809,7 +1893,6 @@ function refreshApps() {
   if (Date.now() - appsAt < 30000 && appList.length) return;
   appsAt = Date.now();
   hostSend({ cmd: 'apps' });
-  if (settings.startRecent) hostSend({ cmd: 'recent' });
 }
 
 function info() {
@@ -1932,14 +2015,18 @@ function saveSettingsPatch(patch) {
     else closeIsland();
   }
   if (changed('taskbar')) enableTaskbar(!!settings.taskbar);
+  if (changed('taskbarClear')) {
+    tbClear = null;
+    updateTaskbarClear();
+  }
   if (changed('autostart')) setAutostart(settings.autostart);
   if (changed('winFont')) {
     if (settings.winFont) hostSend({ cmd: 'fontsInstall', dir: fontsDir() });
     else hostSend({ cmd: 'fontsRestore' });
   }
   if (changed('shellKeys') || changed('guardGames') || changed('shellOsd') || changed('shellAltTab')) sendHooks();
-  // the window is made with or without Windows' acrylic: make it again
-  if (changed('taskbarClear') && settings.taskbar) {
+  // a new height: the strip Windows keeps for it changes, make it again
+  if (changed('taskbarSize') && settings.taskbar) {
     closeTaskbar();
     enableTaskbar(true);
   }
@@ -2141,6 +2228,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('panel', (e, cmd) => {
       if (cmd === 'toggle') togglePanel('bar');
       else if (cmd === 'close') hidePanel();
+      else if (cmd === 'painted') panelDrawn();
     });
     // The island takes the mouse only while the pointer is on it. While it does,
     // the cursor is watched here: when a window stops letting the mouse through,
@@ -2169,6 +2257,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('log', (e, msg) => log('окно: ' + msg));
     ipcMain.on('shell', (e, cmd, arg) => {
       if (cmd === 'startClose') hideStart();
+      else if (cmd === 'quickHeight') fitQuick(arg && arg.h);
       else if (cmd === 'quickClose') hideQuick();
       else if (cmd === 'launch') {
         hostSend({ cmd: 'launch', path: arg && arg.path, args: (arg && arg.args) || '' });

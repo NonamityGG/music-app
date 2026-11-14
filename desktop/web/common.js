@@ -46,6 +46,7 @@ export function fmt(ms) {
 export function mediaState(onChange) {
   const st = { status: 'none', title: '', artist: '', album: '', app: '', pos: 0, dur: 0, canNext: false, canPrev: false, thumb: '' };
   let posAt = performance.now();
+  let lastRep = null; // the last position the player itself reported, and when it changed
   const api = {
     st,
     active: () => !!(st.status && st.status !== 'none' && (st.title || st.artist)),
@@ -72,7 +73,22 @@ export function mediaState(onChange) {
       Object.assign(st, { status: 'none', title: '', artist: '', album: '', app: '', pos: 0, dur: 0, thumb: '' });
     } else {
       const thumbChanged = m.thumb !== undefined && m.thumb !== st.thumb;
+      const now = performance.now();
+      const running = api.position();
+      const same = st.status === 'playing' && m.status !== 'paused' && m.status !== 'stopped' && (m.title === undefined || m.title === st.title) && (m.app === undefined || m.app === st.app);
+      let keep = !('pos' in m);
+      if (!keep && same) {
+        // Some players (browsers) keep reporting the same position while the
+        // song plays on, or one a little behind: the clock here runs on instead
+        // of stepping back every second (the lyrics flickered with it). A real
+        // seek — a new position, or one far back — is taken at once.
+        const frozen = lastRep && Math.abs(m.pos - lastRep.pos) < 250 && now - lastRep.at > 700;
+        const behind = running - m.pos;
+        if (frozen || (behind > 0 && behind < 1500)) keep = true;
+      }
+      if ('pos' in m && (!lastRep || Math.abs(m.pos - lastRep.pos) >= 250)) lastRep = { pos: m.pos, at: now };
       Object.assign(st, m);
+      if (keep) st.pos = running;
       if (m.thumb === undefined) st.thumb = st.thumb || '';
       st._thumbChanged = thumbChanged;
     }
@@ -88,4 +104,32 @@ export function hexAlpha(hex, a) {
   const h = String(hex || '#7c4dff').replace('#', '');
   const n = parseInt(h.length === 3 ? h.replace(/./g, '$&$&') : h, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+// The little level bars (logo, island): each bar is measured against its own
+// recent range — its quietest and loudest of the last second or two — so they
+// follow the beat. Raw levels of loud, mastered music sit near the top all the
+// time and pinned the bars up. groups: [from, to) band ranges; returns a
+// function (bands, out) -> out with 0..1 per bar, and whether anything is heard.
+export function beatMeter(groups) {
+  const n = groups.length;
+  const lo = new Float32Array(n).fill(1);
+  const hi = new Float32Array(n);
+  const raw = new Float32Array(n);
+  return (bands, out) => {
+    let heard = false;
+    for (let i = 0; i < n; i++) {
+      const [a, b] = groups[i];
+      let s = 0;
+      for (let k = a; k < b; k++) s += bands[k];
+      const v = s / Math.max(1, b - a);
+      raw[i] = v;
+      if (v > 0.04) heard = true;
+      hi[i] = v > hi[i] ? v : hi[i] - (hi[i] - v) * 0.03;
+      lo[i] = v < lo[i] ? v : lo[i] + (v - lo[i]) * 0.03;
+      const span = Math.max(0.1, hi[i] - lo[i]);
+      out[i] = Math.max(0, Math.min(1, (v - lo[i]) / span));
+    }
+    return heard;
+  };
 }

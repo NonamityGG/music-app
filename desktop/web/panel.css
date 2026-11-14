@@ -1,6 +1,7 @@
-/* Резонанс для ПК — the panel: Резонанс's own menu with every setting. Windows
-   draws acrylic behind the page; the page tints it in the app's plum-ink look
-   and paints everything chosen in the palette's colours. */
+/* Резонанс для ПК — the panel: Резонанс's own menu with every setting. The
+   window is see-through (like Start): the page draws the panel on its own dark
+   plum-ink ground with its shadow round it; everything chosen is painted in the
+   palette's colours. */
 
 html,
 body {
@@ -62,10 +63,15 @@ svg {
 
 .panel {
   position: absolute;
-  inset: 0;
+  inset: 12px; /* the see-through margin: SHELL_PAD in main.js */
+  border-radius: 10px;
+  isolation: isolate;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 6px 12px -2px rgba(0, 0, 0, 0.55);
   display: flex;
   flex-direction: column;
-  background: radial-gradient(90% 45% at 0% 0%, color-mix(in srgb, var(--acc) 26%, transparent), transparent 70%), radial-gradient(70% 40% at 100% 100%, color-mix(in srgb, var(--acc2) 14%, transparent), transparent 70%), linear-gradient(180deg, rgba(28, 17, 52, 0.74), rgba(13, 9, 24, 0.86));
+  background: radial-gradient(90% 45% at 0% 0%, color-mix(in srgb, var(--acc) 26%, transparent), transparent 70%), radial-gradient(70% 40% at 100% 100%, color-mix(in srgb, var(--acc2) 14%, transparent), transparent 70%), linear-gradient(180deg, #1b1230, #0f0b1b);
   overflow: hidden;
 }
 
