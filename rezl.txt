@@ -1,0 +1,3 @@
+--------- beginning of main
+11-14 14:45:12.663  4132  4132 I RezL    : onCreate, saved state false
+11-14 14:45:50.149  4132  4132 I RezL    : onNewIntent Intent { act=android.intent.action.MAIN cat=[android.intent.category.HOME] flg=0x10000100 cmp=app.rezonans.launcher/.MainActivity (has extras) }

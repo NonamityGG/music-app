@@ -1,0 +1,1 @@
+      topResumedActivity=ActivityRecord{7137565 u0 app.rezonans.launcher/.MainActivity t8}
