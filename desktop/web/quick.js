@@ -7,12 +7,14 @@
 import { h, clear } from '../../src/util.js';
 import * as shellwaves from './shellwaves.js';
 import { coverAccent } from './coverlook.js';
+import { appName } from './common.js';
 
 const $ = (id) => document.getElementById(id);
 const body = document.body;
 shellwaves.init($('waves'), { y: 1.0, amp: 0.2, name: 'быстрые настройки' });
 
 const ICON = {
+  cast: 'M21 3H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zM1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10z',
   wifi: 'M12 21l3-3a4.2 4.2 0 0 0-6 0l3 3zm0-6a7.5 7.5 0 0 1 5.3 2.2l1.7-1.7a9.9 9.9 0 0 0-14 0l1.7 1.7A7.5 7.5 0 0 1 12 15zm0-5c2.9 0 5.6 1.1 7.6 3.1l1.7-1.7A13.4 13.4 0 0 0 12 5 13.4 13.4 0 0 0 2.7 11.4l1.7 1.7A10.6 10.6 0 0 1 12 10z',
   bt: 'M17.71 7.71 12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l5.71-5.71-4.3-4.29 4.3-4.29zM13 5.83l1.88 1.88L13 9.59V5.83zm1.88 10.46L13 18.17v-3.76l1.88 1.88z',
   waves: 'M3 10h2v4H3zm4-3h2v10H7zm4-4h2v18h-2zm4 4h2v10h-2zm4 3h2v4h-2z',
@@ -105,6 +107,17 @@ function openSettings(page) {
   window.rez.shell('quickClose');
 }
 
+const canCast = typeof window.rez.castState === 'function';
+let castState = { live: false, tv: '' };
+if (canCast) {
+  const setCast = (st) => {
+    castState = st || castState;
+    renderTiles();
+  };
+  if (window.rez.onCastState) window.rez.onCastState(setCast);
+  window.rez.castState().then(setCast, () => {});
+}
+
 function renderTiles() {
   const items = [];
   if ('wifi' in status)
@@ -112,6 +125,9 @@ function renderTiles() {
   // a cable and no Wi-Fi module: the connection, opening the network settings
   else if (status.net === 'ethernet') items.push({ name: status.netLevel === 'internet' ? 'Ethernet' : 'Нет интернета', ic: 'lan', on: status.netLevel === 'internet', act: () => openSettings('network-ethernet') });
   if ('bt' in status) items.push({ name: 'Bluetooth', ic: 'bt', toggle: true, on: !!status.bt, act: () => window.rez.shell('radio', { kind: 'bt', on: !status.bt }), more: () => openSettings('bluetooth') });
+  // «На телевизор» (Резонанс Connect): this PC's screen and sound on a TV with
+  // Резонанс OS — only in a build that can do it
+  if (canCast) items.push({ name: castState.live ? castState.tv || 'На телевизоре' : 'На телевизор', ic: 'cast', toggle: true, on: !!castState.live, act: () => window.rez.shell('cast') });
   items.push(
     { name: 'Живые обои', ic: 'waves', toggle: true, on: settings.wallpaper !== false, act: () => window.rez.set({ wallpaper: !(settings.wallpaper !== false) }) },
     { name: 'Остров', ic: 'island', toggle: true, on: settings.island !== false, act: () => window.rez.set({ island: !(settings.island !== false) }) },
@@ -212,7 +228,7 @@ function renderMedia() {
   const active = media && media.status && media.status !== 'none' && (media.title || media.artist);
   $('np').classList.toggle('hidden', !active);
   if (!active) return;
-  $('npApp').textContent = media.app || 'Сейчас играет';
+  $('npApp').textContent = media.app ? appName(media.app) : 'Сейчас играет';
   $('npTitle').textContent = media.title || 'Без названия';
   $('npArtist').textContent = media.artist || '';
   $('cover').style.backgroundImage = media.thumb ? `url("${media.thumb}")` : '';
