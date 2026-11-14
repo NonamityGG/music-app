@@ -14,6 +14,8 @@ import { trackMenu, artistPage, otherPlatformsSheet, setSearchHook, isLikedSync,
 import { cover, coverOf, markPlaying, refreshLocalCovers, sheet, closeSheet, isSheetOpen, snack, dragToClose, hSwipe, slideIn, confirmSheet } from './components.js';
 import { applyTheme, syncBars } from './theme.js';
 import { initScreen, backgroundFree, askBackgroundFree } from './screen.js';
+import { openSaver, closeSaver } from './saver.js';
+import { recordPlay } from './picks.js';
 import { createLyricsView } from './lyrics-view.js';
 import { moreLike } from './endless.js';
 import { onLocalChange } from './local.js';
@@ -80,6 +82,8 @@ waves.addSurface('full', full.canvas, {
 });
 player.onPlayer((type) => {
   if (type === 'state') waves.kick();
+  // what you listen to, for Резонанс's own picks in the feed (picks.js)
+  if (type === 'state' && player.state.playing) recordPlay(player.current());
 });
 
 // The first time music plays: if the phone would freeze Резонанс on pause in the
@@ -426,6 +430,7 @@ function buildFull() {
         { class: 'full-bottom' },
         lyricsBtn,
         h('button', { class: 'fb-btn', onclick: () => showWaves() }, icon('wave', 24), h('span', null, 'Волны')),
+        h('button', { class: 'fb-btn', onclick: () => openSaver('full') }, icon('clock', 24), h('span', null, 'Заставка')),
         h('button', { class: 'fb-btn', onclick: () => showQueue() }, icon('queue', 24), h('span', null, 'Очередь'))
       )
     )
@@ -746,6 +751,7 @@ function syncNotificationLike() {
 
 App.addListener('backButton', async () => {
   if (await web.back()) return; // sign-in page open on top
+  if (closeSaver()) return;
   if (closeSheet()) return;
   if (closeFull()) return;
   if (nav.back()) return;

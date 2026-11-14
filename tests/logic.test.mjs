@@ -721,3 +721,21 @@ test('refreshing a brought-in playlist brings in only the new songs, in the sour
   assert.equal(mergeFrom(p.id, [tr('n1'), tr('a')]), 0);
   assert.deepEqual(getPlaylist(p.id).tracks.map((t) => t.title), ['n1', 'n2', 'a', 'b', 'm', 'c']);
 });
+
+test('Резонанс picks: the most played song of two weeks, and the forgotten favourites', async () => {
+  const { topRecent, forgotten } = await import('../src/picks.js');
+  const DAY = 864e5;
+  const now = 100 * DAY;
+  const tr = (n) => ({ key: 'y:' + n, title: n, yid: n });
+  const list = [
+    { t: tr('a'), at: [now - 1 * DAY, now - 3 * DAY] },                 // 2 plays this fortnight
+    { t: tr('b'), at: [now - 2 * DAY, now - 4 * DAY, now - 5 * DAY] },   // 3 plays: the top one
+    { t: tr('c'), at: [now - 20 * DAY, now - 25 * DAY, now - 30 * DAY] }, // loved, then forgotten
+    { t: tr('d'), at: [now - 1 * DAY] },                                 // once: not "resonating"
+  ];
+  const top = topRecent(list, now);
+  assert.equal(top.t.title, 'b');
+  assert.equal(top.n, 3);
+  assert.deepEqual(forgotten(list, now).map((t) => t.title), ['c']);
+  assert.equal(topRecent([{ t: tr('x'), at: [now - DAY] }], now), null);
+});

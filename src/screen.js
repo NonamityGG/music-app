@@ -54,6 +54,11 @@ export async function backgroundFree() {
   }
 }
 
+// The screen stays on while the screensaver is up
+export function keepAwake(on) {
+  if (native) Screen.keepAwake({ on: !!on }).catch(() => {});
+}
+
 // The system's own "let it run in the background?" dialog
 export function askBackgroundFree() {
   if (native) Screen.askBackgroundFree().catch(() => {});

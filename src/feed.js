@@ -237,6 +237,8 @@ export async function buildFeed(onStep = () => {}) {
     mix,
     mixFrom: wave.length >= 12 ? 'wave' : 'related',
     personal,
+    // songs of similar artists for Резонанс's "Открытия" pick (picks.js)
+    discover: spreadByArtist(fromRelated.filter((t) => !knownKeys.has(t.key))).slice(0, 60),
   };
   save('feed', feed);
   return feed;

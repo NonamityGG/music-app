@@ -64,6 +64,20 @@ public class ScreenPlugin extends Plugin {
         call.resolve(r);
     }
 
+    /** The screen stays on (the screensaver: waves and a clock), or may go dark again. */
+    @PluginMethod
+    public void keepAwake(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        getBridge()
+            .executeOnMainThread(() -> {
+                if (getActivity() != null) {
+                    if (on) getActivity().getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getActivity().getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+                call.resolve();
+            });
+    }
+
     /**
      * Whether the phone lets Резонанс be in the background without saving power on
      * it. Some phones (Infinix, Tecno — XOS "Usf_Hiber") freeze an app that stands
