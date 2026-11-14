@@ -7,7 +7,22 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { h, icon, clear, toast, add } from './util.js';
 import { sheet, closeSheet, spinner } from './components.js';
-import { cleanCode, unhideCandidates, opusStereo, startBitrate, countCandidates, errorText } from './connect.js';
+import { cleanCode, unhideCandidates, opusStereo, startBitrate, countCandidates, errorText, QUALITY, quality } from './connect.js';
+
+// the picture: smooth by default on a phone (videos), up to 4K
+const QKEY = 'rez.castQuality';
+function qualityNow() {
+  let id = '';
+  try {
+    id = localStorage.getItem(QKEY) || '';
+  } catch {}
+  return quality(id, 'smooth');
+}
+function setQuality(id) {
+  try {
+    localStorage.setItem(QKEY, id);
+  } catch {}
+}
 
 const Cast = registerPlugin('Cast');
 export const castAvailable = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
@@ -167,7 +182,34 @@ function paint() {
         )
       )
     ),
+    qualityRow(),
     h('div', { class: 'muted small cast-hint' }, 'Покажет экран телефона со звуком. Звук телефона идёт на телевизор на Android 10 и новее.')
+  );
+}
+
+function qualityRow() {
+  const q = qualityNow();
+  return h(
+    'div',
+    { class: 'cast-q' },
+    h('div', { class: 'cast-q-t' }, 'Качество', h('span', { class: 'muted small' }, ' · ' + q.sub)),
+    h(
+      'div',
+      { class: 'chips' },
+      QUALITY.map((p) =>
+        h(
+          'button',
+          {
+            class: 'chip' + (p.id === q.id ? ' active' : ''),
+            onclick: () => {
+              setQuality(p.id);
+              paint();
+            },
+          },
+          p.name
+        )
+      )
+    )
   );
 }
 
@@ -215,7 +257,8 @@ async function start(t, code) {
   try {
     // the system asks for the screen (and the microphone permission, for the sound)
     try {
-      await Cast.capture({ w: t.w || 1920, h: t.h || 1080 });
+      const q = qualityNow();
+      await Cast.capture({ w: q.w, h: q.h });
     } catch (e) {
       busy = false;
       view = code ? 'code' : 'list';
@@ -247,7 +290,11 @@ async function start(t, code) {
       return fail(e);
     }
     remember(t.id, { name: t.name, ...(r.body.token ? { token: r.body.token } : {}) });
-    await Cast.answer({ sdp: startBitrate(opusStereo(unhideCandidates(r.body.sdp, t.ip)), 3000, 2500, 4500) });
+    const q = qualityNow();
+    // a phone's hardware encoder makes mush below 2.5 Mbit/s
+    const min = Math.max(q.min, 2500);
+    const start = Math.max(q.start, min);
+    await Cast.answer({ sdp: startBitrate(opusStereo(unhideCandidates(r.body.sdp, t.ip)), start, min, q.max), min, start, max: q.max, keep: q.keep });
     if (!countCandidates(r.body.sdp)) console.warn('cast: в ответе телевизора нет адресов');
     live = { id: t.id, name: t.name };
     view = 'live';

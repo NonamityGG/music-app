@@ -165,11 +165,13 @@ final class CastSession {
         WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
         wm.getDefaultDisplay().getRealMetrics(dm);
         int sw = dm.widthPixels, sh = dm.heightPixels;
-        // at most 720p across: a phone's encoder and a TV box's Wi-Fi give a clean 720p,
-        // a blocky 1080p (upright the phone stays 1080 tall — few pixels across)
+        // the chosen quality's size (tvW×tvH: 720p … 4K); upright the phone may stay
+        // 1080 tall even at 720p (few pixels across anyway)
         boolean wide = sw > sh;
-        int maxW = Math.min(wide ? 1280 : 1920, tvW > 0 ? tvW : 1920);
-        int maxH = Math.min(wide ? 720 : 1080, tvH > 0 ? tvH : 1080);
+        int capW = tvW > 0 ? tvW : 1280;
+        int capH = tvH > 0 ? tvH : 720;
+        int maxW = capW;
+        int maxH = wide ? capH : Math.max(capH, 1080);
         double k = Math.min(1.0, Math.min(maxW / (double) sw, maxH / (double) sh));
         return new int[] { even(sw * k), even(sh * k) };
     }
@@ -303,7 +305,7 @@ final class CastSession {
     }
 
     /** The TV's answer (already adjusted by the page: addresses, stereo, start bitrate). */
-    void answer(String sdp) throws Exception {
+    void answer(String sdp, int minK, int startK, int maxK, String keep) throws Exception {
         final Exception[] err = new Exception[1];
         final CountDownLatch set = new CountDownLatch(1);
         pc.setRemoteDescription(new Sdp() {
@@ -324,7 +326,7 @@ final class CastSession {
         try {
             // a TV box's Wi-Fi queues anything above a few Mbit/s: seconds of delay (seen 0.5–1.1 s
             // round trip at 4–8 Mbit/s, 25–70 ms at 2–3 Mbit/s)
-            pc.setBitrate(2_500_000, 3_000_000, 4_500_000);
+            pc.setBitrate(minK * 1000, startK * 1000, maxK * 1000);
         } catch (Exception e) {
             Log.w(TAG, "битрейт: " + e);
         }
@@ -337,13 +339,17 @@ final class CastSession {
                 RtpParameters p = s.getParameters();
                 if (p.encodings == null || p.encodings.isEmpty()) continue;
                 if ("video".equals(t.kind())) {
-                    // below 2.5 Mbit/s the phone's hardware encoder makes mush; the box's Wi-Fi takes ~3 without queueing
-                    p.encodings.get(0).maxBitrateBps = 4_500_000;
-                    p.encodings.get(0).minBitrateBps = 2_500_000;
+                    // the chosen quality (the page keeps the phone's encoder at ≥ 2.5 Mbit/s: mush below)
+                    p.encodings.get(0).maxBitrateBps = maxK * 1000;
+                    p.encodings.get(0).minBitrateBps = minK * 1000;
                     p.encodings.get(0).maxFramerate = 30;
                     p.encodings.get(0).scaleResolutionDownBy = 1.0;
-                    // a screen: text and details stay sharp; under load fewer frames, not a smaller picture
-                    p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION;
+                    // what gives way when the box's Wi-Fi can't take more: the frames or the size
+                    p.degradationPreference = "maintain-framerate".equals(keep)
+                        ? RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE
+                        : "balanced".equals(keep)
+                            ? RtpParameters.DegradationPreference.BALANCED
+                            : RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION;
                 } else {
                     p.encodings.get(0).maxBitrateBps = 192_000;
                 }

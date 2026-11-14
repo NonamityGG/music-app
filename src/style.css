@@ -4382,3 +4382,20 @@ html[data-fullscreen] .statusline {
 .cast-live-t {
   font-weight: 600;
 }
+
+.cast-q {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.cast-q-t {
+  font-weight: 600;
+}
+
+.cast-q .chip.active {
+  border-color: var(--lilac);
+  color: var(--lilac);
+  font-weight: 600;
+}

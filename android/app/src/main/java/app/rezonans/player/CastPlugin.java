@@ -241,13 +241,17 @@ public class CastPlugin extends Plugin {
     public void answer(PluginCall call) {
         final CastSession s = session;
         final String sdp = call.getString("sdp", "");
+        final int minK = call.getInt("min", 2500);
+        final int startK = call.getInt("start", 3000);
+        final int maxK = call.getInt("max", 4500);
+        final String keep = call.getString("keep", "maintain-resolution");
         if (s == null) {
             call.reject("off");
             return;
         }
         work.execute(() -> {
             try {
-                s.answer(sdp);
+                s.answer(sdp, minK, startK, maxK, keep);
                 call.resolve();
             } catch (Exception e) {
                 Log.w(TAG, "ответ ТВ: " + e);
