@@ -6,6 +6,7 @@ import { S, save, used } from './store.js';
 import * as apps from './apps.js';
 import * as look from './look.js';
 import { KINDS } from './widgets.js';
+import * as weather from './weather.js';
 
 export const $ = (s) => document.querySelector(s);
 const svg = (d) => `<svg viewBox="0 0 24 24">${d}</svg>`;
@@ -281,6 +282,66 @@ function renderSheet() {
   ws.appendChild(wl);
   const np = link(ICONS.page, 'Новая страница', () => homeHooks.newPage());
   ws.appendChild(np);
+
+  // the weather's town, when a weather widget is on the screen: found by name
+  // (the internet address may be a VPN's, in another country)
+  if ((S.pages || []).flat().some((k) => k.startsWith('#weather'))) {
+    const wx = sec('Погода');
+    const now = weather.now();
+    const line = document.createElement('p');
+    line.className = 'hint';
+    line.textContent = S.city ? `Город: ${S.city.name}` : `Город по сети: ${(now && now.city) || 'ещё не известен'}. Если не тот — найди свой.`;
+    wx.appendChild(line);
+    const box = document.createElement('label');
+    box.className = 'town glass';
+    box.innerHTML = '<input type="search" placeholder="Город" autocomplete="off" enterkeyhint="search">';
+    const list = document.createElement('div');
+    list.className = 'towns';
+    const input = box.querySelector('input');
+    let t = 0;
+    input.addEventListener('input', () => {
+      clearTimeout(t);
+      const q = input.value.trim();
+      if (q.length < 2) return (list.innerHTML = '');
+      t = setTimeout(async () => {
+        let found = [];
+        try {
+          found = await weather.towns(q);
+        } catch {}
+        if (input.value.trim() !== q) return;
+        list.innerHTML = '';
+        if (!found.length) list.innerHTML = '<p class="hint">Не нашлось</p>';
+        for (const c of found) {
+          const b = document.createElement('button');
+          b.className = 'tw';
+          b.innerHTML = '<b></b><span></span>';
+          b.querySelector('b').textContent = c.name;
+          b.querySelector('span').textContent = c.where;
+          b.onclick = () => {
+            rez.haptic('tick');
+            save({ city: c });
+            weather.refresh();
+            toast(`Погода — для города ${c.name}`);
+            renderSheet();
+          };
+          list.appendChild(b);
+        }
+      }, 350);
+    });
+    wx.appendChild(box);
+    wx.appendChild(list);
+    if (S.city) {
+      const back = document.createElement('button');
+      back.className = 'btn-text';
+      back.textContent = 'Определять по сети';
+      back.onclick = () => {
+        save({ city: null });
+        weather.refresh();
+        renderSheet();
+      };
+      wx.appendChild(back);
+    }
+  }
 
   const pal = sec('Палитра');
   const sw = document.createElement('div');

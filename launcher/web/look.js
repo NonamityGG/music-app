@@ -38,7 +38,7 @@ waves.addSurface('bg', canvas, {
   center: () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    return { x: w / 2, y: h * 0.44, amp: Math.min(w, h) * (state.music ? 0.19 : 0.14), r: 0 };
+    return { x: w / 2, y: h * 0.31, amp: Math.min(w, h) * (state.music ? 0.17 : 0.12), r: 0 };
   },
 });
 waves.setActive('bg');

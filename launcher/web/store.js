@@ -15,6 +15,7 @@ const DEFAULTS = {
   hear: false, // the waves hear what plays (needs the microphone permission)
   labels: true,
   syncWall: false, // the phone's wallpaper follows the palette
+  city: null, // {name, lat, lon}: the weather's town, chosen by hand
   uses: {}, // pkg -> { n, at }
 };
 

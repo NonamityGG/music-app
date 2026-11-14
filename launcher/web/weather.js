@@ -4,6 +4,7 @@
 // key). Everything goes through the Android side's /net (a short list of hosts).
 
 import { rez, native } from './bridge.js';
+import { S } from './store.js';
 
 const BASE = location.protocol === 'https:' ? location.origin + '/' : '/';
 const net = (url) => (native ? `${BASE}net?u=${encodeURIComponent(url)}` : url);
@@ -43,6 +44,8 @@ const FINDERS = [
 ];
 
 async function place() {
+  // a town chosen in the settings comes first (the internet address can be a VPN's, far away)
+  if (S.city && S.city.lat != null) return { lat: S.city.lat, lon: S.city.lon, city: S.city.name };
   const hit = cacheGet('place', 12 * 3600e3);
   if (hit) return hit;
   for (const [url, read] of FINDERS) {
@@ -93,7 +96,7 @@ const look = (code, day) => {
   const sky = day ? SUN : MOON;
   const s = (inner) => `<svg viewBox="0 0 24 24">${inner}</svg>`;
   if (code === 0) return [s(sky), day ? 'ясно' : 'ясная ночь'];
-  if (code <= 2) return [s(`<g transform="translate(-3 -3) scale(.8)">${sky}</g>` + CLOUD), 'переменная облачность'];
+  if (code <= 2) return [s(`<g transform="translate(-3 -3) scale(.8)">${sky}</g>` + CLOUD), 'малооблачно'];
   if (code === 3) return [s(CLOUD), 'пасмурно'];
   if (code === 45 || code === 48) return [s('<path class="cloud" d="M4 9h16M3 13h18M5 17h14"/>'), 'туман'];
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) return [s(CLOUD + '<path class="drop" d="M8 21h.01M12 22h.01M16 21h.01"/>'), 'снег'];
@@ -141,3 +144,23 @@ export function start(fn) {
   tick();
 }
 export const stop = () => clearTimeout(timer);
+
+// the town changed in the settings: the forecast again, now
+export function refresh() {
+  try {
+    localStorage.removeItem('rezw-wx');
+  } catch {}
+  current = null;
+  tick();
+}
+
+// towns by name, for the settings
+export async function towns(name) {
+  const r = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=6&language=ru&format=json`, 8000);
+  return ((r && r.results) || []).map((x) => ({
+    name: x.name,
+    where: [x.admin1, x.country].filter(Boolean).join(', '),
+    lat: x.latitude,
+    lon: x.longitude,
+  }));
+}

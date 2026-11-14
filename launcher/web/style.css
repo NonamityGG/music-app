@@ -1554,3 +1554,66 @@ body.nolabels .hpage .lb {
 .wd-clock .w-date {
   font-size: min(16px, 7.4cqw);
 }
+
+/* sideways swipes that start on an icon or a widget still turn the pages
+   (a held one stops them itself: main.js cancels the touch's moves then) */
+.hpage .app,
+.hpage .wd,
+#pages .app {
+  touch-action: pan-x;
+}
+
+/* the weather's town (the settings sheet) */
+.town {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
+  margin-top: 4px;
+}
+.town input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: 500 15px var(--body);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.town input::placeholder {
+  color: var(--dim);
+}
+.towns {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+.tw {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  text-align: left;
+}
+.tw:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+.tw b {
+  font-weight: 600;
+}
+.tw span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.btn-text {
+  margin-top: 6px;
+  padding: 8px 4px;
+  color: var(--a2);
+  font-weight: 600;
+  font-size: 14px;
+}
