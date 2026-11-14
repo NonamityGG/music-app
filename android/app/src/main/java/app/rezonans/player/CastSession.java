@@ -33,7 +33,6 @@ import org.webrtc.RtpCapabilities;
 import org.webrtc.RtpParameters;
 import org.webrtc.RtpSender;
 import org.webrtc.RtpTransceiver;
-import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
@@ -75,7 +74,7 @@ final class CastSession {
     private JavaAudioDeviceModule adm;
     private PeerConnection pc;
     private DataChannel ctl;
-    private ScreenCapturerAndroid capturer;
+    private CastCapturer capturer;
     private SurfaceTextureHelper sth;
     private VideoSource videoSource;
     private AudioSource audioSource;
@@ -148,7 +147,7 @@ final class CastSession {
         capH = size[1];
         sth = SurfaceTextureHelper.create("rez-cast", egl.getEglBaseContext());
         videoSource = factory.createVideoSource(true);
-        capturer = new ScreenCapturerAndroid(projection, new MediaProjection.Callback() {
+        capturer = new CastCapturer(projection, new MediaProjection.Callback() {
             @Override
             public void onStop() {
                 // the person stopped it from the system (the status bar chip, the lock screen)
@@ -383,7 +382,7 @@ final class CastSession {
     private void swapToPlayback() {
         if (!withAudio || Build.VERSION.SDK_INT < 29 || capturer == null) return;
         try {
-            MediaProjection mp = capturer.getMediaProjection();
+            MediaProjection mp = capturer.projection();
             if (mp == null) return;
             AudioPlaybackCaptureConfiguration cfg = new AudioPlaybackCaptureConfiguration.Builder(mp)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
