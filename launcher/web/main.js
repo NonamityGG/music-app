@@ -134,7 +134,7 @@ function renderHome(animate) {
   };
   fill(grid, S.home || [], 'home');
   fill(dock, S.dock || [], 'dock');
-  dock.classList.toggle('n5', (S.dock || []).length > 4);
+  dock.style.setProperty('--cols', Math.max(4, (S.dock || []).length));
   const keep = new Set([...(S.home || []), ...(S.dock || [])]);
   for (const p of [...homeEls.keys()]) if (!keep.has(p)) homeEls.delete(p);
   if (!animate) return;
@@ -161,9 +161,10 @@ function setP(v) {
   p = v;
   const h = H();
   home.style.transform = p ? `translate3d(0,${(-p * h * 0.04).toFixed(1)}px,0) scale(${(1 - 0.06 * p).toFixed(4)})` : '';
-  home.style.opacity = (1 - p).toFixed(3);
+  // a crossfade with little overlap: the home screen is gone before the drawer is fully there
+  home.style.opacity = clamp(1 - p * 1.7, 0, 1).toFixed(3);
   drawer.style.transform = `translate3d(0,${((1 - p) * h * 0.4).toFixed(1)}px,0)`;
-  drawer.style.opacity = clamp(p * 1.5, 0, 1).toFixed(3);
+  drawer.style.opacity = clamp((p - 0.12) * 1.6, 0, 1).toFixed(3);
 }
 let settleT = 0;
 function settle(open, animate = true) {
@@ -173,6 +174,7 @@ function settle(open, animate = true) {
   clearTimeout(settleT);
   if (animate) {
     body.classList.add('anim');
+    body.classList.toggle('opening', open);
     // the class must be on before the final values for the transition to run
     void home.offsetWidth;
   }
@@ -682,4 +684,6 @@ clock();
 setMedia(rez.mediaState());
 setBadges(rez.badges());
 if (!native) body.classList.add('preview');
-requestAnimationFrame(() => body.classList.add('ready'));
+// shown once the fonts are in (a moment at most), so nothing appears in a stand-in font
+const show = () => body.classList.add('ready');
+Promise.race([document.fonts ? document.fonts.ready : Promise.resolve(), new Promise((r) => setTimeout(r, 900))]).then(show);

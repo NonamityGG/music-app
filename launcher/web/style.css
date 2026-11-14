@@ -126,7 +126,21 @@ body.anim #home,
 body.anim #drawer {
   transition:
     transform 0.42s var(--sheet),
-    opacity 0.42s var(--sheet);
+    opacity 0.26s var(--ease);
+}
+/* opening: the home screen goes first, the drawer comes after it; closing the other way */
+body.anim.opening #drawer,
+body.anim:not(.opening) #home {
+  transition:
+    transform 0.42s var(--sheet),
+    opacity 0.3s var(--ease) 0.08s;
+}
+body {
+  opacity: 0;
+  transition: opacity 0.35s var(--ease);
+}
+body.ready {
+  opacity: 1;
 }
 
 #top {
@@ -416,9 +430,6 @@ body.nolabels #grid .lb {
 }
 #dock .lb {
   display: none;
-}
-#dock.n5 {
-  --cols: 5;
 }
 
 /* ---------- the drawer ---------- */
@@ -995,7 +1006,6 @@ body.nolabels #grid .lb {
     --side: max(28px, calc((100vw - 760px) / 2));
   }
   #dock {
-    --cols: 5;
     align-self: center;
     width: min(100%, 520px);
   }
