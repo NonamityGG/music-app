@@ -8,6 +8,8 @@ on:
     paths-ignore:
       - 'desktop/**'
       - 'tv/**'
+      - 'launcher/**'
+      - '.github/workflows/build-launcher.yml'
       - '.github/workflows/build-desktop.yml'
       - '.github/workflows/build-tv.yml'
       - '.github/workflows/build-apk.yml'
