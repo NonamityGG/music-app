@@ -232,7 +232,8 @@ final class CastSession {
             }
             audioSource = factory.createAudioSource(mc);
             AudioTrack at = factory.createAudioTrack("sound", audioSource);
-            pc.addTrack(at, Collections.singletonList("rez"));
+            // its own stream: the TV must not hold the picture back to match the sound (lip sync)
+            pc.addTrack(at, new ArrayList<>()); // no stream: the TV adds it to the picture's, unsynced
         }
         preferH264();
 
@@ -360,8 +361,12 @@ final class CastSession {
         pc.getStats((r) -> {
             StringBuilder b = new StringBuilder();
             for (org.webrtc.RTCStats st : r.getStatsMap().values()) {
-                if (!"outbound-rtp".equals(st.getType())) continue;
                 java.util.Map<String, Object> m = st.getMembers();
+                if ("remote-inbound-rtp".equals(st.getType())) {
+                    b.append(m.get("kind")).append(" на ТВ: туда-обратно ").append(m.get("roundTripTime")).append(" с, джиттер ").append(m.get("jitter")).append(" с, потеряно ").append(m.get("packetsLost")).append("; ");
+                    continue;
+                }
+                if (!"outbound-rtp".equals(st.getType())) continue;
                 if ("video".equals(m.get("kind"))) {
                     b.append("видео ").append(m.get("frameWidth")).append('x').append(m.get("frameHeight"))
                         .append(' ').append(m.get("framesPerSecond")).append(" к/с, ")
@@ -397,7 +402,7 @@ final class CastSession {
             int min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT);
             AudioRecord mine = new AudioRecord.Builder()
                 .setAudioFormat(fmt)
-                .setBufferSizeInBytes(Math.max(min * 2, RATE * 4 / 10))
+                .setBufferSizeInBytes(min) // as little sound waiting as the system allows
                 .setAudioPlaybackCaptureConfig(cfg)
                 .build();
             if (mine.getState() != AudioRecord.STATE_INITIALIZED) {
