@@ -40,6 +40,12 @@ interface Page {
             for (Page p : pages) if (p instanceof Dream) ((Dream) p).finish();
         }
 
+        /** The screen saver over apps is on (its page must keep running). */
+        static boolean dreaming() {
+            for (Page p : pages) if (p instanceof Dream && p.isVisible()) return true;
+            return false;
+        }
+
         /** The page on the screen now, or null. */
         static Page shown() {
             for (Page p : pages) if (p.isVisible()) return p;

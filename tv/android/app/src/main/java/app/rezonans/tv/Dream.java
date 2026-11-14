@@ -83,6 +83,8 @@ public class Dream extends DreamService implements Page {
     public void onDreamingStarted() {
         super.onDreamingStarted();
         on = true;
+        // the home screen may have paused every WebView's timers when an app came up
+        if (web != null) web.resumeTimers();
         emit("visible", "true");
         MediaHub.refresh(this);
         Viz.resume(this);
@@ -92,6 +94,8 @@ public class Dream extends DreamService implements Page {
     public void onDreamingStopped() {
         on = false;
         Viz.stopFor(this);
+        // back over an app: the timers sleep again (the home screen wakes them when it shows)
+        if (web != null && Page.All.shown() == null) web.pauseTimers();
         super.onDreamingStopped();
     }
 

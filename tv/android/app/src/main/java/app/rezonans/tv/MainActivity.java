@@ -269,7 +269,9 @@ public class MainActivity extends Activity implements Page {
             ui.postDelayed(() -> {
                 if (!visible && web == w) {
                     w.onPause();
-                    w.pauseTimers();
+                    // pauseTimers stops every WebView of the app, the screen saver's too:
+                    // not while it is on (it kept the last song and its words on screen)
+                    if (!Page.All.dreaming()) w.pauseTimers();
                 }
             }, 400);
         }
