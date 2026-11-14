@@ -1,0 +1,1619 @@
+/* Резонанс Лаунчер. The phone app's look: plum ink, the palette's accents,
+   glass without blur (a lit edge and a soft fill), Unbounded for big type,
+   Onest for everything else. Only transform and opacity move. */
+
+:root {
+  --ink: #140f1f;
+  --ink-2: #1b1429;
+  --surface: #1e172d;
+  --raised: #2a2140;
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #f2edff;
+  --muted: #a69cc4;
+  --dim: #7a7096;
+  --danger: #ff6b8b;
+
+  --a1: #7c4dff;
+  --a2: #c3a6ff;
+  --a3: #ff6fd8;
+  --r1: 124, 77, 255;
+  --r2: 195, 166, 255;
+  --r3: 255, 111, 216;
+
+  --display: 'Unbounded', 'Onest', system-ui, sans-serif;
+  --body: 'Onest', system-ui, -apple-system, Roboto, sans-serif;
+
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --t: env(safe-area-inset-top, 24px);
+  --b: env(safe-area-inset-bottom, 16px);
+  --l: 0px;
+  --r: 0px;
+  --ime: 0px;
+
+  --icon: 58px;
+  --cols: 4;
+  --side: 20px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font: 500 15px/1.3 var(--body);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+[hidden] {
+  display: none !important;
+}
+
+/* glass without blur: a faint fill, a lit top edge, a soft shadow */
+.glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.055),
+    0 10px 30px -12px rgba(5, 2, 12, 0.6);
+}
+
+/* ---------- the background ---------- */
+
+#waves {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.62;
+  transition: opacity 0.8s var(--ease);
+  pointer-events: none;
+}
+body.music #waves {
+  opacity: 0.85;
+}
+#shade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 15% 0%, rgba(var(--r1), 0.22), transparent 60%),
+    linear-gradient(180deg, rgba(20, 15, 31, 0.55) 0%, rgba(20, 15, 31, 0) 32%, rgba(20, 15, 31, 0) 58%, rgba(20, 15, 31, 0.7) 100%);
+}
+
+/* ---------- the home screen ---------- */
+
+#home {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--t) + 18px) calc(var(--r) + var(--side)) calc(var(--b) + 14px) calc(var(--l) + var(--side));
+  touch-action: none;
+  transform-origin: 50% 70%;
+  will-change: transform, opacity;
+}
+body.anim #home,
+body.anim #drawer {
+  transition:
+    transform 0.42s var(--sheet),
+    opacity 0.26s var(--ease);
+}
+/* opening: the home screen goes first, the drawer comes after it; closing the other way */
+body.anim.opening #drawer,
+body.anim:not(.opening) #home {
+  transition:
+    transform 0.42s var(--sheet),
+    opacity 0.3s var(--ease) 0.08s;
+}
+body {
+  opacity: 0;
+  transition: opacity 0.35s var(--ease);
+}
+body.ready {
+  opacity: 1;
+}
+
+/* the pages of the home screen: a grid of 4 × rows cells, turned sideways */
+#home {
+  padding-top: calc(var(--t) + 8px);
+}
+#hpages {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin: 0 calc(-1 * var(--side) + 2px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+#hpages::-webkit-scrollbar {
+  display: none;
+}
+.hpage {
+  position: relative;
+  flex: 0 0 100%;
+  height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  /* the rows share the page's height exactly (no rounding to run over) */
+  grid-template-rows: repeat(var(--rows), calc(100% / var(--rows)));
+  grid-auto-rows: calc(100% / var(--rows));
+  grid-auto-flow: row dense;
+  padding: 0 calc(var(--side) - 10px);
+}
+.hpage > .app {
+  justify-content: center;
+}
+#hdots {
+  flex: none;
+  height: 26px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+#hdots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.28);
+  transition:
+    width 0.3s var(--ease),
+    background 0.3s;
+}
+#hdots i.on {
+  width: 18px;
+  background: var(--a2);
+}
+
+/* ---------- widgets ---------- */
+
+.wd {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  touch-action: none;
+}
+.wcard {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 26px;
+  overflow: hidden;
+  transition: transform 0.22s var(--spring);
+}
+.wd.down .wcard {
+  transform: scale(0.97);
+}
+.wd.lift .wcard,
+.wd.hole .wcard {
+  opacity: 0;
+}
+
+/* the clock: no card, just the big time over the waves */
+.wd-clock .wcard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 8px;
+  overflow: visible;
+}
+.w-time {
+  display: block;
+  font: 500 76px/1 var(--display);
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, #fff 30%, var(--a2) 140%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  padding: 4px 0 2px;
+  white-space: nowrap;
+}
+.w-date {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  font: 500 16px/1.15 var(--body);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.w-day::first-letter {
+  text-transform: uppercase;
+}
+.w-batt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.w-batt:empty {
+  display: none;
+}
+.w-batt::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--a2);
+}
+.w-batt.low::before {
+  background: var(--danger);
+}
+.w-batt.charging::before {
+  background: #7be0b0;
+  box-shadow: 0 0 8px #7be0b0;
+}
+.wd-clock.s-4x1 .w-time {
+  font-size: 54px;
+}
+.wd-clock.s-4x1 .w-date {
+  margin-top: 4px;
+  font-size: 14px;
+}
+.wd-clock.s-2x2 .w-time {
+  font-size: 50px;
+}
+.wd-clock.s-2x2 .w-date {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  white-space: normal;
+}
+.wd-clock.s-2x1 .w-time {
+  font-size: 40px;
+}
+.wd-clock.s-2x1 .w-date {
+  display: none;
+}
+
+/* what's playing */
+.wd-music .wcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+}
+.w-art {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  flex: none;
+  background: linear-gradient(135deg, var(--a1), var(--a3));
+}
+.w-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.w-txt b,
+.w-txt span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.w-txt b {
+  font-weight: 600;
+  font-size: 15px;
+}
+.w-txt span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.w-ctl {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.np-b {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition:
+    transform 0.16s var(--ease),
+    background 0.2s;
+}
+.np-b svg {
+  width: 22px;
+  height: 22px;
+}
+.np-b svg.fill {
+  fill: currentColor;
+  stroke-width: 1.6;
+}
+.np-b:active {
+  transform: scale(0.88);
+  background: rgba(255, 255, 255, 0.08);
+}
+.np-play {
+  width: 46px;
+  height: 46px;
+  background: var(--a1);
+  color: #fff;
+  box-shadow: 0 6px 18px -6px rgba(var(--r1), 0.9);
+}
+.np-play svg {
+  stroke-width: 2.6;
+}
+.np-play .i-play {
+  display: none;
+  fill: currentColor;
+  stroke-width: 1.4;
+}
+.wd-music.paused .i-play {
+  display: block;
+}
+.wd-music.paused .i-pause {
+  display: none;
+}
+.wd-music.idle [data-a='prev'],
+.wd-music.idle [data-a='next'],
+.wd-music.idle .w-bar {
+  display: none;
+}
+.w-bar {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.w-bar i {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--a1), var(--a3));
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+/* bigger: the cover large on the left, the words and the buttons beside it */
+.wd-music.s-4x2 .wcard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 1fr auto;
+  column-gap: 16px;
+  row-gap: 6px;
+  padding: 14px;
+}
+.wd-music.s-4x2 .w-art {
+  grid-row: 1 / span 2;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
+  border-radius: 20px;
+}
+.wd-music.s-4x2 .w-txt {
+  align-self: end;
+}
+.wd-music.s-4x2 .w-txt b {
+  font-size: 18px;
+}
+.wd-music.s-4x2 .w-ctl {
+  justify-content: space-between;
+  padding-bottom: 6px;
+}
+.wd-music.s-2x2 .wcard {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 14px;
+  gap: 6px;
+}
+.wd-music.s-2x2 .w-art {
+  width: 48px;
+  height: 48px;
+}
+.wd-music.s-2x2 .w-ctl {
+  justify-content: space-between;
+}
+.wd-music.s-2x2 .np-play {
+  width: 42px;
+  height: 42px;
+}
+
+/* the weather */
+.wd-weather .wcard {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgba(var(--r3), 0.18), transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.035));
+}
+.w-city {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.w-now {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.w-temp {
+  font: 500 40px/1 var(--display);
+  letter-spacing: -0.03em;
+}
+.w-icon svg {
+  width: 44px;
+  height: 44px;
+  display: block;
+}
+.w-icon .sun {
+  fill: var(--a2);
+  stroke: none;
+}
+.w-icon .ray {
+  stroke: var(--a2);
+}
+.w-icon .cloud {
+  fill: rgba(255, 255, 255, 0.85);
+  stroke: none;
+}
+.w-icon .drop {
+  stroke: var(--a3);
+  stroke-width: 2.2;
+}
+.w-words {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.w-words::first-letter {
+  text-transform: uppercase;
+}
+.w-range {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.wd-weather.s-4x1 .wcard {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 14px;
+  padding: 12px 18px;
+}
+.wd-weather.s-4x1 .w-now {
+  grid-row: span 2;
+  flex-direction: row-reverse;
+}
+.wd-weather.s-4x1 .w-city {
+  grid-column: 2;
+}
+.wd-weather.s-4x1 .w-words {
+  grid-column: 2;
+  grid-row: 2;
+}
+.wd-weather.s-4x1 .w-range {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.wd-weather.s-2x1 .wcard {
+  flex-direction: row;
+  align-items: center;
+  padding: 10px 14px;
+}
+.wd-weather.s-2x1 .w-city,
+.wd-weather.s-2x1 .w-words,
+.wd-weather.s-2x1 .w-range {
+  display: none;
+}
+.wd-weather.s-2x1 .w-now {
+  flex: 1;
+}
+.wd-weather.s-2x1 .w-temp {
+  font-size: 32px;
+}
+
+/* the calendar */
+.wd-calendar .wcard {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 10px;
+}
+.w-month {
+  font: 600 12px/1 var(--display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--a2);
+  padding: 0 4px 8px;
+}
+.w-days {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: center;
+  justify-items: center;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.w-days i {
+  font-style: normal;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.w-days .hd {
+  color: var(--dim);
+  font-size: 10px;
+  font-weight: 600;
+}
+.w-days .we {
+  color: var(--muted);
+}
+.w-days .today {
+  background: var(--a1);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 4px 12px -4px rgba(var(--r1), 0.9);
+}
+.wd-calendar.s-4x2 .w-days {
+  font-size: 13px;
+}
+.wd-calendar.s-4x2 .w-days i {
+  width: 28px;
+  height: 26px;
+}
+
+/* the face with hands */
+.wd-analog .wcard {
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  width: auto;
+  max-width: 100%;
+  margin: 0 auto;
+}
+.w-face {
+  width: 100%;
+  height: 100%;
+}
+.w-face .tk {
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 1.4;
+}
+.w-face .tk.big {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 2.2;
+}
+.w-face .hh {
+  stroke: #fff;
+  stroke-width: 4;
+}
+.w-face .mh {
+  stroke: url(#wh);
+  stroke: var(--a2);
+  stroke-width: 2.6;
+}
+.w-face .pin {
+  fill: var(--a3);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.wd-analog.s-1x1 .wcard {
+  padding: 4px;
+}
+.wd-analog.s-1x1 .tk:not(.big) {
+  display: none;
+}
+
+/* the battery */
+.wd-battery .wcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.w-ring {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+.w-ring circle {
+  fill: none;
+  stroke-width: 4.5;
+}
+.w-ring .bg {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.w-ring .fg {
+  stroke: var(--a2);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s var(--ease);
+}
+.wd-battery.charging .w-ring .fg {
+  stroke: #7be0b0;
+}
+.wd-battery.low .w-ring .fg {
+  stroke: var(--danger);
+}
+.w-btxt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.w-level {
+  font: 500 24px/1 var(--display);
+}
+.w-state {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wd-battery.s-1x1 .wcard {
+  justify-content: center;
+  padding: 6px;
+}
+.wd-battery.s-1x1 .w-btxt {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+}
+.wd-battery.s-1x1 .w-level {
+  font-size: 14px;
+}
+.wd-battery.s-1x1 .w-state {
+  display: none;
+}
+.wd-battery.s-2x2 .wcard {
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+}
+.wd-battery.s-2x2 .w-ring {
+  width: 86px;
+  height: 86px;
+}
+.wd-battery.s-2x2 .w-btxt {
+  align-items: center;
+}
+
+/* a widget being dragged: a copy of its card */
+.ghost.wghost {
+  border-radius: 26px;
+}
+.ghost.wghost > .wcard {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 24px 50px -14px rgba(5, 2, 12, 0.95);
+}
+
+/* the long press menu of a widget: its sizes */
+.pop .sizes {
+  display: flex;
+  gap: 6px;
+  padding: 4px 2px 8px;
+}
+.pop .size {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px 8px;
+  border-radius: 16px;
+  font-size: 11.5px;
+  color: var(--muted);
+  transition: background 0.15s;
+}
+.pop .size i {
+  display: block;
+  width: calc(var(--w) * 9px + (var(--w) - 1) * 2px);
+  height: calc(var(--h) * 9px + (var(--h) - 1) * 2px);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.pop .size.on {
+  color: #fff;
+  background: rgba(var(--r1), 0.32);
+}
+.pop .size.on i {
+  background: var(--a2);
+}
+
+/* the widgets to add (the settings sheet) */
+.wpick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.wp {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 20px;
+  text-align: left;
+  transition: transform 0.15s var(--ease);
+}
+.wp:active {
+  transform: scale(0.97);
+}
+.wp b {
+  font-weight: 600;
+  font-size: 14px;
+}
+.wp span {
+  font-size: 12px;
+  color: var(--dim);
+}
+.wp-ic {
+  display: block;
+  width: calc(var(--w) * 12px + (var(--w) - 1) * 3px);
+  height: calc(var(--h) * 12px + (var(--h) - 1) * 3px);
+  border-radius: 5px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--a1), var(--a3));
+}
+
+/* ---------- icons ---------- */
+
+.apps {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+}
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 2px 4px;
+  touch-action: none;
+}
+.app .ic {
+  position: relative;
+  width: var(--icon);
+  height: var(--icon);
+  border-radius: 30%;
+  transition: transform 0.22s var(--spring), opacity 0.2s;
+}
+.app img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 30%;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 6px 16px -8px rgba(5, 2, 12, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  object-fit: cover;
+}
+.app .ic::after {
+  /* a little light on the top edge of every icon, like the cards */
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 30%;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+.app .lb {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(242, 237, 255, 0.92);
+  text-shadow: 0 1px 6px rgba(5, 2, 12, 0.85);
+}
+body.nolabels .hpage .lb {
+  display: none;
+}
+.app.down .ic {
+  transform: scale(0.88);
+}
+.app.lift .ic {
+  opacity: 0;
+}
+.app.hole .ic,
+.app.hole .lb {
+  opacity: 0;
+}
+.app .dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--a3);
+  box-shadow: 0 0 0 3px var(--ink), 0 0 10px rgba(var(--r3), 0.8);
+  transform: scale(0);
+  transition: transform 0.3s var(--spring);
+}
+.app.badge .dot {
+  transform: scale(1);
+}
+
+/* search and dock */
+#find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 18px;
+  margin-bottom: 12px;
+  border-radius: 24px;
+  color: var(--muted);
+  font-size: 15px;
+  transition: transform 0.2s var(--ease);
+}
+#find svg {
+  width: 20px;
+  height: 20px;
+  color: var(--a2);
+}
+#find:active {
+  transform: scale(0.98);
+}
+#dock {
+  --cols: 4;
+  padding: 10px 6px;
+  border-radius: 30px;
+  min-height: 78px;
+}
+#dock .lb {
+  display: none;
+}
+
+/* ---------- the drawer: pages of icons in А–Я order, the search at the bottom ---------- */
+
+#drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(120% 50% at 85% 100%, rgba(var(--r1), 0.16), transparent 60%),
+    linear-gradient(180deg, rgba(27, 20, 41, 0.97), rgba(20, 15, 31, 0.985) 40%);
+  opacity: 0;
+  transform: translateY(40vh);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+#drawer.open {
+  pointer-events: auto;
+}
+#d-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: calc(var(--t) + 18px);
+}
+#pages {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+#pages::-webkit-scrollbar {
+  display: none;
+}
+.page {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  grid-template-rows: repeat(var(--rows), 1fr);
+  align-items: start;
+  align-content: start;
+  row-gap: 0;
+  padding: 0 calc(var(--r) + var(--side) - 8px) 0 calc(var(--l) + var(--side) - 8px);
+}
+#drawer .app {
+  --icon: 62px;
+  padding-top: 6px;
+}
+#drawer .app .lb {
+  font-size: 12.5px;
+}
+#dots {
+  flex: none;
+  height: 34px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+#dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.24);
+  transition:
+    width 0.3s var(--ease),
+    background 0.3s;
+}
+#dots i.on {
+  width: 18px;
+  background: var(--a2);
+}
+
+/* searching: the pages give way to the results, the field rises over the keyboard */
+#d-results {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 0 calc(var(--r) + var(--side) - 8px) 20px calc(var(--l) + var(--side) - 8px);
+  scrollbar-width: none;
+}
+#drawer.searching #pages,
+#drawer.searching #dots,
+#drawer.typing #pages,
+#drawer.typing #dots {
+  display: none;
+}
+#drawer.searching #d-results,
+#drawer.typing #d-results {
+  display: block;
+  animation: rise 0.28s var(--ease) both;
+}
+#d-found {
+  row-gap: 18px;
+}
+#d-found .lb {
+  color: var(--muted);
+}
+#d-found .lb b {
+  color: #fff;
+  font-weight: 700;
+}
+#d-found .app:first-child .ic {
+  box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px rgba(var(--r2), 0.8);
+}
+
+#d-bottom {
+  flex: none;
+  padding: 4px calc(var(--r) + var(--side)) calc(var(--b) + 14px) calc(var(--l) + var(--side));
+}
+#q-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 6px 0 18px;
+  border-radius: 26px;
+}
+#q-wrap > svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--a2);
+}
+#q {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: 500 16px var(--body);
+  caret-color: var(--a2);
+  -webkit-appearance: none;
+  appearance: none;
+}
+#q::placeholder {
+  color: var(--dim);
+}
+#q::-webkit-search-cancel-button {
+  display: none;
+}
+#q-x,
+#d-more {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--muted);
+  flex: none;
+}
+#q-x svg,
+#d-more svg {
+  width: 20px;
+  height: 20px;
+}
+.webq {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: calc(100% - 16px);
+  padding: 14px 16px;
+  margin: 12px 8px 0;
+  border-radius: 20px;
+  text-align: left;
+  transition: transform 0.18s var(--ease);
+}
+.webq:active {
+  transform: scale(0.98);
+}
+.webq i {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--r1), 0.25);
+  color: var(--a2);
+  flex: none;
+}
+.webq i svg {
+  width: 20px;
+  height: 20px;
+}
+.webq b {
+  display: block;
+  font-weight: 600;
+}
+.webq span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---------- long press: the menu, the lifted icon, dragging ---------- */
+
+#scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(8, 4, 16, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s var(--ease);
+}
+#scrim.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  border-radius: 30%;
+  pointer-events: none;
+  z-index: 30;
+  transition: transform 0.26s var(--spring);
+  will-change: transform;
+}
+.ghost img {
+  width: 100%;
+  height: 100%;
+  border-radius: 30%;
+  display: block;
+  box-shadow: 0 18px 36px -10px rgba(5, 2, 12, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.ghost.drag {
+  transition: none;
+}
+
+.pop {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 31;
+  min-width: 280px;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #2c2342, #231b36);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 24px 60px -16px rgba(5, 2, 12, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.9);
+  transition:
+    transform 0.26s var(--spring),
+    opacity 0.18s var(--ease);
+}
+.pop.on {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.pop .row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 16px;
+  text-align: left;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.pop .row:active {
+  background: rgba(255, 255, 255, 0.07);
+}
+.pop .row svg,
+.pop .row img {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--a2);
+}
+.pop .row span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pop .acts {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.pop .acts button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 4px 8px;
+  border-radius: 16px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  color: var(--muted);
+  transition: background 0.15s, transform 0.15s var(--ease);
+}
+.pop .acts button:active {
+  background: rgba(255, 255, 255, 0.07);
+  transform: scale(0.95);
+}
+.pop .acts svg {
+  width: 22px;
+  height: 22px;
+  color: var(--text);
+}
+.pop .acts .del svg {
+  color: var(--danger);
+}
+
+#trash {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--t) + 14px);
+  z-index: 29;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 22px;
+  border-radius: 23px;
+  color: var(--muted);
+  opacity: 0;
+  transform: translate(-50%, -24px);
+  pointer-events: none;
+  transition:
+    transform 0.3s var(--spring),
+    opacity 0.2s,
+    color 0.2s,
+    background 0.2s;
+}
+#trash svg {
+  width: 20px;
+  height: 20px;
+}
+#trash.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+#trash.hot {
+  color: #fff;
+  background: rgba(255, 107, 139, 0.32);
+  transform: translate(-50%, 0) scale(1.08);
+}
+
+/* ---------- the settings sheet (long press on an empty place) ---------- */
+
+#sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 32;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 10px calc(var(--r) + 22px) calc(var(--b) + 22px) calc(var(--l) + 22px);
+  border-radius: 30px 30px 0 0;
+  background: linear-gradient(180deg, #261e3a, #1b1429 60%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 -20px 60px -20px rgba(5, 2, 12, 0.9);
+  transform: translateY(105%);
+  transition: transform 0.42s var(--sheet);
+  touch-action: pan-y;
+  scrollbar-width: none;
+}
+#sheet.on {
+  transform: none;
+}
+#sheet h2 {
+  font: 600 22px/1.1 var(--display);
+  letter-spacing: -0.01em;
+  margin: 4px 0 18px;
+  background: linear-gradient(90deg, #fff, var(--a2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sec {
+  margin-bottom: 22px;
+}
+.sec > h4 {
+  font: 600 11px/1 var(--display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+.swatches {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sw {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  position: relative;
+  transition: transform 0.2s var(--spring);
+}
+.sw:active {
+  transform: scale(0.9);
+}
+.sw.on::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 22px;
+  border: 2px solid var(--a2);
+}
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chip {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 19px;
+  font-size: 14px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: background 0.2s, color 0.2s, transform 0.15s var(--ease);
+}
+.chip:active {
+  transform: scale(0.95);
+}
+.chip.on {
+  color: #fff;
+  background: rgba(var(--r1), 0.45);
+  box-shadow: inset 0 0 0 1px rgba(var(--r2), 0.5);
+}
+.tgl {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 4px;
+  text-align: left;
+}
+.tgl > span {
+  flex: 1;
+}
+.tgl small {
+  display: block;
+  color: var(--dim);
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+.tgl > i {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  flex: none;
+  transition: background 0.25s;
+}
+.tgl > i::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.3s var(--spring);
+}
+.tgl.on > i {
+  background: var(--a1);
+}
+.tgl.on > i::after {
+  transform: translateX(20px);
+}
+.link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 54px;
+  padding: 0 16px;
+  margin-top: 8px;
+  border-radius: 18px;
+  text-align: left;
+  transition: transform 0.15s var(--ease);
+}
+.link:active {
+  transform: scale(0.98);
+}
+.link svg {
+  width: 20px;
+  height: 20px;
+  color: var(--a2);
+}
+.link span {
+  flex: 1;
+}
+.link.hi {
+  background: linear-gradient(90deg, rgba(var(--r1), 0.5), rgba(var(--r3), 0.3));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.link.hi svg {
+  color: #fff;
+}
+.ver {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--b) + 110px);
+  z-index: 40;
+  padding: 12px 18px;
+  border-radius: 18px;
+  background: #3a2f55;
+  font-size: 14px;
+  box-shadow: 0 12px 30px -10px rgba(5, 2, 12, 0.8);
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  transition: opacity 0.2s, transform 0.3s var(--spring);
+  pointer-events: none;
+}
+#toast.on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+}
+.app.new .ic {
+  animation: pop 0.4s var(--spring) both;
+}
+
+/* a wide screen (tablet, or a phone on its side): more columns, a narrower column of content */
+@media (min-width: 600px) {
+  :root {
+    --cols: 6;
+    --icon: 64px;
+    --side: max(28px, calc((100vw - 760px) / 2));
+  }
+  #dock {
+    align-self: center;
+    width: min(100%, 520px);
+  }
+  #find {
+    align-self: center;
+    width: min(100%, 520px);
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .w-time {
+    font-size: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01s !important;
+    animation-duration: 0.01s !important;
+  }
+}
+
+.hint {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--dim);
+  margin: -4px 0 4px;
+}
+
+.wd.new .wcard {
+  animation: pop 0.45s var(--spring) both;
+}
+
+/* each widget knows its own size (container query units): round ones stay round,
+   the time fits whatever cells the clock was given */
+.wd {
+  container-type: size;
+  display: grid;
+  place-items: center;
+}
+.wd > .wcard {
+  width: 100%;
+  height: 100%;
+}
+.wd-analog > .wcard,
+.wd-battery.s-1x1 > .wcard {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  aspect-ratio: auto;
+  margin: 0;
+  border-radius: 50%;
+}
+.wd-clock .w-time {
+  font-size: min(76px, 23cqw, 46cqh);
+}
+.wd-clock .w-date {
+  font-size: min(16px, 7.4cqw);
+}
+
+/* sideways swipes that start on an icon or a widget still turn the pages
+   (a held one stops them itself: main.js cancels the touch's moves then) */
+.hpage .app,
+.hpage .wd,
+#pages .app {
+  touch-action: pan-x;
+}
+
+/* the weather's town (the settings sheet) */
+.town {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
+  margin-top: 4px;
+}
+.town input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  font: 500 15px var(--body);
+  -webkit-appearance: none;
+  appearance: none;
+}
+.town input::placeholder {
+  color: var(--dim);
+}
+.towns {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+}
+.tw {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 16px;
+  border-radius: 16px;
+  text-align: left;
+}
+.tw:active {
+  background: rgba(255, 255, 255, 0.06);
+}
+.tw b {
+  font-weight: 600;
+}
+.tw span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.btn-text {
+  margin-top: 6px;
+  padding: 8px 4px;
+  color: var(--a2);
+  font-weight: 600;
+  font-size: 14px;
+}

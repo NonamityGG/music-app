@@ -1,0 +1,135 @@
+name: Собрать Резонанс Лаунчер (телефон и планшет)
+
+on:
+  push:
+    # launcher-dev: test builds without a release
+    branches: [main, launcher-dev]
+    paths:
+      - 'launcher/**'
+      - 'src/waves.js'
+      - '.github/workflows/build-launcher.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: launcher
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          v=$(cat launcher/VERSION)
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then v="$v-dev.${{ github.run_number }}"; fi
+          echo "LAUNCHER_VERSION_NAME=$v" >> "$GITHUB_ENV"
+          echo "LAUNCHER_VERSION_CODE=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_ENV"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Build the page
+        run: node launcher/build.mjs
+
+      - name: Build APK
+        working-directory: launcher/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Name APK
+        run: cp launcher/android/app/build/outputs/apk/release/app-release.apk "Rezonans-Launcher-${LAUNCHER_VERSION_NAME}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rezonans-launcher
+          path: Rezonans-Launcher-*.apk
+
+  # a real Android phone system (an emulator): installed, made the home screen,
+  # swiped and pressed, the screen photographed
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rezonans-launcher
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run on a phone
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash launcher/ci/smoke.sh "$(ls Rezonans-Launcher-*.apk | head -1)"
+
+      - name: Share smoke results
+        if: always()
+        run: |
+          dir="$RUNNER_TEMP/smoke-launcher-repo"
+          mkdir -p "$dir"
+          cp -r smoke-launcher/* "$dir/" 2>/dev/null || true
+          cp Rezonans-Launcher-*.apk "$dir/" 2>/dev/null || true
+          echo "run ${{ github.run_number }} ${{ github.sha }}" > "$dir/run.txt"
+          cd "$dir"
+          git init -q
+          git config user.name ci
+          git config user.email ci@users.noreply.github.com
+          git checkout -q -b ci-smoke-launcher
+          git add -A
+          git commit -q -m "launcher smoke ${{ github.run_number }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-smoke-launcher
+
+  release:
+    needs: [build, smoke]
+    if: always() && needs.build.result == 'success' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rezonans-launcher
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: launcher-v${{ needs.build.outputs.version }}
+          name: Резонанс Лаунчер ${{ needs.build.outputs.version }} — для телефона и планшета
+          body: |
+            Резонанс Лаунчер — домашний экран для Android-телефонов и планшетов: волны Резонанса, «Сейчас играет», ящик приложений с умным поиском, меню и перетаскивание значков, палитры.
+
+            Установка: скачай Rezonans-Launcher-${{ needs.build.outputs.version }}.apk, поставь, нажми «Домой» и выбери «Резонанс».
+          files: Rezonans-Launcher-*.apk
+          make_latest: false

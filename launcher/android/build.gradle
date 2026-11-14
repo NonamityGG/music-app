@@ -1,0 +1,4 @@
+// Резонанс Лаунчер — the home screen for Android phones and tablets.
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+}
