@@ -1095,7 +1095,7 @@ function showPanel(from = 'bar', tab) {
   if (!panel || panel.isDestroyed()) createPanel();
   const target = from === 'tray' && tray ? tray.getBounds() : null;
   const d = target ? screen.getDisplayNearestPoint({ x: target.x + 1, y: target.y + 1 }) : screen.getPrimaryDisplay();
-  const wa = d.workArea;
+  const wa = d.id === screen.getPrimaryDisplay().id ? shellArea() : d.workArea;
   const h = Math.min(PANEL_H, wa.height - 20);
   let x;
   let y;
@@ -1410,7 +1410,7 @@ function hideQuick() {
   setTimeout(() => quickWin && !quickWin.isDestroyed() && !quickWin._reopen && !menusOpen.quick && quickWin.hide(), 130);
 }
 
-// where Start and Quick sit: the work area, but never over our own taskbar —
+// where Start, Quick and the panel sit: the work area, but never over our own taskbar —
 // in the first seconds after launch Windows has not reserved its room yet,
 // so the work area still runs to the bottom of the screen
 function shellArea() {
@@ -1419,6 +1419,12 @@ function shellArea() {
   if (settings.taskbar) {
     const bottom = Math.min(wa.y + wa.height, d.bounds.y + d.bounds.height - tbH());
     wa.height = bottom - wa.y;
+  }
+  // and never under our bar at the top, for the same reason
+  if (settings.bar) {
+    const top = Math.max(wa.y, d.bounds.y + BAR_H);
+    wa.height -= top - wa.y;
+    wa.y = top;
   }
   return wa;
 }
