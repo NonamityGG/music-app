@@ -2,6 +2,8 @@
 // goes to the program as from Windows' own tray: left opens it, right opens its
 // menu (with "Exit" and the rest), a double click does what it does there.
 
+import { coverAccent } from './coverlook.js';
+
 const $ = (id) => document.getElementById(id);
 const grid = $('grid');
 const empty = $('empty');
@@ -45,6 +47,29 @@ function render(list) {
     b.remove();
   }
 }
+
+// the card's tint in the palette's colours ("from the cover": what's playing)
+let settings = null;
+let media = { status: 'none' };
+function paint() {
+  coverAccent(settings, media, (c) => {
+    body.style.setProperty('--acc', c[0]);
+    body.style.setProperty('--acc2', c[2]);
+  });
+}
+window.rez.settings().then((s) => {
+  settings = s;
+  paint();
+});
+window.rez.onSettings((s) => {
+  settings = s;
+  paint();
+});
+window.rez.onMedia((m) => {
+  if (!m) return;
+  media = m.status === 'none' ? { status: 'none' } : { ...media, ...m };
+  if (settings && settings.palette === 'cover') paint();
+});
 
 window.rez.onTray(render);
 window.rez.onShell((m) => {

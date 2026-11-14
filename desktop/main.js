@@ -507,7 +507,7 @@ function onMedia(m) {
 
 function mediaWindows() {
   const list = [...walls.values()].map((w) => w.win);
-  list.push(bar, island, panel, quickWin, startWin);
+  list.push(bar, island, panel, quickWin, startWin, taskbarWin, trayWin);
   return list.filter((w) => w && !w.isDestroyed());
 }
 
@@ -1609,7 +1609,11 @@ function toggleTray(x) {
   trayWin.focus();
   tbMenus({ tray: true });
   const w = trayWin;
-  whenLoaded(w, () => !w.isDestroyed() && w.webContents.send('shell', { open: true, list: trayList }));
+  whenLoaded(w, () => {
+    if (w.isDestroyed()) return;
+    if (lastMedia) w.webContents.send('media', lastMedia);
+    w.webContents.send('shell', { open: true, list: trayList });
+  });
   hostSend({ cmd: 'tray' });
 }
 
@@ -1684,6 +1688,7 @@ function createTaskbar() {
     tbClear = null;
     updateTaskbarClear();
     if (trayList.length) tb.webContents.send('tray', trayList);
+    if (lastMedia) tb.webContents.send('media', lastMedia);
     hostSend({ cmd: 'taskpins' });
     hostSend({ cmd: 'tray' });
     hostSend({ cmd: 'taskwins', force: true });

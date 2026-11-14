@@ -5,6 +5,8 @@
 // volume and battery (the wheel changes the volume), the clock and "show
 // desktop". Windows' own taskbar is hidden altogether.
 
+import { coverAccent } from './coverlook.js';
+
 const $ = (id) => document.getElementById(id);
 const body = document.body;
 const appsBox = $('apps');
@@ -72,13 +74,25 @@ function apply(s) {
   body.classList.toggle('no-tray', s.taskbarTray === false);
   tick();
   body.style.setProperty('--tint-a', String(s.barTint ?? 0.42));
-  const c = s.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
-  c.forEach((v, i) => body.style.setProperty(`--c${i + 1}`, v));
-  // the bar takes the colour chosen in the app: its palette's first colour, darkened
-  body.style.setProperty('--tint-c', `color-mix(in srgb, ${c[0]} 34%, rgb(10, 6, 20))`);
+  paint();
+}
+
+// the palette's colours; "from the cover" — the colours of what's playing
+let media = { status: 'none' };
+function paint() {
+  coverAccent(settings, media, (c) => {
+    c.forEach((v, i) => body.style.setProperty(`--c${i + 1}`, v));
+    // the bar takes the colour chosen in the app: its palette's first colour, darkened
+    body.style.setProperty('--tint-c', `color-mix(in srgb, ${c[0]} 34%, rgb(10, 6, 20))`);
+  });
 }
 window.rez.settings().then(apply);
 window.rez.onSettings(apply);
+window.rez.onMedia((m) => {
+  if (!m) return;
+  media = m.status === 'none' ? { status: 'none' } : { ...media, ...m };
+  if (settings.palette === 'cover') paint();
+});
 
 // ---------- Start and Quick ----------
 
