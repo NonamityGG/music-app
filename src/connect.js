@@ -107,10 +107,33 @@ export function preferCodecs(codecs, order = ['video/H264', 'video/VP8']) {
   return list.map((c, i) => ({ c, i, r: rank(c) })).sort((x, y) => x.r - y.r || x.i - y.i).map((x) => x.c);
 }
 
-/** The size to capture: the screen's, no bigger than the TV can show (and 1080p at most). */
-export function fitSize(screenW, screenH, tvW, tvH) {
-  const maxW = Math.min(1920, tvW > 0 ? tvW : 1920);
-  const maxH = Math.min(1080, tvH > 0 ? tvH : 1080);
+/**
+ * How the picture goes, chosen on the PC and the phone. A TV box's Wi-Fi takes
+ * a few Mbit/s without queueing, so the choice is what gives way when that is
+ * not enough: "smooth" keeps the frames (a smaller picture), the "sharp" ones
+ * keep the picture (fewer frames — for text and windows). Bitrates in kbit/s.
+ */
+export const QUALITY = [
+  { id: 'smooth', name: 'Плавно', sub: '720p — видео и игры, меньше задержка', w: 1280, h: 720, hint: 'motion', keep: 'maintain-framerate', start: 3000, min: 1500, max: 4500 },
+  { id: 'balanced', name: 'Баланс', sub: '1080p — уступают и кадры, и чёткость', w: 1920, h: 1080, hint: '', keep: 'balanced', start: 3000, min: 1500, max: 6000 },
+  { id: 'sharp', name: 'Чётко', sub: '1080p — текст читается, кадров меньше под нагрузкой', w: 1920, h: 1080, hint: 'detail', keep: 'maintain-resolution', start: 3000, min: 1500, max: 6000 },
+  { id: 'sharp1440', name: '1440p', sub: 'Чётко, 2560×1440 — экраны 2K', w: 2560, h: 1440, hint: 'detail', keep: 'maintain-resolution', start: 4000, min: 2000, max: 10000 },
+  { id: 'sharp4k', name: '4K', sub: 'Чётко, до 3840×2160 — если приставка тянет 4K', w: 3840, h: 2160, hint: 'detail', keep: 'maintain-resolution', start: 5000, min: 2500, max: 16000 },
+];
+
+/** A preset by id (or the fallback's, or "smooth"). */
+export function quality(id, fallback = 'smooth') {
+  return QUALITY.find((q) => q.id === id) || QUALITY.find((q) => q.id === fallback) || QUALITY[0];
+}
+
+/**
+ * The size to capture: the screen's, no bigger than the preset (capW×capH,
+ * 1080p by default) — and up to 1080p no bigger than the TV says it shows
+ * (above that the TV's own report is a 1080p output mode, not its panel).
+ */
+export function fitSize(screenW, screenH, tvW, tvH, capW = 1920, capH = 1080) {
+  const maxW = capW > 1920 ? capW : Math.min(capW, tvW > 0 ? tvW : capW);
+  const maxH = capH > 1080 ? capH : Math.min(capH, tvH > 0 ? tvH : capH);
   const k = Math.min(1, maxW / screenW, maxH / screenH);
   // even numbers: encoders want them
   const even = (x) => Math.max(2, Math.round(x / 2) * 2);

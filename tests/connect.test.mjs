@@ -82,6 +82,14 @@ test('the capture fits the TV, 1080p at most, even sizes', () => {
   assert.deepEqual(shared.fitSize(1366, 768, 3840, 2160), { w: 1366, h: 768 });
   assert.deepEqual(shared.fitSize(3440, 1440, 0, 0), { w: 1920, h: 804 });
   assert.deepEqual(shared.fitSize(1280, 1024, 1920, 1080), { w: 1280, h: 1024 });
+  // presets: 720p, and above 1080p the TV's 1080p report doesn't hold it back
+  assert.deepEqual(shared.fitSize(1920, 1080, 1920, 1080, 1280, 720), { w: 1280, h: 720 });
+  assert.deepEqual(shared.fitSize(3840, 2160, 1920, 1080, 3840, 2160), { w: 3840, h: 2160 });
+  assert.deepEqual(shared.fitSize(3840, 2160, 1920, 1080, 2560, 1440), { w: 2560, h: 1440 });
+  assert.deepEqual(shared.fitSize(1920, 1080, 1920, 1080, 3840, 2160), { w: 1920, h: 1080 });
+  assert.equal(shared.quality('sharp4k').w, 3840);
+  assert.equal(shared.quality('nope', 'sharp').id, 'sharp');
+  assert.equal(shared.quality('nope').id, 'smooth');
 });
 
 test('every TV error has words for a person', () => {

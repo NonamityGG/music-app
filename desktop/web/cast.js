@@ -10,7 +10,7 @@
 // 4. while it goes, this window is a pill in the corner with «Остановить».
 
 import { h, clear } from '../../src/util.js';
-import { preferCodecs, unhideCandidates, fitSize, errorText, cleanCode, opusStereo, startBitrate, countCandidates } from '../../src/connect.js';
+import { preferCodecs, unhideCandidates, fitSize, errorText, cleanCode, opusStereo, startBitrate, countCandidates, QUALITY, quality } from '../../src/connect.js';
 
 const $ = (id) => document.getElementById(id);
 const body = document.body;
@@ -41,6 +41,7 @@ let tvs = [];
 let displays = [];
 let displayId = null;
 let mute = true;
+let qualityId = 'sharp';
 let chosen = null; // the TV
 let pc = null;
 let ctl = null;
@@ -99,6 +100,26 @@ function renderOpts() {
     });
     box.appendChild(h('div', { class: 'opt' }, h('div', { class: 'opt-t' }, 'Какой экран'), seg));
   }
+  // the picture: smooth or sharp, up to 4K
+  const q = quality(qualityId, 'sharp');
+  const qs = h('div', { class: 'seg' });
+  for (const p of QUALITY) {
+    qs.appendChild(
+      h(
+        'button',
+        {
+          class: p.id === q.id ? 'on' : '',
+          title: p.sub,
+          onclick: () => {
+            qualityId = p.id;
+            renderOpts();
+          },
+        },
+        p.name
+      )
+    );
+  }
+  box.appendChild(h('div', { class: 'opt col' }, h('div', { class: 'opt-t' }, 'Качество', h('small', null, q.sub)), qs));
   box.appendChild(
     h(
       'button',
@@ -134,6 +155,7 @@ async function find() {
     displays = r.displays || [];
     if (displayId == null || !displays.some((d) => d.id === displayId)) displayId = (displays.find((d) => d.primary) || displays[0] || {}).id;
     if (typeof r.mute === 'boolean') mute = r.mute;
+    if (r.quality) qualityId = r.quality;
     renderOpts();
     if (tvs.length) status(tvs.length === 1 ? 'Нашёл телевизор — нажми на него' : `Нашёл телевизоров: ${tvs.length}`);
     else {
@@ -273,17 +295,17 @@ async function start(t, code) {
   view('vWait');
   $('waitText').textContent = `Подключаюсь к «${t.name}»…`;
   try {
-    const prep = await cast('prepare', { displayId, mute });
+    const q = quality(qualityId, 'sharp');
+    const prep = await cast('prepare', { displayId, mute, quality: q.id });
     const d = prep.display || { w: 1920, h: 1080 };
-    // the full 1080p: text on a PC screen must stay readable (720p, let alone the
-    // 960×540 WebRTC fell to on a SberBox's Wi-Fi, was not)
-    const size = fitSize(d.w, d.h, t.w, t.h);
+    // the preset's size (720p … 4K), never more than the screen itself
+    const size = fitSize(d.w, d.h, t.w, t.h, q.w, q.h);
     stream = await capture(size);
     if (my !== attempt) return cleanup();
     const vt = stream.getVideoTracks()[0];
     if (vt) {
-      // a PC screen is mostly text and windows: sharp detail first, fewer frames under load
-      vt.contentHint = 'detail';
+      // "detail" for text and windows (fewer frames under load), "motion" for films
+      vt.contentHint = q.hint;
       vt.addEventListener('ended', () => stop('ended'));
     }
 
@@ -327,7 +349,7 @@ async function start(t, code) {
       }
       return failed(errorText(r.error));
     }
-    await p.setRemoteDescription({ type: 'answer', sdp: startBitrate(opusStereo(unhideCandidates(r.sdp, t.ip)), 3000, 1500, 6000) });
+    await p.setRemoteDescription({ type: 'answer', sdp: startBitrate(opusStereo(unhideCandidates(r.sdp, t.ip)), q.start, q.min, q.max) });
     if (!countCandidates(r.sdp)) window.rez.log('трансляция: в ответе телевизора нет адресов — жду его сам');
 
     // a clear picture on the home network; under load keep the motion smooth
@@ -337,10 +359,10 @@ async function start(t, code) {
         const prm = s.getParameters();
         if (!prm.encodings || !prm.encodings.length) prm.encodings = [{}];
         if (s.track.kind === 'video') {
-          prm.encodings[0].maxBitrate = 6000000;
+          prm.encodings[0].maxBitrate = q.max * 1000;
           prm.encodings[0].maxFramerate = 30;
-          // never a smaller picture: when the box's Wi-Fi can't take more, fewer frames
-          prm.degradationPreference = 'maintain-resolution';
+          // what gives way when the box's Wi-Fi can't take more: the frames or the size
+          prm.degradationPreference = q.keep;
         } else {
           prm.encodings[0].maxBitrate = 192000;
         }
