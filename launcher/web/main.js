@@ -37,7 +37,7 @@ function insets(i) {
   root.style.setProperty('--b', (i.b || 0) + 'px');
   root.style.setProperty('--l', (i.l || 0) + 'px');
   root.style.setProperty('--r', (i.r || 0) + 'px');
-  // the keyboard: the WebView shrinks the page above it by itself, nothing to add
+  // the keyboard: the page shrinks above it by itself (interactive-widget=resizes-content), nothing to add
 }
 on('insets', insets);
 
