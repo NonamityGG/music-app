@@ -7,6 +7,7 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioPlaybackCaptureConfiguration;
 import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.media.projection.MediaProjection;
 import android.os.Build;
 import android.os.Handler;
@@ -85,6 +86,8 @@ final class CastSession {
     private volatile boolean ended = false;
     private final CountDownLatch gathered = new CountDownLatch(1);
     private Runnable lostTimer;
+    private volatile int peak = 0;
+    private final Runnable report = this::report;
 
     CastSession(Context c, Listener l) {
         ctx = c.getApplicationContext();
@@ -119,6 +122,9 @@ final class CastSession {
             .setUseStereoInput(true)
             .setUseHardwareAcousticEchoCanceler(false)
             .setUseHardwareNoiseSuppressor(false)
+            // a plain recorder (not a call's): no call routing or ducking of the phone's sound
+            .setAudioSource(MediaRecorder.AudioSource.MIC)
+            .setSamplesReadyCallback(this::level)
             .setAudioRecordStateCallback(new JavaAudioDeviceModule.AudioRecordStateCallback() {
                 @Override
                 public void onWebRtcAudioRecordStart() {
@@ -177,6 +183,7 @@ final class CastSession {
         if (s[0] == capW && s[1] == capH) return;
         capW = s[0];
         capH = s[1];
+        Log.i(TAG, "поворот: " + capW + "x" + capH);
         try {
             capturer.changeCaptureFormat(capW, capH, 30);
         } catch (Exception e) {
@@ -306,6 +313,13 @@ final class CastSession {
         }, new SessionDescription(SessionDescription.Type.ANSWER, sdp));
         if (!set.await(10, TimeUnit.SECONDS)) throw new Exception("answer timeout");
         if (err[0] != null) throw err[0];
+        // start sharp: WebRTC would start at 300 kbit/s and climb for many seconds
+        try {
+            pc.setBitrate(1_500_000, 6_000_000, 12_000_000);
+        } catch (Exception e) {
+            Log.w(TAG, "битрейт: " + e);
+        }
+        main.postDelayed(report, 5000);
         // a clear picture on the home network; under load keep the motion smooth
         for (RtpSender s : pc.getSenders()) {
             MediaStreamTrack t = s.track();
@@ -315,8 +329,11 @@ final class CastSession {
                 if (p.encodings == null || p.encodings.isEmpty()) continue;
                 if ("video".equals(t.kind())) {
                     p.encodings.get(0).maxBitrateBps = 12_000_000;
+                    p.encodings.get(0).minBitrateBps = 1_500_000;
                     p.encodings.get(0).maxFramerate = 30;
-                    p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_FRAMERATE;
+                    p.encodings.get(0).scaleResolutionDownBy = 1.0;
+                    // a screen: text and details stay sharp; under load fewer frames, not a smaller picture
+                    p.degradationPreference = RtpParameters.DegradationPreference.MAINTAIN_RESOLUTION;
                 } else {
                     p.encodings.get(0).maxBitrateBps = 192_000;
                 }
@@ -325,6 +342,41 @@ final class CastSession {
                 Log.w(TAG, "параметры отправки: " + e);
             }
         }
+    }
+
+    // the loudest sample since the last report (to see in the log that sound goes)
+    private void level(JavaAudioDeviceModule.AudioSamples a) {
+        byte[] d = a.getData();
+        int p = peak;
+        for (int i = 0; i + 1 < d.length; i += 2) {
+            int v = Math.abs((short) ((d[i] & 0xff) | (d[i + 1] << 8)));
+            if (v > p) p = v;
+        }
+        peak = p;
+    }
+
+    // what goes to the TV, every 5 s in the log
+    private void report() {
+        if (ended || pc == null) return;
+        pc.getStats((r) -> {
+            StringBuilder b = new StringBuilder();
+            for (org.webrtc.RTCStats st : r.getStatsMap().values()) {
+                if (!"outbound-rtp".equals(st.getType())) continue;
+                java.util.Map<String, Object> m = st.getMembers();
+                if ("video".equals(m.get("kind"))) {
+                    b.append("видео ").append(m.get("frameWidth")).append('x').append(m.get("frameHeight"))
+                        .append(' ').append(m.get("framesPerSecond")).append(" к/с, ")
+                        .append(m.get("targetBitrate")).append(" бит/с, ограничение ").append(m.get("qualityLimitationReason"))
+                        .append(", кодек ").append(m.get("encoderImplementation")).append("; ");
+                } else if ("audio".equals(m.get("kind"))) {
+                    b.append("звук отправлено ").append(m.get("bytesSent")).append(" байт; ");
+                }
+            }
+            b.append("громкость ").append(peak);
+            peak = 0;
+            Log.i(TAG, b.toString());
+        });
+        main.postDelayed(report, 5000);
     }
 
     @SuppressLint("MissingPermission")
@@ -446,6 +498,8 @@ final class CastSession {
         ended = true;
         live = false;
         if (lostTimer != null) main.removeCallbacks(lostTimer);
+        main.removeCallbacks(report);
+        Log.i(TAG, "конец показа: " + why);
         if (!"remote".equals(why) && ctl != null) {
             try {
                 ctl.send(new DataChannel.Buffer(ByteBuffer.wrap("{\"t\":\"bye\"}".getBytes(StandardCharsets.UTF_8)), false));
