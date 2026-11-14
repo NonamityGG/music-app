@@ -33,6 +33,7 @@ await build({
     tray: join(here, 'web', 'tray.js'),
     menu: join(here, 'web', 'menu.js'),
     switcher: join(here, 'web', 'switcher.js'),
+    cast: join(here, 'web', 'cast.js'),
   },
   bundle: true,
   format: 'iife',
@@ -43,7 +44,7 @@ await build({
   logLevel: 'warning',
 });
 
-for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css', 'island.html', 'island.css', 'panel.html', 'panel.css', 'start.html', 'start.css', 'quick.html', 'quick.css', 'taskbar.html', 'taskbar.css', 'osd.html', 'osd.css', 'tray.html', 'tray.css', 'menu.html', 'menu.css', 'switcher.html', 'switcher.css']) copyFileSync(join(here, 'web', f), join(out, f));
+for (const f of ['wallpaper.html', 'wallpaper.css', 'bar.html', 'bar.css', 'island.html', 'island.css', 'panel.html', 'panel.css', 'start.html', 'start.css', 'quick.html', 'quick.css', 'taskbar.html', 'taskbar.css', 'osd.html', 'osd.css', 'tray.html', 'tray.css', 'menu.html', 'menu.css', 'switcher.html', 'switcher.css', 'cast.html', 'cast.css']) copyFileSync(join(here, 'web', f), join(out, f));
 
 const ranges = {
   cyrillic: 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116',

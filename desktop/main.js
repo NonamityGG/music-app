@@ -20,10 +20,13 @@ const { spawn } = require('child_process');
 const readline = require('readline');
 const lyrics = require('./lib/lyrics');
 const colors = require('./lib/colors');
+const castLib = require('./lib/cast');
 
 // The wallpaper sits under other windows: Chromium must not decide it is hidden
 // and stop drawing it.
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+// (and «На телевизор» talks WebRTC on the home network with real addresses, not
+// random .local names an old TV box can't look up)
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,WebRtcHideLocalIpsWithMdns');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
@@ -2094,6 +2097,21 @@ function rebuild(why) {
 
 let tray = null;
 
+// ---------- «На телевизор» (Резонанс Connect, lib/cast.js) ----------
+
+let castCtl = null;
+let castState = { live: false, tv: '' };
+function sendCastState() {
+  for (const w of [quickWin, panel]) if (w && !w.isDestroyed()) w.webContents.send('cast-state', castState);
+}
+function toggleCast() {
+  if (!castCtl) return;
+  hideQuick();
+  hidePanel();
+  if (castCtl.isLive()) castCtl.stop();
+  else castCtl.open();
+}
+
 // ---------- self-test (CI only) ----------
 
 // Plays a soft beat with media info in a hidden window, so the build machine can
@@ -2192,6 +2210,21 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('settings', () => view());
     ipcMain.handle('info', () => info());
     ipcMain.handle('pick-image', () => pickImage());
+    castCtl = castLib.create({
+      BrowserWindow,
+      session,
+      desktopCapturer,
+      screen,
+      app,
+      preload,
+      log,
+      onChange: (st) => {
+        castState = st;
+        sendCastState();
+      },
+    });
+    ipcMain.handle('cast', (e, cmd, arg) => castCtl.handle(String(cmd || ''), arg));
+    ipcMain.handle('cast-state', () => castState);
     ipcMain.on('set', (e, patch) => saveSettingsPatch(patch));
     ipcMain.on('media', (e, action, pos) => hostSend({ cmd: 'media', action, pos: typeof pos === 'number' ? Math.round(pos) : -1 }));
     ipcMain.on('panel', (e, cmd) => {
@@ -2249,6 +2282,7 @@ if (!app.requestSingleInstanceLock()) {
       else if (cmd === 'status') hostSend({ cmd: 'status' });
       else if (cmd === 'media') hostSend({ cmd: 'media', action: arg && arg.action, pos: -1 });
       else if (cmd === 'settings') showPanel('center', arg && arg.tab);
+      else if (cmd === 'cast') toggleCast();
       else if (cmd === 'openStart') showStart();
       else if (cmd === 'openQuick') showQuick();
       // from the taskbar (it never takes the focus, so the menus don't hear the
@@ -2416,6 +2450,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('before-quit', () => {
     quitting = true;
+    if (castCtl && castCtl.isLive()) castCtl.stop();
     hostSend({ cmd: 'appbarRemove' });
     hostSend({ cmd: 'taskbarHide', on: false });
     hostSend({ cmd: 'refreshWallpaper' });

@@ -36,4 +36,9 @@ contextBridge.exposeInMainWorld('rez', {
   onTray: on('tray'),
   // the volume pill
   onOsd: on('osd'),
+  // «На телевизор» (Резонанс Connect)
+  cast: (cmd, arg) => ipcRenderer.invoke('cast', cmd, arg),
+  onCast: on('cast'),
+  onCastState: on('cast-state'),
+  castState: () => ipcRenderer.invoke('cast-state'),
 });

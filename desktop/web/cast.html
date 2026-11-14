@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; media-src 'self' blob: mediastream:" />
+    <title>Резонанс — на телевизор</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="cast.css" />
+  </head>
+  <body>
+    <div class="bg" aria-hidden="true">
+      <div class="glow"></div>
+      <div class="tint"></div>
+    </div>
+
+    <!-- the list of TVs, the code, connecting -->
+    <main class="root" id="pick">
+      <header class="head">
+        <span class="h-ic" id="hIc"></span>
+        <div class="h-t">
+          <div class="h-n">На телевизор</div>
+          <div class="h-s">Экран и звук — на Резонанс OS в этой сети</div>
+        </div>
+        <button class="x" id="close" aria-label="Закрыть"></button>
+      </header>
+
+      <section class="view" id="vList">
+        <div class="status" id="status"></div>
+        <div class="tvs" id="tvs"></div>
+        <div class="manual hidden" id="manual">
+          <input id="ip" type="text" inputmode="decimal" placeholder="Адрес телевизора, например 192.168.1.40" spellcheck="false" />
+          <button class="btn" id="ipGo">Подключить</button>
+        </div>
+        <div class="opts" id="opts"></div>
+        <div class="row-btns">
+          <button class="btn ghost" id="again">Искать снова</button>
+          <button class="btn ghost" id="byIp">Ввести адрес</button>
+        </div>
+      </section>
+
+      <section class="view hidden" id="vCode">
+        <div class="big">Код с экрана телевизора</div>
+        <div class="sub" id="codeFor"></div>
+        <label class="code" id="codeBox">
+          <input id="code" type="text" inputmode="numeric" maxlength="4" autocomplete="off" spellcheck="false" />
+          <span></span><span></span><span></span><span></span>
+        </label>
+        <div class="err" id="codeErr"></div>
+        <div class="row-btns">
+          <button class="btn ghost" id="codeBack">Назад</button>
+        </div>
+      </section>
+
+      <section class="view hidden" id="vWait">
+        <div class="spin" aria-hidden="true"><i></i></div>
+        <div class="big" id="waitText">Подключаюсь…</div>
+        <div class="sub">Обычно пара секунд</div>
+      </section>
+    </main>
+
+    <!-- while the picture goes: a pill in the corner -->
+    <div class="pill hidden" id="pill">
+      <span class="dot" aria-hidden="true"></span>
+      <div class="p-t">
+        <div class="p-n">На телевизоре</div>
+        <div class="p-s" id="pillTv"></div>
+      </div>
+      <button class="stop" id="stop">Остановить</button>
+    </div>
+    <script src="cast.js"></script>
+  </body>
+</html>

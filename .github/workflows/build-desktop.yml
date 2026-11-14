@@ -2,12 +2,13 @@ name: Собрать Резонанс для ПК
 
 on:
   push:
-    # pc-dev: test builds without a release
-    branches: [main, pc-dev]
+    # pc-dev, connect-dev: test builds without a release
+    branches: [main, pc-dev, connect-dev]
     paths:
       - 'desktop/**'
       - 'src/waves.js'
       - 'src/util.js'
+      - 'src/connect.js'
       - '.github/workflows/build-desktop.yml'
   workflow_dispatch:
 
