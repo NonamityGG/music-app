@@ -1049,8 +1049,9 @@ function createPanel() {
     fullscreenable: false,
     alwaysOnTop: true,
     hasShadow: true,
-    backgroundColor: '#00000000',
-    backgroundMaterial: 'acrylic',
+    // its own dark ground, no Windows acrylic: acrylic shows an empty grey box
+    // whenever the page has not drawn yet (and stutters as the window appears)
+    backgroundColor: '#130d22',
     roundedCorners: true,
     title: 'Резонанс',
     webPreferences: webPrefs,
@@ -1109,16 +1110,44 @@ function showPanel(from = 'bar', tab) {
   panel.setBounds({ x, y, width: PANEL_W, height: h });
   const openMsg = { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null };
   const p = panel;
-  whenLoaded(p, () => {
-    if (p.isDestroyed()) return;
+  const send = () => {
     p.webContents.send('panel', openMsg);
     p.webContents.send('info', info());
     if (lastMedia) p.webContents.send('media', lastMedia);
+  };
+  // the window comes up once the page has drawn the open panel (it says so),
+  // or after a moment anyway; a page that never answers is loaded again
+  panelPainted = false;
+  panelTimers.forEach(clearTimeout);
+  panelReveal = () => {
+    if (p.isDestroyed() || p.isVisible()) return;
+    p.show();
+    p.focus();
+    panelShownAt = Date.now();
+    if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
+  };
+  whenLoaded(p, () => {
+    if (p.isDestroyed()) return;
+    send();
+    panelTimers = [
+      setTimeout(() => panelReveal && panelReveal(), 90),
+      setTimeout(() => {
+        if (panelPainted || p.isDestroyed() || !p.isVisible()) return;
+        log('панель: страница не нарисовалась — загружаю заново');
+        p.webContents.once('did-finish-load', () => !p.isDestroyed() && send());
+        p.webContents.reload();
+      }, 1800),
+    ];
   });
-  panel.show();
-  panel.focus();
-  panelShownAt = Date.now();
-  if (island && !island.isDestroyed() && topHide.size === 0) island.moveTop();
+}
+
+let panelPainted = false;
+let panelReveal = null;
+let panelTimers = [];
+function panelDrawn() {
+  panelPainted = true;
+  clearTimeout(panelTimers[0]);
+  if (panelReveal) panelReveal();
 }
 
 function togglePanel(from, tab) {
@@ -2153,6 +2182,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on('panel', (e, cmd) => {
       if (cmd === 'toggle') togglePanel('bar');
       else if (cmd === 'close') hidePanel();
+      else if (cmd === 'painted') panelDrawn();
     });
     // The island takes the mouse only while the pointer is on it. While it does,
     // the cursor is watched here: when a window stops letting the mouse through,

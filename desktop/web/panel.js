@@ -804,6 +804,8 @@ window.rez.onPanel((m) => {
     document.body.classList.add('opening');
     clearTimeout(openTimer);
     openTimer = setTimeout(() => document.body.classList.remove('opening'), 900);
+    // tell the main process the open panel is on screen: it shows the window then
+    requestAnimationFrame(() => requestAnimationFrame(() => window.rez.panel('painted')));
     window.rez.info().then(setInfo);
   } else if (m.tab) switchTab(m.tab);
 });
