@@ -604,6 +604,51 @@ function guardPage(win, name, recover) {
     }, 300);
   });
   win.webContents.on('unresponsive', () => log(`окно «${name}» не отвечает`));
+  // the page's own errors go to the log: an empty window then says why
+  let said = 0;
+  win.webContents.on('console-message', (e, lvl, msg, line, src) => {
+    const level = typeof e.level === 'string' ? e.level : lvl === 3 ? 'error' : '';
+    if (level !== 'error' || said >= 20) return;
+    said++;
+    const text = typeof e.message === 'string' ? e.message : msg;
+    const where = String(e.sourceId || src || '').split('/').pop() + ':' + (e.lineNumber || line || '');
+    log(`окно «${name}»: ошибка страницы: ${text} (${where})`);
+  });
+}
+
+// A window that is up but shows nothing (seen after an update: the bar and the
+// taskbar came up as empty strips until Резонанс was restarted): a few seconds
+// after it appears, its picture is checked; an empty one is made again — at
+// most twice in five minutes, so a driver that keeps failing doesn't loop.
+const blankRedo = {};
+function watchBlank(win, name, recover) {
+  for (const ms of [3500, 9000]) {
+    setTimeout(async () => {
+      if (!win || win.isDestroyed() || !win.isVisible() || topHide.size > 0) return;
+      let img;
+      try {
+        img = await win.webContents.capturePage();
+      } catch {
+        return;
+      }
+      if (win.isDestroyed() || !win.isVisible()) return;
+      const bmp = img.isEmpty() ? null : img.toBitmap();
+      let drawn = 0;
+      if (bmp) for (let i = 3; i < bmp.length; i += 64) if (bmp[i] > 40) drawn++;
+      if (drawn > 4) return;
+      const now = Date.now();
+      const list = (blankRedo[name] || []).filter((t) => now - t < 5 * 60 * 1000);
+      if (list.length >= 2) return log(`окно «${name}» пустое — уже пересоздавал дважды, жду`);
+      list.push(now);
+      blankRedo[name] = list;
+      log(`окно «${name}» показано, но пустое — создаю заново`);
+      try {
+        recover();
+      } catch (er) {
+        log('восстановление: ' + er.message);
+      }
+    }, ms);
+  }
 }
 
 // a menu may open while its page is still loading (just created, or brought
@@ -793,6 +838,7 @@ function createBar() {
   bar.once('ready-to-show', () => {
     bar._ready = true;
     placeTop(bar);
+    watchBlank(bar, 'строка', () => scheduleRebuild('строка пустая'));
     barShown = true;
     registerAppBar();
     sendOwn();
@@ -1684,6 +1730,10 @@ function createTaskbar() {
     tb._ready = true;
     placeTop(tb);
     nudgePaint(tb);
+    watchBlank(tb, 'панель задач', () => {
+      closeTaskbar();
+      if (settings.taskbar) enableTaskbar(true);
+    });
     registerTaskbar();
     sendOwn();
     styleWindows();
