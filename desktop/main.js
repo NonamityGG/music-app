@@ -403,9 +403,9 @@ function toggleQuick() {
 }
 
 // rounded corners and a quiet border for the panel (Windows 11)
-function styleWindows() {
-  if (panel && !panel.isDestroyed()) hostSend({ cmd: 'style', hwnd: hwndOf(panel), corner: 2, border: '#3a2d58', dark: true });
-}
+// the panel is see-through now and draws its own corners and border: Windows'
+// rounding would cut its shadow off
+function styleWindows() {}
 
 function fontsDir() {
   return app.isPackaged ? path.join(process.resourcesPath, 'fonts') : path.join(__dirname, 'build', 'fonts');
@@ -1036,9 +1036,12 @@ let panelShownAt = 0;
 let dialogOpen = false;
 
 function createPanel() {
+  // see-through like Start and Quick settings: on some PCs an ordinary (or
+  // acrylic) window of ours stays an empty box although its page has drawn —
+  // the see-through ones always show. The page draws the panel and its shadow.
   panel = new BrowserWindow({
-    width: PANEL_W,
-    height: PANEL_H,
+    width: PANEL_W + 2 * SHELL_PAD,
+    height: PANEL_H + 2 * SHELL_PAD,
     frame: false,
     show: false,
     skipTaskbar: true,
@@ -1048,11 +1051,11 @@ function createPanel() {
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
-    hasShadow: true,
-    // its own dark ground, no Windows acrylic: acrylic shows an empty grey box
-    // whenever the page has not drawn yet (and stutters as the window appears)
-    backgroundColor: '#130d22',
-    roundedCorners: true,
+    hasShadow: false,
+    roundedCorners: false,
+    transparent: true,
+    thickFrame: false,
+    backgroundColor: '#00000000',
     title: 'Резонанс',
     webPreferences: webPrefs,
   });
@@ -1073,7 +1076,6 @@ function createPanel() {
     panel = null;
   });
   panel.once('ready-to-show', () => {
-    styleWindows();
     sendOwn();
     if (lastMedia) panel.webContents.send('media', lastMedia);
   });
@@ -1107,7 +1109,7 @@ function showPanel(from = 'bar', tab) {
     x = wa.x + 8;
     y = wa.y + 8;
   }
-  panel.setBounds({ x, y, width: PANEL_W, height: h });
+  panel.setBounds({ x: x - SHELL_PAD, y: y - SHELL_PAD, width: PANEL_W + 2 * SHELL_PAD, height: h + 2 * SHELL_PAD });
   const openMsg = { open: true, from: from === 'tray' && y > wa.y + 20 ? 'bottom' : 'top', tab: tab || null };
   const p = panel;
   const send = () => {
