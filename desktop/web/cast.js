@@ -400,16 +400,25 @@ function report(p) {
     .then((stats) => {
       const codecs = {};
       const out = [];
-      stats.forEach((s) => s.type === 'codec' && (codecs[s.id] = s.mimeType));
+      const fmtp = {};
+      stats.forEach((s) => s.type === 'codec' && ((codecs[s.id] = s.mimeType), (fmtp[s.id] = `${s.channels || 1} кан. ${s.sdpFmtpLine || ''}`)));
       stats.forEach((s) => {
         if (s.type === 'outbound-rtp' && s.kind === 'video') {
           out.push(`${codecs[s.codecId] || '?'} ${s.frameWidth}×${s.frameHeight} ${Math.round(s.framesPerSecond || 0)} к/с`);
           if (s.encoderImplementation) out.push('кодер ' + s.encoderImplementation);
           if (s.qualityLimitationReason && s.qualityLimitationReason !== 'none') out.push('упирается в ' + s.qualityLimitationReason);
         }
+        if (s.type === 'outbound-rtp' && s.kind === 'audio') {
+          out.push(`звук ${codecs[s.codecId] || '?'} ${fmtp[s.codecId] || ''} цель ${Math.round((s.targetBitrate || 0) / 1000)} кбит/с`);
+        }
         if (s.type === 'candidate-pair' && s.nominated && s.currentRoundTripTime != null) out.push(`сеть ${Math.round(s.currentRoundTripTime * 1000)} мс`);
         if (s.type === 'candidate-pair' && s.nominated && s.availableOutgoingBitrate) out.push(`канал ${(s.availableOutgoingBitrate / 1e6).toFixed(1)} Мбит/с`);
       });
+      const at = stream && stream.getAudioTracks()[0];
+      if (at && at.getSettings) {
+        const g = at.getSettings();
+        out.push(`захват звука ${g.channelCount || '?'} кан. ${g.sampleRate || '?'} Гц, эхо ${g.echoCancellation}, шум ${g.noiseSuppression}, усиление ${g.autoGainControl}`);
+      }
       cast('stats', { text: out.join(', ') });
     })
     .catch(() => {});
