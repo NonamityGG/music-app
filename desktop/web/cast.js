@@ -254,7 +254,12 @@ function gathered(p, ms) {
 async function capture(size) {
   const video = { width: { max: size.w }, height: { max: size.h }, frameRate: { ideal: 30, max: 30 } };
   try {
-    return await navigator.mediaDevices.getDisplayMedia({ video, audio: true });
+    // music and films, not a call: none of the voice processing (it squashes and
+    // muddies music), stereo at 48 kHz
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2, sampleRate: 48000 };
+    const st = await navigator.mediaDevices.getDisplayMedia({ video, audio });
+    for (const t of st.getAudioTracks()) t.contentHint = 'music';
+    return st;
   } catch (e) {
     // no sound to capture (no output device): the picture alone
     window.rez.log('трансляция: без звука: ' + e.message);
