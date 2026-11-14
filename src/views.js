@@ -2,6 +2,7 @@
 
 import { h, icon, clear, debounce, tracksWord, toast, plural, add, afterIntro } from './util.js';
 import * as nav from './nav.js';
+import { castAvailable, castLive, openCast, onCastChange } from './cast.js';
 import * as player from './player.js';
 import * as ya from './yandex.js';
 import * as online from './online.js';
@@ -535,12 +536,30 @@ export function profileView() {
     return h('label', { class: 'setting-row' }, h('div', null, h('div', null, label), sub ? h('div', { class: 'muted small' }, sub) : null), sw);
   };
 
+  const unwatch = onCastChange(() => (document.body.contains(body) ? render() : unwatch()));
   const render = async () => {
     clear(body);
 
     // --- music services ---
     add(body, section('Музыка онлайн', null, serviceCard('yandex', render)));
     add(body, section('Перенос плейлистов', null, transferAccounts(render)));
+
+    // --- the TV (Резонанс Connect) ---
+    if (castAvailable()) {
+      const t = castLive();
+      add(body,
+        section(
+          'Телевизор',
+          null,
+          h(
+            'div',
+            { class: 'card-box' },
+            h('div', { class: 'muted small' }, t ? `Экран телефона сейчас на «${t.name}»` : 'Экран телефона со звуком на телевизоре с Резонанс OS — в той же сети Wi-Fi'),
+            h('button', { class: 'btn btn-ghost lt-entry', onclick: () => openCast() }, icon('tv', 20), t ? 'Показ на телевизоре' : 'Транслировать на телевизор')
+          )
+        )
+      );
+    }
 
     // --- look ---
     const replay = h('button', { class: 'btn-text small intro-replay', onclick: () => window.rezIntro && window.rezIntro.play(false) }, 'Посмотреть заставку');

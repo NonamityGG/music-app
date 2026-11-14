@@ -4122,3 +4122,67 @@ html[data-fullscreen] .statusline {
 .lt-entry {
   align-self: flex-start;
 }
+
+/* ---------- Резонанс Connect: the phone's screen on a TV (cast.js) ---------- */
+
+.cast-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 16px calc(var(--sab, 0px) + 20px);
+  min-height: 180px;
+}
+
+.cast-hint {
+  padding: 0 4px;
+}
+
+.cast-note {
+  color: var(--lilac);
+  font-size: 14px;
+  text-align: center;
+}
+
+.cast-ask {
+  text-align: center;
+  font-weight: 600;
+}
+
+.cast-code {
+  align-self: center;
+  width: 7.5ch;
+  padding: 10px 0 10px 0.6ch;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: transparent;
+  color: inherit;
+  font: 600 40px/1 inherit;
+  letter-spacing: 0.6ch;
+  text-align: center;
+}
+
+.cast-code:focus {
+  outline: none;
+  border-color: var(--lilac);
+}
+
+.cast-btn {
+  align-self: stretch;
+}
+
+.cast-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding-top: 8px;
+}
+
+.cast-live svg {
+  color: var(--lilac);
+}
+
+.cast-live-t {
+  font-weight: 600;
+}

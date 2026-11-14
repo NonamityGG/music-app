@@ -33,6 +33,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+        <!-- Резонанс Connect: the screen on a TV while other apps are open -->
+        <service
+            android:name=".CastService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 
     <!-- Permissions -->
@@ -43,6 +48,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Резонанс Connect: the screen and the phone's sound on a TV (the sound needs the microphone permission) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- to ask (once, with the system's own dialog) not to be frozen on pause in the background -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />

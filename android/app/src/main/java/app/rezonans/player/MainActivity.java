@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
         startedAt = SystemClock.uptimeMillis();
         registerPlugin(ServiceWebPlugin.class);
         registerPlugin(ScreenPlugin.class);
+        registerPlugin(CastPlugin.class);
         super.onCreate(savedInstanceState);
 
         // full screen from the first frame (the choice is remembered natively, so

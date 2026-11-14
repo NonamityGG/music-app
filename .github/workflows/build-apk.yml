@@ -2,7 +2,8 @@ name: Собрать APK
 
 on:
   push:
-    branches: [main]
+    # connect-dev: test builds of Резонанс Connect (no release from it)
+    branches: [main, connect-dev]
     # the PC app has its own build (build-desktop.yml)
     paths-ignore:
       - 'desktop/**'
@@ -32,7 +33,7 @@ jobs:
 
       # 1.1.0 is build 8; every build after it counts up
       - name: Version
-        run: echo "APP_VERSION_NAME=1.1.$(( ${{ github.run_number }} - 8 ))" >> "$GITHUB_ENV"
+        run: echo "APP_VERSION_NAME=1.1.$(( ${{ github.run_number }} - 8 ))${{ github.ref != 'refs/heads/main' && '-dev' || '' }}" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -73,6 +74,7 @@ jobs:
           path: Rezonans-*.apk
 
       - name: Publish release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.APP_VERSION_NAME }}
