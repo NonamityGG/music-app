@@ -22,6 +22,10 @@ body {
   background: #120a24;
 }
 
+body[data-bg='botanical'] {
+  background: #100b18 url('botanical.svg') center / cover no-repeat;
+}
+
 body[data-bg='glass-black'],
 body[data-bg='amoled'],
 body[data-bg='windows'],
