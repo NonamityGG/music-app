@@ -1,12 +1,11 @@
 /* Windows 11 Aesthetic: a separate visual skin for the PC edition. */
-body[data-appearance="aesthetic"] { --acc:var(--c1,#7c4dff); --acc2:var(--c3,#ff6fd8); }
 body[data-appearance="aesthetic"] .panel,
 body[data-appearance="aesthetic"] .bar,
 body[data-appearance="aesthetic"] .tb,
 body[data-appearance="aesthetic"] .isl {
  background:
-  radial-gradient(90% 65% at 0% 0%, color-mix(in srgb,var(--acc) 24%,transparent),transparent 72%),
-  radial-gradient(70% 55% at 100% 100%, color-mix(in srgb,var(--acc2) 15%,transparent),transparent 70%),
+  radial-gradient(90% 65% at 0% 0%, color-mix(in srgb,var(--c1,var(--acc,#7c4dff)) 24%,transparent),transparent 72%),
+  radial-gradient(70% 55% at 100% 100%, color-mix(in srgb,var(--c3,var(--acc2,#ff6fd8)) 15%,transparent),transparent 70%),
   linear-gradient(145deg,rgba(31,22,43,.96),rgba(13,10,19,.97));
  border-radius:24px;
  box-shadow:0 22px 70px rgba(0,0,0,.58),inset 0 0 0 1px rgba(255,255,255,.13),inset 0 1px 0 rgba(255,255,255,.1);
@@ -40,13 +39,13 @@ body.wallpaper[data-bg="botanical"] {
 body[data-appearance="aesthetic"][data-bg="botanical"] .sky {display:none}
 body[data-appearance="aesthetic"] .bar {
  border-radius:0 0 18px 18px;
- background:linear-gradient(110deg,rgba(24,17,34,.9),rgba(14,10,20,.82));
+ background:radial-gradient(100% 140% at 0% 0%,color-mix(in srgb,var(--c1) 16%,transparent),transparent 72%),linear-gradient(110deg,rgba(24,17,34,.9),rgba(14,10,20,.82));
  box-shadow:inset 0 -1px 0 rgba(255,255,255,.12),0 8px 28px rgba(0,0,0,.24);
  backdrop-filter:blur(24px) saturate(150%);
 }
 body[data-appearance="aesthetic"] .tb {
  border-radius:17px 17px 0 0;
- background:linear-gradient(110deg,rgba(25,17,36,.9),rgba(13,10,19,.86));
+ background:radial-gradient(100% 140% at 0% 0%,color-mix(in srgb,var(--c1) 16%,transparent),transparent 72%),linear-gradient(110deg,rgba(25,17,36,.9),rgba(13,10,19,.86));
  box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 -8px 28px rgba(0,0,0,.2);
  backdrop-filter:blur(24px) saturate(150%);
 }
