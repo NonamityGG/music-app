@@ -37,6 +37,8 @@ let dragP = -1; // where the progress line is being dragged to (0..1), -1 when n
 function applySettings(s) {
   if (!s) return;
   settings = s;
+  document.body.dataset.appearance = s.appearance || 'classic';
+  document.body.dataset.bg = s.bg || 'glass-violet';
   document.body.classList.toggle('nobar', !s.bar);
   document.body.classList.toggle('noglow', s.islandGlow === false);
   measure();
