@@ -311,6 +311,7 @@ const BGS = [
   ['amoled', 'Чёрный AMOLED', '#000'],
   ['windows', 'Мои обои Windows', ''],
   ['image', 'Свой рисунок', ''],
+  ['botanical', 'Dark Botanical', ''],
 ];
 
 function bgTiles() {
@@ -453,6 +454,9 @@ function newsCard() {
 const PAGES = {
   home() {
     return [
+      sec('Оформление приложения', card(
+        row('Внешний вид', 'Новая оболочка только для ПК; функции плеера остаются прежними', seg('appearance', [['classic', 'Классика'], ['aesthetic', 'Aesthetic']]))
+      )),
       newsCard(),
       nowCard(),
       (() => {
