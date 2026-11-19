@@ -1,0 +1,62 @@
+/* Windows 11 Aesthetic: a separate visual skin for the PC edition. */
+body[data-appearance="aesthetic"] .panel,
+body[data-appearance="aesthetic"] .bar,
+body[data-appearance="aesthetic"] .tb,
+body[data-appearance="aesthetic"] .isl {
+ background:
+  radial-gradient(90% 65% at 0% 0%, color-mix(in srgb,var(--c1,var(--acc,#7c4dff)) 24%,transparent),transparent 72%),
+  radial-gradient(70% 55% at 100% 100%, color-mix(in srgb,var(--c3,var(--acc2,#ff6fd8)) 15%,transparent),transparent 70%),
+  linear-gradient(145deg,rgba(31,22,43,.96),rgba(13,10,19,.97));
+ border-radius:24px;
+ box-shadow:0 22px 70px rgba(0,0,0,.58),inset 0 0 0 1px rgba(255,255,255,.13),inset 0 1px 0 rgba(255,255,255,.1);
+ backdrop-filter:blur(28px) saturate(145%);
+}
+body[data-appearance="aesthetic"] .tabs {background:rgba(0,0,0,.24);border-radius:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+body[data-appearance="aesthetic"] .tab-ind {border-radius:14px;box-shadow:0 5px 24px color-mix(in srgb,var(--acc) 42%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body[data-appearance="aesthetic"] .card,
+body[data-appearance="aesthetic"] .tg,
+body[data-appearance="aesthetic"] .bg,
+body[data-appearance="aesthetic"] .st {background:rgba(255,255,255,.065);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.07);backdrop-filter:blur(18px)}
+body[data-appearance="aesthetic"] .card {border-radius:22px}
+body[data-appearance="aesthetic"] .now {border-radius:22px;background:linear-gradient(120deg,color-mix(in srgb,var(--acc) 24%,rgba(255,255,255,.035)),rgba(255,255,255,.045));box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+body[data-appearance="aesthetic"] .head {height:64px}
+body[data-appearance="aesthetic"] .brand {letter-spacing:.035em}
+body[data-appearance="aesthetic"] .ver {border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px)}
+body[data-appearance="aesthetic"] .st.on,
+body[data-appearance="aesthetic"] .bg.on {background:color-mix(in srgb,var(--acc) 20%,rgba(255,255,255,.07));box-shadow:inset 0 0 0 1.5px var(--acc),0 8px 26px color-mix(in srgb,var(--acc) 18%,transparent)}
+body[data-appearance="aesthetic"] .sw-c.on {box-shadow:0 0 0 2px #17101f,0 0 0 4px rgba(255,255,255,.9),0 0 22px var(--a)}
+body[data-appearance="aesthetic"] .btn {border-radius:14px}
+body[data-appearance="aesthetic"] .sample {border-radius:18px}
+body[data-appearance="aesthetic"] .news {border-radius:22px}
+body[data-appearance="aesthetic"] .bg-pic {height:62px;border-radius:14px}
+body[data-appearance="aesthetic"] .photo {filter:blur(var(--blur)) saturate(1.08)}
+body.wallpaper[data-bg="botanical"] {
+ background-image:url("botanical.svg");
+ background-position:center;
+ background-size:cover;
+ background-repeat:no-repeat;
+}
+body[data-appearance="aesthetic"][data-bg="botanical"] .sky {display:none}
+body[data-appearance="aesthetic"] .bar {
+ border-radius:0 0 18px 18px;
+ background:radial-gradient(100% 140% at 0% 0%,color-mix(in srgb,var(--c1) 16%,transparent),transparent 72%),linear-gradient(110deg,rgba(24,17,34,.9),rgba(14,10,20,.82));
+ box-shadow:inset 0 -1px 0 rgba(255,255,255,.12),0 8px 28px rgba(0,0,0,.24);
+ backdrop-filter:blur(24px) saturate(150%);
+}
+body[data-appearance="aesthetic"] .tb {
+ border-radius:17px 17px 0 0;
+ background:radial-gradient(100% 140% at 0% 0%,color-mix(in srgb,var(--c1) 16%,transparent),transparent 72%),linear-gradient(110deg,rgba(25,17,36,.9),rgba(13,10,19,.86));
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.13),0 -8px 28px rgba(0,0,0,.2);
+ backdrop-filter:blur(24px) saturate(150%);
+}
+body[data-appearance="aesthetic"] .isl {
+ background:linear-gradient(145deg,rgba(39,27,53,.98),rgba(12,9,17,.98));
+ box-shadow:0 0 0 1px rgba(255,255,255,.16),0 10px 34px rgba(0,0,0,.48),0 0 32px color-mix(in srgb,var(--acc,#8b5cff) 20%,transparent);
+}
+body[data-appearance="aesthetic"] .isl.open {
+ border-radius:25px;
+}
+body[data-appearance="aesthetic"] .tb button,
+body[data-appearance="aesthetic"] .bar button {transition:background .18s ease,box-shadow .18s ease}
+body[data-appearance="aesthetic"] .tb button:hover,
+body[data-appearance="aesthetic"] .bar button:hover {background:rgba(255,255,255,.1);border-radius:12px}

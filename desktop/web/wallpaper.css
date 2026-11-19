@@ -22,6 +22,16 @@ body {
   background: #120a24;
 }
 
+body[data-bg='botanical'] {
+  background-color: #100b18;
+  background-image: url('botanical.svg');
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+/* Botanical is vector artwork with a 3840×2160 UHD intrinsic canvas. */
+
 body[data-bg='glass-black'],
 body[data-bg='amoled'],
 body[data-bg='windows'],

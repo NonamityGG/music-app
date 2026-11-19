@@ -92,6 +92,8 @@ function set(patch) {
 let coverCols = null;
 
 function paintAccent() {
+  document.body.dataset.appearance = S.appearance || 'classic';
+  document.body.dataset.bg = S.bg || 'glass-violet';
   const c = S.palette === 'cover' && coverCols ? coverCols : S.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
   document.body.style.setProperty('--acc', c[0]);
   document.body.style.setProperty('--acc3', c[1]);
@@ -311,6 +313,7 @@ const BGS = [
   ['amoled', 'Чёрный AMOLED', '#000'],
   ['windows', 'Мои обои Windows', ''],
   ['image', 'Свой рисунок', ''],
+  ['botanical', 'Dark Botanical', "url('botanical.svg') center / cover no-repeat"],
 ];
 
 function bgTiles() {
@@ -453,6 +456,9 @@ function newsCard() {
 const PAGES = {
   home() {
     return [
+      sec('Оформление приложения', card(
+        row('Внешний вид', 'Новая оболочка только для ПК; функции плеера остаются прежними', seg('appearance', [['classic', 'Классика'], ['aesthetic', 'Aesthetic']]))
+      )),
       newsCard(),
       nowCard(),
       (() => {
@@ -494,7 +500,7 @@ const PAGES = {
   bg() {
     const isPhoto = S.bg === 'windows' || S.bg === 'image';
     return [
-      sec('Фон', bgTiles()),
+      sec('Фон', bgTiles(), hint('Dark Botanical — векторные обои с холстом 3840 × 2160 (4K UHD). Для своих обоев выбирай изображение от 3840 × 2160 пикселей: Резонанс использует исходный файл без уменьшения разрешения.')),
       isPhoto
         ? sec(
             'Картинка',

@@ -55,3 +55,13 @@ test('Windows gets eight accent shades from the palette, the accent in the middl
   assert.ok(lum(c.highlight) < lum(c.accent));
   assert.equal(colors.forPalette('nope').accent, '#7c4dff');
 });
+
+
+test('Aesthetic palettes are available without changing the Classic Violet palette', () => {
+  assert.equal(colors.forPalette('violet').accent, '#7c4dff');
+  for (const id of ['plum', 'rose', 'azure', 'emerald', 'amber']) {
+    const palette = colors.forPalette(id);
+    assert.match(palette.accent, /^#[0-9a-f]{6}$/);
+    assert.equal(palette.palette.length, 8);
+  }
+});

@@ -73,6 +73,7 @@ function apply(s) {
   const prevBg = settings && settings.bgUrl;
   settings = s;
   body.dataset.bg = s.bg || 'glass-violet';
+  body.dataset.appearance = s.appearance || 'classic';
   body.classList.toggle('still', s.clouds === false);
   body.classList.toggle('novignette', s.vignette === false);
   body.classList.toggle('text-top', s.textPos === 'top');

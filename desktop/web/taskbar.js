@@ -63,6 +63,7 @@ function apply(s) {
   if (!s) return;
   settings = s;
   body.dataset.bg = s.bg || 'glass-violet';
+  body.dataset.appearance = s.appearance || 'classic';
   // never Windows' acrylic (it stutters as windows move under it): the page's
   // own frosted tint, which fades away when the see-through taskbar is on
   body.classList.add('clearable');
