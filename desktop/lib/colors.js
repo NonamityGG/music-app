@@ -4,7 +4,8 @@
 'use strict';
 
 const PALETTES = {
-  violet: ['#7650c9', '#b79be8', '#f0d8ff'],
+  violet: ['#7c4dff', '#c3a6ff', '#ff6fd8'],
+  plum: ['#7650c9', '#b79be8', '#f0d8ff'],
   rose: ['#a94f83', '#e28bb9', '#f7d2e7'],
   azure: ['#356aab', '#72a9e8', '#c8e6ff'],
   emerald: ['#347c68', '#68b99b', '#c3f0dc'],
