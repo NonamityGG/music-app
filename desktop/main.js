@@ -113,7 +113,7 @@ const DEFAULTS = {
 const CHOICES = {
   appearance: ['classic', 'aesthetic'],
   style: ['neon', 'ribbons', 'capsules', 'dots', 'rings', 'scope', 'horizon', 'orb', 'cube', 'crystal', 'terrain', 'silk', 'orbit'],
-  palette: ['violet', 'rose', 'azure', 'emerald', 'amber', 'neon', 'sunset', 'mint', 'ice', 'aurora', 'fire', 'sakura', 'gold', 'mono', 'cover'],
+  palette: ['violet', 'plum', 'rose', 'azure', 'emerald', 'amber', 'neon', 'sunset', 'mint', 'ice', 'aurora', 'fire', 'sakura', 'gold', 'mono', 'cover'],
   bg: ['glass-violet', 'glass-black', 'glass-palette', 'aurora', 'ember', 'dark', 'amoled', 'windows', 'image', 'botanical'],
   text: ['off', 'lyrics', 'track', 'clock', 'custom'],
   textStyle: ['soft', 'outline', 'glass'],
