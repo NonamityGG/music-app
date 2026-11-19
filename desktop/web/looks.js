@@ -8,6 +8,11 @@ import * as waves from '../../src/waves.js';
 const { roundRect } = waves;
 
 export const PC_PALETTES = [
+  { id: 'violet', name: 'Violet', colors: ['#7650c9', '#b79be8', '#f0d8ff'] },
+  { id: 'rose', name: 'Rose', colors: ['#a94f83', '#e28bb9', '#f7d2e7'] },
+  { id: 'azure', name: 'Azure', colors: ['#356aab', '#72a9e8', '#c8e6ff'] },
+  { id: 'emerald', name: 'Emerald', colors: ['#347c68', '#68b99b', '#c3f0dc'] },
+  { id: 'amber', name: 'Amber', colors: ['#9c6932', '#d7a65b', '#fff0c2'] },
   { id: 'ice', name: 'Лёд', colors: ['#3d7bff', '#7fd3ff', '#e8f7ff'] },
   { id: 'aurora', name: 'Аврора', colors: ['#00e5a0', '#00b3ff', '#8a5cff'] },
   { id: 'fire', name: 'Пламя', colors: ['#ff2e4d', '#ff7a1a', '#ffd23f'] },
@@ -20,6 +25,11 @@ export const PC_PALETTES = [
 const PC_STYLES = [
   { id: 'horizon', name: 'Горизонт' },
   { id: 'orb', name: 'Сфера' },
+  { id: 'cube', name: 'Cube Spectrum' },
+  { id: 'crystal', name: 'Crystal' },
+  { id: 'terrain', name: 'Sonic Terrain' },
+  { id: 'silk', name: 'Silk Flow' },
+  { id: 'orbit', name: 'Orbit' },
 ];
 
 let installed = false;
@@ -32,6 +42,11 @@ export function install() {
   waves.registerStyle('capsules', capsules, { rest: true });
   waves.registerStyle('horizon', horizon, { rest: true });
   waves.registerStyle('orb', orb, { rest: true });
+  waves.registerStyle('cube', cube, { rest: true });
+  waves.registerStyle('crystal', crystal, { rest: true });
+  waves.registerStyle('terrain', terrain, { rest: true });
+  waves.registerStyle('silk', silk, { rest: true });
+  waves.registerStyle('orbit', orbit, { rest: true });
 }
 
 // colours of the "Из обложки" palette
@@ -343,4 +358,71 @@ function hex(h, s, l) {
       .padStart(2, '0');
   };
   return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+
+// ---------- Aesthetic collection: original PC-only visualizers ----------
+function cube(f, b) {
+  const { ctx, cx, cy, amp, dpr, colors, t } = f;
+  const lv = waves.levels();
+  const size = amp * (0.62 + lv.bass * 0.16);
+  const rot = (t || 0) * 0.34;
+  const verts = [];
+  for (let z = -1; z <= 1; z += 2) for (let y = -1; y <= 1; y += 2) for (let x = -1; x <= 1; x += 2) {
+    let X=x*size, Y=y*size, Z=z*size;
+    const x1=X*Math.cos(rot)-Z*Math.sin(rot), z1=X*Math.sin(rot)+Z*Math.cos(rot);
+    const y2=Y*Math.cos(rot*.73)-z1*Math.sin(rot*.73), z2=Y*Math.sin(rot*.73)+z1*Math.cos(rot*.73);
+    const p=3.4*size/(3.4*size+z2);
+    verts.push([cx+x1*p,cy+y2*p,z2]);
+  }
+  const edges=[[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+  ctx.save(); ctx.globalCompositeOperation=f.blend; ctx.lineCap='round';
+  const glow=ctx.createRadialGradient(cx,cy,size*.15,cx,cy,size*2.2);
+  glow.addColorStop(0,colors[0]+'55'); glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,size*2.2,0,Math.PI*2);ctx.fill();
+  for(let i=0;i<edges.length;i++){
+    const [a,c]=edges[i],v=bandAt(b,i/edges.length);
+    ctx.beginPath();ctx.moveTo(...verts[a].slice(0,2));ctx.lineTo(...verts[c].slice(0,2));
+    ctx.strokeStyle=i%3===0?colors[2]:i%3===1?colors[1]:colors[0];
+    ctx.globalAlpha=.42+v*.58;ctx.lineWidth=(1.5+v*4)*dpr;
+    ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=(8+v*22)*dpr;ctx.stroke();
+  }
+  for(let i=0;i<8;i++){const p=verts[i],v=bandAt(b,i/8);ctx.beginPath();ctx.arc(p[0],p[1],(2+v*4)*dpr,0,Math.PI*2);ctx.fillStyle=colors[i%3];ctx.globalAlpha=.65+v*.3;ctx.fill();}
+  ctx.restore();
+}
+
+function crystal(f,b) {
+  const {ctx,cx,cy,amp,dpr,colors,t}=f;const lv=waves.levels();
+  const R=amp*(.56+lv.energy*.12),rot=(t||0)*.22,N=6,pts=[];
+  for(let i=0;i<N;i++){const a=rot+i*Math.PI*2/N,v=bandAt(b,i/N);pts.push([cx+Math.cos(a)*R*(.82+v*.3),cy+Math.sin(a)*R*(.82+v*.3)]);}
+  ctx.save();ctx.globalCompositeOperation=f.blend;
+  const g=ctx.createRadialGradient(cx-R*.2,cy-R*.3,1,cx,cy,R*1.4);g.addColorStop(0,colors[2]+'aa');g.addColorStop(.55,colors[1]+'55');g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g;ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.fill();
+  for(let i=0;i<N;i++){const p=pts[i],q=pts[(i+1)%N],v=bandAt(b,i/N);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(...p);ctx.lineTo(...q);ctx.closePath();ctx.fillStyle=colors[i%3];ctx.globalAlpha=.08+v*.16;ctx.fill();ctx.strokeStyle=colors[(i+1)%3];ctx.globalAlpha=.65;ctx.lineWidth=1.6*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=14*dpr;ctx.stroke();}
+  ctx.restore();
+}
+
+function terrain(f,b) {
+  const {ctx,w,h,cy,amp,dpr,colors,t}=f;const cols=48,rows=18,step=w/(cols-1);
+  ctx.save();ctx.globalCompositeOperation=f.blend;ctx.lineWidth=1*dpr;
+  for(let r=0;r<rows;r++){
+    ctx.beginPath();
+    for(let i=0;i<cols;i++){const x=i*step,dist=Math.abs(i/(cols-1)-.5)*2,v=bandAt(b,dist);const y=cy+amp*.48+r*amp*.045-v*amp*.72*Math.exp(-r*.12)+Math.sin(i*.24+(t||0)*.6+r*.28)*amp*.025; if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+    ctx.strokeStyle=colors[r%3];ctx.globalAlpha=.12+(1-r/rows)*.48;ctx.shadowColor=colors[r%3];ctx.shadowBlur=(r===0?10:2)*dpr;ctx.stroke();
+  }ctx.restore();
+}
+
+function silk(f,b) {
+  const {ctx,w,cx,cy,amp,dpr,colors,t}=f;ctx.save();ctx.globalCompositeOperation=f.blend;
+  for(let j=0;j<5;j++){ctx.beginPath();for(let i=0;i<=100;i++){const x=w*i/100, n=i/100, v=bandAt(b,Math.abs(n-.5)*2),y=cy+Math.sin(n* Math.PI*4+(t||0)*(.35+j*.035)+j*1.2)*amp*(.18+j*.045)+Math.sin(n*18+(t||0)*.7+j)*v*amp*.22;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+    ctx.strokeStyle=colors[j%3];ctx.globalAlpha=.28+j*.1;ctx.lineWidth=(2+j*1.3)*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=(12+j*3)*dpr;ctx.stroke();}
+  ctx.restore();
+}
+
+function orbit(f,b) {
+  const {ctx,cx,cy,amp,dpr,colors,t}=f;const lv=waves.levels();ctx.save();ctx.globalCompositeOperation=f.blend;
+  for(let ring=0;ring<4;ring++){const rx=amp*(.48+ring*.13),ry=rx*(.42+ring*.06),rot=(t||0)*(.12+ring*.035)*(ring%2?1:-1);ctx.beginPath();
+    for(let i=0;i<=180;i++){const a=i/180*Math.PI*2,v=bandAt(b,i/180),r=1+v*.14+lv.bass*.05,x=Math.cos(a)*rx*r,y=Math.sin(a)*ry*r,px=cx+x*Math.cos(rot)-y*Math.sin(rot),py=cy+x*Math.sin(rot)+y*Math.cos(rot);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
+    ctx.strokeStyle=colors[ring%3];ctx.globalAlpha=.38+ring*.1;ctx.lineWidth=(1.4+ring*.35)*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=12*dpr;ctx.stroke();}
+  ctx.restore();
 }
