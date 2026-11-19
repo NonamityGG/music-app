@@ -34,6 +34,7 @@ function apply(s) {
   settings = s;
   const b = document.body;
   b.dataset.bg = s.bg || 'glass-violet';
+  b.dataset.appearance = s.appearance || 'classic';
   b.style.setProperty('--tint-a', String(s.barTint ?? 0.42));
   b.classList.toggle('island', !!s.island);
   b.classList.toggle('nodate', s.barDate === false);
