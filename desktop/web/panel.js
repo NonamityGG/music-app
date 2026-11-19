@@ -500,7 +500,7 @@ const PAGES = {
   bg() {
     const isPhoto = S.bg === 'windows' || S.bg === 'image';
     return [
-      sec('Фон', bgTiles()),
+      sec('Фон', bgTiles(), hint('Dark Botanical — векторные обои с холстом 3840 × 2160 (4K UHD). Для своих обоев выбирай изображение от 3840 × 2160 пикселей: Резонанс использует исходный файл без уменьшения разрешения.')),
       isPhoto
         ? sec(
             'Картинка',
