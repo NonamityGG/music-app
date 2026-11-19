@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
+<svg xmlns="http://www.w3.org/2000/svg" width="3840" height="2160" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
 <defs>
  <radialGradient id="bg"><stop stop-color="#21152f"/><stop offset=".58" stop-color="#100b1a"/><stop offset="1" stop-color="#07060d"/></radialGradient>
  <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b78bd5" stop-opacity=".58"/><stop offset="1" stop-color="#50365f" stop-opacity=".08"/></linearGradient>
