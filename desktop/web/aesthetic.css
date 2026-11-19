@@ -1,0 +1,36 @@
+/* Windows 11 Aesthetic: a separate visual skin for the PC edition. */
+body[data-appearance="aesthetic"] .panel {
+ background:
+  radial-gradient(90% 65% at 0% 0%, color-mix(in srgb,var(--acc) 24%,transparent),transparent 72%),
+  radial-gradient(70% 55% at 100% 100%, color-mix(in srgb,var(--acc2) 15%,transparent),transparent 70%),
+  linear-gradient(145deg,rgba(31,22,43,.96),rgba(13,10,19,.97));
+ border-radius:24px;
+ box-shadow:0 22px 70px rgba(0,0,0,.58),inset 0 0 0 1px rgba(255,255,255,.13),inset 0 1px 0 rgba(255,255,255,.1);
+ backdrop-filter:blur(28px) saturate(145%);
+}
+body[data-appearance="aesthetic"] .tabs {background:rgba(0,0,0,.24);border-radius:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+body[data-appearance="aesthetic"] .tab-ind {border-radius:14px;box-shadow:0 5px 24px color-mix(in srgb,var(--acc) 42%,transparent),inset 0 1px 0 rgba(255,255,255,.35)}
+body[data-appearance="aesthetic"] .card,
+body[data-appearance="aesthetic"] .tg,
+body[data-appearance="aesthetic"] .bg,
+body[data-appearance="aesthetic"] .st {background:rgba(255,255,255,.065);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),inset 0 1px 0 rgba(255,255,255,.07);backdrop-filter:blur(18px)}
+body[data-appearance="aesthetic"] .card {border-radius:22px}
+body[data-appearance="aesthetic"] .now {border-radius:22px;background:linear-gradient(120deg,color-mix(in srgb,var(--acc) 24%,rgba(255,255,255,.035)),rgba(255,255,255,.045));box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+body[data-appearance="aesthetic"] .head {height:64px}
+body[data-appearance="aesthetic"] .brand {letter-spacing:.035em}
+body[data-appearance="aesthetic"] .ver {border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(12px)}
+body[data-appearance="aesthetic"] .st.on,
+body[data-appearance="aesthetic"] .bg.on {background:color-mix(in srgb,var(--acc) 20%,rgba(255,255,255,.07));box-shadow:inset 0 0 0 1.5px var(--acc),0 8px 26px color-mix(in srgb,var(--acc) 18%,transparent)}
+body[data-appearance="aesthetic"] .sw-c.on {box-shadow:0 0 0 2px #17101f,0 0 0 4px rgba(255,255,255,.9),0 0 22px var(--a)}
+body[data-appearance="aesthetic"] .btn {border-radius:14px}
+body[data-appearance="aesthetic"] .sample {border-radius:18px}
+body[data-appearance="aesthetic"] .news {border-radius:22px}
+body[data-appearance="aesthetic"] .bg-pic {height:62px;border-radius:14px}
+body[data-appearance="aesthetic"] .photo {filter:blur(var(--blur)) saturate(1.08)}
+body[data-appearance="aesthetic"][data-bg="botanical"]::before {
+ content:"";position:fixed;inset:0;z-index:-1;background:url("botanical.svg") center/cover no-repeat;
+}
+body[data-appearance="aesthetic"][data-bg="botanical"]::after {
+ content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(8,5,13,.18),rgba(8,5,13,.05) 50%,rgba(8,5,13,.2)),rgba(5,3,9,var(--dim));
+}
+body[data-appearance="aesthetic"][data-bg="botanical"] .sky {display:none}
