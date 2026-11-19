@@ -8,7 +8,7 @@ import * as waves from '../../src/waves.js';
 const { roundRect } = waves;
 
 export const PC_PALETTES = [
-  { id: 'violet', name: 'Violet', colors: ['#7650c9', '#b79be8', '#f0d8ff'] },
+  { id: 'plum', name: 'Aesthetic Violet', colors: ['#7650c9', '#b79be8', '#f0d8ff'] },
   { id: 'rose', name: 'Rose', colors: ['#a94f83', '#e28bb9', '#f7d2e7'] },
   { id: 'azure', name: 'Azure', colors: ['#356aab', '#72a9e8', '#c8e6ff'] },
   { id: 'emerald', name: 'Emerald', colors: ['#347c68', '#68b99b', '#c3f0dc'] },
