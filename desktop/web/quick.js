@@ -73,6 +73,7 @@ function paint() {
 function colors(s) {
   settings = s || settings;
   body.dataset.appearance = settings.appearance || 'classic';
+  body.dataset.bg = settings.bg || 'glass-violet';
   paint();
   wavesOn = settings.shellWaves !== 'off';
   body.classList.toggle('no-waves', !wavesOn);
