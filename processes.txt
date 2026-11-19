@@ -1,0 +1,20 @@
+
+  Id ProcessName  MainWindowTitle
+  -- -----------  ---------------
+1684 Rezonans     
+2748 Rezonans     
+4424 Rezonans     
+5464 Rezonans     
+5600 Rezonans     
+7468 Rezonans     
+7620 Rezonans     
+7864 Rezonans     
+8304 Rezonans     
+8344 Rezonans     
+8416 Rezonans     
+8608 Rezonans     
+8616 Rezonans     
+9116 Rezonans     Резонанс — остров
+6080 RezonansHost 
+
+
