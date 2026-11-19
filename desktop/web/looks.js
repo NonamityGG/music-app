@@ -30,6 +30,10 @@ const PC_STYLES = [
   { id: 'terrain', name: 'Sonic Terrain' },
   { id: 'silk', name: 'Silk Flow' },
   { id: 'orbit', name: 'Orbit' },
+  { id: 'cube-orbit', name: 'Cube Orbit' },
+  { id: 'particles', name: 'Particle Field' },
+  { id: 'freq-rings', name: 'Frequency Rings' },
+  { id: 'pulse', name: 'Pulse Line' },
 ];
 
 let installed = false;
@@ -47,6 +51,10 @@ export function install() {
   waves.registerStyle('terrain', terrain, { rest: true });
   waves.registerStyle('silk', silk, { rest: true });
   waves.registerStyle('orbit', orbit, { rest: true });
+  waves.registerStyle('cube-orbit', cubeOrbit, { rest: true });
+  waves.registerStyle('particles', particles, { rest: true });
+  waves.registerStyle('freq-rings', frequencyRings, { rest: true });
+  waves.registerStyle('pulse', pulseLine, { rest: true });
 }
 
 // colours of the "Из обложки" palette
@@ -424,5 +432,70 @@ function orbit(f,b) {
   for(let ring=0;ring<4;ring++){const rx=amp*(.48+ring*.13),ry=rx*(.42+ring*.06),rot=(t||0)*(.12+ring*.035)*(ring%2?1:-1);ctx.beginPath();
     for(let i=0;i<=180;i++){const a=i/180*Math.PI*2,v=bandAt(b,i/180),r=1+v*.14+lv.bass*.05,x=Math.cos(a)*rx*r,y=Math.sin(a)*ry*r,px=cx+x*Math.cos(rot)-y*Math.sin(rot),py=cy+x*Math.sin(rot)+y*Math.cos(rot);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
     ctx.strokeStyle=colors[ring%3];ctx.globalAlpha=.38+ring*.1;ctx.lineWidth=(1.4+ring*.35)*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=12*dpr;ctx.stroke();}
+  ctx.restore();
+}
+
+
+// ---------- Additional Aesthetic visuals ----------
+function cubeOrbit(f,b) {
+  const {cx,cy,amp,t}=f;
+  const phase=t||0;
+  for(let i=0;i<3;i++){
+    const a=phase*.18+i*Math.PI*2/3;
+    cube({...f,cx:cx+Math.cos(a)*amp*.66,cy:cy+Math.sin(a)*amp*.42,amp:amp*.34,t:phase+i*1.7},b);
+  }
+}
+
+function particles(f,b) {
+  const {ctx,cx,cy,amp,dpr,colors,t}=f;
+  const lv=waves.levels(),time=t||0;
+  ctx.save();ctx.globalCompositeOperation=f.blend;
+  for(let i=0;i<110;i++){
+    const seed=i*12.9898;
+    const a=seed% (Math.PI*2)+time*(.04+(i%7)*.004);
+    const band=bandAt(b,(i%37)/37);
+    const orbit=amp*(.18+(i%13)/16)+band*amp*.24+lv.bass*amp*.08;
+    const x=cx+Math.cos(a)*orbit*(1+(i%5)*.06);
+    const y=cy+Math.sin(a)*orbit*.62;
+    const r=(.8+(i%4)*.55+band*2)*dpr;
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle=colors[i%3];ctx.globalAlpha=.24+band*.72;
+    ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=(3+band*12)*dpr;ctx.fill();
+  }
+  ctx.restore();
+}
+
+function frequencyRings(f,b) {
+  const {ctx,cx,cy,amp,dpr,colors,t}=f;
+  ctx.save();ctx.globalCompositeOperation=f.blend;
+  for(let ring=0;ring<7;ring++){
+    const base=amp*(.2+ring*.105),phase=(t||0)*(.08+ring*.012);
+    ctx.beginPath();
+    for(let i=0;i<=240;i++){
+      const a=i/240*Math.PI*2,band=bandAt(b,(i/240+ring*.11)%1);
+      const r=base+band*amp*(.08+ring*.012);
+      const x=cx+Math.cos(a+phase)*r,y=cy+Math.sin(a+phase)*r;
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.closePath();ctx.strokeStyle=colors[ring%3];ctx.globalAlpha=.3+ring*.075;
+    ctx.lineWidth=(1+ring*.22)*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=10*dpr;ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function pulseLine(f,b) {
+  const {ctx,w,cx,cy,amp,dpr,colors,t}=f;
+  ctx.save();ctx.globalCompositeOperation=f.blend;
+  for(let layer=0;layer<3;layer++){
+    ctx.beginPath();
+    for(let i=0;i<=220;i++){
+      const n=i/220,band=bandAt(b,n),x=n*w;
+      const carrier=Math.sin(n*38+(t||0)*(.35+layer*.04)+layer)*amp*.025;
+      const y=cy+carrier+Math.sin(n*Math.PI*2+(t||0)*.12+layer*1.4)*amp*.08+ (band-.18)*amp*(.34+layer*.08);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=colors[layer%3];ctx.globalAlpha=.5+layer*.12;
+    ctx.lineWidth=(1.6+layer*.7)*dpr;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=(8+layer*5)*dpr;ctx.stroke();
+  }
   ctx.restore();
 }
