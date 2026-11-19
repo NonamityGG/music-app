@@ -56,6 +56,7 @@ const DEFAULTS = {
   island: true, // the player as the island (otherwise a capsule inside the bar)
   islandPeek: true, // drop down for a moment when the song changes
   islandGlow: true, // the island glows in the colour of the cover
+  appearance: 'classic', // classic | aesthetic (PC-only visual shell)
   style: 'neon',
   palette: 'violet',
   lastPalette: 'violet', // the last fixed palette (Windows colours when "from the cover")
@@ -110,7 +111,8 @@ const DEFAULTS = {
 };
 
 const CHOICES = {
-  style: ['neon', 'ribbons', 'capsules', 'dots', 'rings', 'scope', 'horizon', 'orb'],
+  appearance: ['classic', 'aesthetic'],
+  style: ['neon', 'ribbons', 'capsules', 'dots', 'rings', 'scope', 'horizon', 'orb', 'cube', 'crystal', 'terrain', 'silk', 'orbit'],
   palette: ['violet', 'neon', 'sunset', 'mint', 'ice', 'aurora', 'fire', 'sakura', 'gold', 'mono', 'cover'],
   bg: ['glass-violet', 'glass-black', 'glass-palette', 'aurora', 'ember', 'dark', 'amoled', 'windows', 'image'],
   text: ['off', 'lyrics', 'track', 'clock', 'custom'],
