@@ -34,7 +34,7 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # the version is the one in desktop/package.json; test builds get a suffix
       - name: Version
@@ -44,7 +44,7 @@ jobs:
           echo "PC_VERSION=$v" >> $env:GITHUB_ENV
           echo "version $v"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -249,7 +249,7 @@ jobs:
           $raw = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' | Select-Object ProductName, DisplayVersion, CurrentBuild
           $raw | Out-String | Set-Content smoke/os.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: smoke
@@ -273,7 +273,7 @@ jobs:
           git commit -q -m "smoke ${{ github.run_number }}"
           git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ci-smoke
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: installer
           path: desktop/release/*.exe
