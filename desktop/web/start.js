@@ -116,6 +116,7 @@ function colors(s) {
   if (!s) return;
   settings = s;
   body.dataset.appearance = s.appearance || 'classic';
+  body.dataset.bg = s.bg || 'glass-violet';
   paint();
   wavesOn = s.shellWaves !== 'off';
   body.classList.toggle('no-waves', !wavesOn);
