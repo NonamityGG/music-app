@@ -92,6 +92,7 @@ function set(patch) {
 let coverCols = null;
 
 function paintAccent() {
+  document.body.dataset.appearance = S.appearance || 'classic';
   const c = S.palette === 'cover' && coverCols ? coverCols : S.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
   document.body.style.setProperty('--acc', c[0]);
   document.body.style.setProperty('--acc3', c[1]);
@@ -311,7 +312,7 @@ const BGS = [
   ['amoled', 'Чёрный AMOLED', '#000'],
   ['windows', 'Мои обои Windows', ''],
   ['image', 'Свой рисунок', ''],
-  ['botanical', 'Dark Botanical', ''],
+  ['botanical', 'Dark Botanical', 'radial-gradient(ellipse at 20% 15%, #50345f, transparent 42%), radial-gradient(ellipse at 82% 82%, #392243, transparent 38%), #100b18'],
 ];
 
 function bgTiles() {
