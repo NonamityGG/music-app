@@ -313,7 +313,7 @@ const BGS = [
   ['amoled', 'Чёрный AMOLED', '#000'],
   ['windows', 'Мои обои Windows', ''],
   ['image', 'Свой рисунок', ''],
-  ['botanical', 'Dark Botanical', 'radial-gradient(ellipse at 20% 15%, #50345f, transparent 42%), radial-gradient(ellipse at 82% 82%, #392243, transparent 38%), #100b18'],
+  ['botanical', 'Dark Botanical', "url('botanical.svg') center / cover no-repeat"],
 ];
 
 function bgTiles() {
