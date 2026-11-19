@@ -115,6 +115,7 @@ function paint() {
 function colors(s) {
   if (!s) return;
   settings = s;
+  body.dataset.appearance = s.appearance || 'classic';
   paint();
   wavesOn = s.shellWaves !== 'off';
   body.classList.toggle('no-waves', !wavesOn);
