@@ -1,4 +1,5 @@
 /* Windows 11 Aesthetic: a separate visual skin for the PC edition. */
+body[data-appearance="aesthetic"] { --acc:var(--c1,#7c4dff); --acc2:var(--c3,#ff6fd8); }
 body[data-appearance="aesthetic"] .panel,
 body[data-appearance="aesthetic"] .bar,
 body[data-appearance="aesthetic"] .tb,
@@ -30,15 +31,11 @@ body[data-appearance="aesthetic"] .sample {border-radius:18px}
 body[data-appearance="aesthetic"] .news {border-radius:22px}
 body[data-appearance="aesthetic"] .bg-pic {height:62px;border-radius:14px}
 body[data-appearance="aesthetic"] .photo {filter:blur(var(--blur)) saturate(1.08)}
-body[data-appearance="aesthetic"][data-bg="botanical"] {
+body.wallpaper[data-bg="botanical"] {
  background-image:url("botanical.svg");
  background-position:center;
  background-size:cover;
  background-repeat:no-repeat;
-}
-body[data-appearance="aesthetic"][data-bg="botanical"]::after {
- content:"";position:fixed;inset:0;pointer-events:none;
- background:linear-gradient(90deg,rgba(8,5,13,.18),rgba(8,5,13,.05) 50%,rgba(8,5,13,.2));
 }
 body[data-appearance="aesthetic"][data-bg="botanical"] .sky {display:none}
 body[data-appearance="aesthetic"] .bar {
