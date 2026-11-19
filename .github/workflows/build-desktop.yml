@@ -10,6 +10,14 @@ on:
       - 'src/util.js'
       - 'src/connect.js'
       - '.github/workflows/build-desktop.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'src/waves.js'
+      - 'src/util.js'
+      - 'src/connect.js'
+      - '.github/workflows/build-desktop.yml'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +49,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+
+      - name: Install root test dependencies
+        run: npm ci
+
+      - name: Run repository tests
+        run: npm test
 
       # the Windows helper (wallpaper under the icons, app bar, media controls)
       - name: Build helper
