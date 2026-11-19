@@ -93,6 +93,7 @@ let coverCols = null;
 
 function paintAccent() {
   document.body.dataset.appearance = S.appearance || 'classic';
+  document.body.dataset.bg = S.bg || 'glass-violet';
   const c = S.palette === 'cover' && coverCols ? coverCols : S.paletteColors || ['#7c4dff', '#c3a6ff', '#ff6fd8'];
   document.body.style.setProperty('--acc', c[0]);
   document.body.style.setProperty('--acc3', c[1]);
